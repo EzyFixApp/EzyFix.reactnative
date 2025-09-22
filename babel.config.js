@@ -1,13 +1,9 @@
-// babel.config.js
 module.exports = function (api) {
   api.cache(true);
   return {
-    // 👉 Đưa expo-router vào PRESETS (kèm preset Expo + option cho NativeWind)
     presets: [
-      ['babel-preset-expo', { jsxImportSource: 'nativewind' }],
-      'expo-router/babel',
+      ['babel-preset-expo', { jsxImportSource: 'nativewind' }]
     ],
-    // 👉 Các plugin
     plugins: [
       'nativewind/babel',
       'react-native-worklets-core/plugin',
