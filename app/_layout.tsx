@@ -1,3 +1,4 @@
+import 'react-native-reanimated';
 import '../global.css';
 import 'expo-dev-client';
 import { ThemeProvider as NavThemeProvider } from '@react-navigation/native';
