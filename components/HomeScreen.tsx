@@ -74,6 +74,11 @@ export default function HomeScreen() {
 
       </View>
 
+      {/* Bottom Home Indicator */}
+      <View style={styles.bottomIndicator}>
+        <View style={styles.homeIndicator} />
+      </View>
+      
     </SafeAreaView>
   );
 }
