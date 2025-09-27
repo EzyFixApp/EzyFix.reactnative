@@ -76,12 +76,27 @@ src/
 ├── 📱 app/                 # Expo Router - File-based routing
 │   ├── (tabs)/            # Tab navigation group
 │   ├── customer/          # Customer-specific screens
+│   │   ├── dashboard.tsx       # ✅ Dashboard với carousel
+│   │   ├── login.tsx           # ✅ Đăng nhập khách hàng
+│   │   ├── profile.tsx         # ✅ Profile chính
+│   │   ├── personal-info.tsx   # ✅ Thông tin cá nhân
+│   │   ├── favorite-technicians.tsx # ✅ Thợ yêu thích
+│   │   ├── saved-addresses.tsx # ✅ Địa chỉ đã lưu
+│   │   ├── add-address.tsx     # ✅ Thêm địa chỉ
+│   │   ├── payment-methods.tsx # ✅ Thanh toán
+│   │   ├── notification-settings.tsx # ✅ Cài đặt TB
+│   │   └── promotions.tsx      # ✅ Ưu đãi
 │   ├── technician/        # Technician-specific screens  
+│   │   └── index.tsx           # Trang thợ
 │   └── _layout.tsx        # Root layout
 ├── 🧩 components/         # Reusable components
 │   ├── nativewindui/      # UI component library
 │   ├── AnimatedHomeScreen.tsx  # ✅ Main home screen
 │   ├── AnimatedDots.tsx        # ✅ Loading animations
+│   ├── CustomerDashboard.tsx   # ✅ Dashboard container
+│   ├── CustomerHeader.tsx      # ✅ Header với gradient
+│   ├── HeroBanner.tsx          # ✅ Hero với auto-slide
+│   ├── ServiceCategories.tsx   # ✅ Service grid 2x3
 │   └── ...
 ├── 📚 lib/               # Utilities & helpers
 ├── 🏪 store/             # State management

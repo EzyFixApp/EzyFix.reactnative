@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, SafeAreaView } from 'react-native';
+import { router } from 'expo-router';
 import CustomerHeader from './CustomerHeader';
 import HeroBanner from './HeroBanner';
 import ServiceCategories from './ServiceCategories';
@@ -16,7 +17,7 @@ export default function CustomerDashboard() {
   };
 
   const handleAvatarPress = () => {
-    console.log('Avatar pressed - navigate to profile');
+    router.navigate('../customer/profile' as any);
   };
 
   const handleNotificationPress = () => {

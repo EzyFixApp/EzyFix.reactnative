@@ -91,7 +91,15 @@ EzyFix.reactnative/
 │   │   └── two.tsx             # Tab two
 │   ├── customer/                # Khách hàng flow
 │   │   ├── dashboard.tsx       # Dashboard khách hàng
-│   │   └── login.tsx           # Đăng nhập khách hàng
+│   │   ├── login.tsx           # Đăng nhập khách hàng
+│   │   ├── profile.tsx         # ✅ Trang profile khách hàng
+│   │   ├── personal-info.tsx   # ✅ Thông tin cá nhân
+│   │   ├── favorite-technicians.tsx # ✅ Thợ yêu thích
+│   │   ├── saved-addresses.tsx # ✅ Địa chỉ đã lưu
+│   │   ├── add-address.tsx     # ✅ Thêm địa chỉ mới
+│   │   ├── payment-methods.tsx # ✅ Phương thức thanh toán
+│   │   ├── notification-settings.tsx # ✅ Cài đặt thông báo
+│   │   └── promotions.tsx      # ✅ Ưu đãi & vouchers
 │   ├── home/                   # Home screens
 │   │   └── index.tsx           # Home page
 │   ├── technician/             # Thợ sửa chữa flow  
@@ -106,6 +114,10 @@ EzyFix.reactnative/
 │   ├── AnimatedDots.tsx        # ✅ Loading dots animation  
 │   ├── AnimatedText.tsx        # ✅ Typing text animation
 │   ├── LoadingSpinner.tsx      # ✅ Loading spinner component
+│   ├── CustomerDashboard.tsx   # ✅ Dashboard khách hàng với carousel
+│   ├── CustomerHeader.tsx      # ✅ Header với gradient
+│   ├── HeroBanner.tsx          # ✅ Hero banner với auto-slide
+│   ├── ServiceCategories.tsx   # ✅ Grid dịch vụ 2x3
 │   ├── HomeScreen.tsx          # Trang chủ cơ bản
 │   ├── LoginScreen.tsx         # Component đăng nhập
 │   └── ...                     # Các components khác
@@ -141,8 +153,16 @@ EzyFix.reactnative/
 ### 🚧 Đang phát triển
 
 #### 👤 **Khách hàng (Customer)**  
-- 🚧 **login.tsx** - Trang đăng nhập khách hàng
-- 🚧 **dashboard.tsx** - Dashboard khách hàng
+- ✅ **login.tsx** - Trang đăng nhập khách hàng
+- ✅ **dashboard.tsx** - Dashboard với carousel tự động, service categories
+- ✅ **profile.tsx** - Profile chính với stats và menu navigation
+- ✅ **personal-info.tsx** - Form thông tin cá nhân với verification badges
+- ✅ **favorite-technicians.tsx** - Quản lý thợ yêu thích với ratings
+- ✅ **saved-addresses.tsx** - Quản lý địa chỉ với CRUD operations
+- ✅ **add-address.tsx** - Form thêm địa chỉ mới
+- ✅ **payment-methods.tsx** - Quản lý phương thức thanh toán
+- ✅ **notification-settings.tsx** - Cài đặt thông báo với switches
+- ✅ **promotions.tsx** - Ưu đãi với tab navigation và voucher cards
 
 #### 🔧 **Thợ sửa chữa (Technician)**
 - 🚧 **index.tsx** - Trang chính của thợ
@@ -153,8 +173,9 @@ EzyFix.reactnative/
 
 ### 📋 Kế hoạch tiếp theo
 
-- [ ] Hoàn thiện trang đăng nhập
-- [ ] Xây dựng dashboard cho khách hàng
+- [x] ~~Hoàn thiện trang đăng nhập~~
+- [x] ~~Xây dựng dashboard cho khách hàng~~
+- [x] ~~Hệ thống profile khách hàng hoàn chỉnh~~
 - [ ] Tạo giao diện cho thợ sửa chữa
 - [ ] Tích hợp API backend
 - [ ] Thêm push notifications
