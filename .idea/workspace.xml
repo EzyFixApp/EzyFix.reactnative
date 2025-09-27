@@ -5,9 +5,19 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="868f0766-2637-44bf-ae60-358902ea7db5" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/app/customer/add-address.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/customer/favorite-technicians.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/customer/notification-settings.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/customer/payment-methods.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/customer/personal-info.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/customer/profile.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/customer/promotions.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/customer/saved-addresses.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/HeroBanner.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/HeroBanner.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/ServiceCategories.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/ServiceCategories.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/DEVELOPMENT.md" beforeDir="false" afterPath="$PROJECT_DIR$/DEVELOPMENT.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/CUSTOMER_COMPONENTS.md" beforeDir="false" afterPath="$PROJECT_DIR$/components/CUSTOMER_COMPONENTS.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/CustomerDashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/CustomerDashboard.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -39,7 +49,7 @@
     "RunOnceActivity.readMode.enableVisualFormatting": "true",
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "feature/customerdashboard",
+    "git-widget-placeholder": "feature/customer-profile",
     "last_opened_file_path": "D:/EXE202/EzyFix/EzyFix.reactnative"
   }
 }]]></component>

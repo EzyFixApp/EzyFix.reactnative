@@ -1,10 +1,12 @@
-# 📱 Customer Dashboard Components
+# 📱 Customer Profile System Components
 
-Tài liệu chi tiết cho các components của Customer Dashboard được tạo theo thiết kế UI/UX chuyên nghiệp.
+Tài liệu chi tiết cho tất cả các components của Customer Profile System bao gồm Dashboard, Profile và các trang phụ được tạo theo thiết kế UI/UX chuyên nghiệp.
 
 ---
 
 ## 📋 Danh sách Components
+
+### A. 🟦 **DASHBOARD SYSTEM**
 
 ### 1. 🎯 **CustomerDashboard.tsx** - Main Dashboard
 **Main container** kết hợp tất cả components để tạo thành trang dashboard hoàn chỉnh.
