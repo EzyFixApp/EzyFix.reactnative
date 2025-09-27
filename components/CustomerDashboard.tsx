@@ -22,6 +22,7 @@ export default function CustomerDashboard() {
 
   const handleNotificationPress = () => {
     console.log('Notification pressed - show notifications');
+    router.push('../customer/notifications' as any);
   };
 
   const handleLocationPress = () => {
@@ -39,6 +40,7 @@ export default function CustomerDashboard() {
 
   const handleViewAllServices = () => {
     console.log('View all services pressed');
+    router.push('../customer/all-services' as any);
   };
 
   const handleViewAllPromotions = () => {

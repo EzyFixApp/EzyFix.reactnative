@@ -7,7 +7,7 @@ const { width } = Dimensions.get('window');
 // Sample images for carousel
 const carouselImages = [
   { uri: 'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&h=200&fit=crop&crop=center' },
-  { uri: 'https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?w=400&h=200&fit=crop&crop=center' },
+  { uri: 'https://ix-marketing.imgix.net/case-study_tile_rew.png?auto=format,compress&w=1246w=400&h=200&fit=crop&crop=center' },
   { uri: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=400&h=200&fit=crop&crop=center' },
   { uri: 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=400&h=200&fit=crop&crop=center' },
 ];
