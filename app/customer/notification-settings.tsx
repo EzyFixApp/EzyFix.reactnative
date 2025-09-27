@@ -360,13 +360,13 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   enableAllButton: {
-    borderColor: '#a5e6d0',
+    borderColor: '#baf1df',
     backgroundColor: '#F0FDF4',
   },
   enableAllText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#10B981',
+    color: '#5dcca7',
   },
   disableAllButton: {
     borderColor: '#f0c0c0',
@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
   disableAllText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#EF4444',
+    color: '#db9191',
   },
   resetButton: {
     borderColor: '#d0dbeb',
@@ -384,7 +384,7 @@ const styles = StyleSheet.create({
   resetText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#609CEF',
+    color: '#94b5e2',
   },
   bottomSpacing: {
     height: 80,

@@ -78,6 +78,9 @@ src/
 │   ├── customer/          # Customer-specific screens
 │   │   ├── dashboard.tsx       # ✅ Dashboard với carousel
 │   │   ├── login.tsx           # ✅ Đăng nhập khách hàng
+│   │   ├── notifications.tsx  # ✅ Hệ thống thông báo & tin nhắn
+│   │   ├── all-services.tsx   # ✅ Catalog dịch vụ với tìm kiếm
+│   │   ├── book-service.tsx   # ✅ Form đặt lịch sửa chữa
 │   │   ├── profile.tsx         # ✅ Profile chính
 │   │   ├── personal-info.tsx   # ✅ Thông tin cá nhân
 │   │   ├── favorite-technicians.tsx # ✅ Thợ yêu thích

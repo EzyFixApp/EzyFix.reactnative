@@ -6,7 +6,13 @@
   <component name="ChangeListManager">
     <list default="true" id="868f0766-2637-44bf-ae60-358902ea7db5" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CHANGELOG.md" beforeDir="false" afterPath="$PROJECT_DIR$/CHANGELOG.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/customer/notification-settings.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/notification-settings.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/profile.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/profile.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/CustomerDashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/CustomerDashboard.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/CustomerHeader.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/CustomerHeader.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/HeroBanner.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/HeroBanner.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -38,7 +44,7 @@
     "RunOnceActivity.readMode.enableVisualFormatting": "true",
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "feature/customer-profile",
+    "git-widget-placeholder": "feature/detailed-service",
     "last_opened_file_path": "D:/EXE202/EzyFix/EzyFix.reactnative"
   }
 }]]></component>

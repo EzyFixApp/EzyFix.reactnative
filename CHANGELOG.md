@@ -7,6 +7,101 @@ và dự án tuân theo [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.2.0] - 2025-09-28
+
+### 🎉 Added - Advanced Service Booking System
+
+#### 📱 **Complete Notification System**
+- ✅ **notifications.tsx** - Comprehensive notification và messaging center
+  - 🎯 Dual-tab navigation: "Thông báo" và "Tin nhắn" với separate buttons
+  - 📊 Badge system hiển thị unread counts trên tabs
+  - 🎨 Professional card design với type-based icons (system, promo, service)
+  - 📱 Bold text formatting cho unread items
+  - 👤 Avatar system cho technician messages
+  - 🔄 Real-time unread status management
+  - 🌈 Icon căn giữa theo chiều dọc của khung
+  - 📐 Text padding để tránh chấm đỏ che chữ
+
+#### 🛠️ **All Services Catalog**
+- ✅ **all-services.tsx** - Complete service catalog với search functionality
+  - 🔍 Advanced search bar với real-time filtering
+  - 📂 Category-based organization: Điện lạnh, Nước
+  - 🎨 Professional service cards với color-coded backgrounds
+  - 💰 Price display với proper formatting
+  - 🖼️ Service images với overlay effects
+  - 📱 Responsive grid layout (2 columns)
+  - 🔗 Navigation integration tới booking system
+  - 🎯 Empty state handling cho search results
+
+#### 📝 **Service Booking System**
+- ✅ **book-service.tsx** - Complete booking form với validation
+  - 📋 Comprehensive form fields: Tên, SĐT, Địa chỉ, Ghi chú
+  - ✅ Advanced form validation với real-time error display
+  - 📱 Service info card showing selected service
+  - 🎨 Modern UI với gradient headers và shadow effects
+  - 📷 Image upload section (placeholder for future implementation)
+  - 💾 Form submission với confirmation alerts
+  - 🔄 Parameter passing từ all-services page
+  - 📱 Keyboard-aware ScrollView
+  - ⚡ Loading states và success messaging
+
+### 🎨 **Enhanced UI/UX Design**
+
+#### 🌈 **Advanced Design Patterns**
+- **Separate Tab Buttons:** Professional button design thay vì joined tabs
+- **Dynamic Badge System:** Real-time unread count display
+- **Type-based Icons:** Smart icon selection based on notification/service type
+- **Color-coded Services:** Visual categorization với consistent color scheme
+- **Form Validation UX:** Inline error display với red borders
+- **Shadow Effects:** Professional depth với shadow styling
+- **Gradient Backgrounds:** Consistent blue gradient across pages
+
+#### 📐 **Layout Improvements**
+- **Icon Centering:** Perfect vertical alignment trong notification items
+- **Text Padding:** Smart spacing để tránh UI element overlap
+- **Responsive Cards:** Adaptive layout cho different screen sizes
+- **Search Integration:** Seamless search experience với instant results
+- **Navigation Flow:** Smooth transitions between services → booking
+
+### 🔧 **Technical Enhancements**
+
+#### 📱 **Advanced React Native Features**
+- **useLocalSearchParams:** Parameter passing giữa pages
+- **Real-time Search:** Efficient filtering algorithms
+- **Form State Management:** Complex form handling với validation
+- **Alert Integration:** Native alert system cho confirmations
+- **Image Placeholder:** Future-ready image upload architecture
+- **TypeScript Interfaces:** Complete type safety cho form data
+
+#### 🛠️ **Code Quality Improvements**
+- **Component Modularity:** Reusable NotificationItem và MessageItem components
+- **Service Data Structure:** Organized service categories với type definitions
+- **Error Handling:** Comprehensive validation với user-friendly messages
+- **Performance Optimization:** Efficient rendering với proper keys
+- **Memory Management:** Proper state cleanup và navigation handling
+
+### 📁 **Updated Project Structure**
+
+#### ✅ **New Customer Pages**
+```
+app/customer/
+├── notifications.tsx       # ✅ Notification & messaging center
+├── all-services.tsx       # ✅ Complete service catalog
+├── book-service.tsx       # ✅ Service booking form
+├── dashboard.tsx          # ✅ Enhanced với notification integration
+└── [existing pages...]    # ✅ All previous pages maintained
+```
+
+#### ✅ **Enhanced Navigation Flow**
+```
+Dashboard → Notifications (via header icon)
+Dashboard → All Services (via "Xem tất cả" button)
+All Services → Book Service (via service card tap)
+Book Service → Success → Back to Dashboard
+```
+
+---
+
 ## [1.1.0] - 2025-09-27
 
 ### 🎉 Added - Customer Profile System
