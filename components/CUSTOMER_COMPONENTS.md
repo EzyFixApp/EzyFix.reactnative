@@ -318,7 +318,154 @@ const navItems = [
 
 ---
 
-## 🐛 Troubleshooting
+## � **BOOKING SYSTEM**
+
+### 1. 🎯 **booking-history.tsx** - Activity Page
+**Main activity page** hiển thị danh sách tất cả các yêu cầu dịch vụ đã đặt với filtering và animations.
+
+```typescript
+// Usage trong app/customer/booking-history.tsx
+export default function BookingHistory() {
+  return (
+    <SafeAreaView style={styles.fullContainer}>
+      <CustomerHeader
+        title="Hoạt động"
+        notificationCount={3}
+        onNotificationPress={() => router.push('./notifications')}
+        onAvatarPress={() => router.push('./profile')}
+      />
+      {/* Filter Section */}
+      {/* Booking List */}
+      <BottomNavigation />
+    </SafeAreaView>
+  );
+}
+```
+
+**Features:**
+- ✅ **Professional Header**: CustomerHeader với gradient background
+- ✅ **Filter System**: Horizontal scrollable filters (Tất cả, Đang tìm, Có báo giá, Hoàn thành)
+- ✅ **Smooth Animations**: Fade in/out và slide animations cho booking cards
+- ✅ **Status-based UI**: Cards với status badges và colors khác nhau
+- ✅ **Navigation Integration**: Seamless navigation với dashboard
+- ✅ **Clean Layout**: Simple header "Danh sách yêu cầu" không stats phức tạp
+- ✅ **Responsive Design**: Proper spacing cho navigation bar
+
+**Filter States:**
+- `all` - Hiển thị tất cả bookings
+- `searching` - Chỉ bookings đang tìm thợ
+- `quoted` - Chỉ bookings có báo giá
+- `completed` - Chỉ bookings đã hoàn thành
+
+**Animation Features:**
+- ✅ Staggered animations cho booking cards
+- ✅ Smooth filter transitions
+- ✅ Professional page transitions from/to dashboard
+
+**Booking Card Design:**
+- ✅ Clean white cards với subtle shadows
+- ✅ Status badges với appropriate colors
+- ✅ Service info, date, address, technician details
+- ✅ Price display và "Xem chi tiết" button
+- ✅ No left border colors (removed for cleaner look)
+
+---
+
+### 2. 🎯 **booking-detail.tsx** - Detail Page
+**Detail page** cho từng booking với professional header và quote management.
+
+```typescript
+// Professional header design
+<View style={styles.fullContainer}>
+  <LinearGradient colors={['#609CEF', '#4F8BE8']} style={styles.headerContainer}>
+    <SafeAreaView edges={['top']}>
+      <View style={styles.headerContent}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="white" />
+        </TouchableOpacity>
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle}>Chi tiết đặt lịch</Text>
+          <Text style={styles.headerSubtitle}>Mã đơn #000001</Text>
+        </View>
+        <TouchableOpacity>
+          <Ionicons name="share-outline" size={24} color="white" />
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  </LinearGradient>
+</View>
+```
+
+**Features:**
+- ✅ **Professional Header**: Gradient header với back button, title và share button
+- ✅ **Status Cards**: Visual status indicators với icons
+- ✅ **Service Info**: Complete service details với technician info
+- ✅ **Customer Info**: Customer contact và address details
+- ✅ **Technician Section**: Profile với rating và contact options
+- ✅ **Action Buttons**: "Từ chối" và "Chấp nhận báo giá" buttons
+- ✅ **Full Background**: No white space trên header
+
+---
+
+### 3. 🎯 **booking-confirmation.tsx** - Success Page
+**Confirmation page** sau khi đặt dịch vụ thành công với animations.
+
+**Features:**
+- ✅ **Success Animation**: Checkmark animation với spring effect
+- ✅ **Service Summary**: Booking details summary
+- ✅ **Next Steps**: Clear instructions cho user
+- ✅ **Navigation Options**: Về dashboard hoặc xem lịch sử
+
+---
+
+### 4. 🎯 **quote-review.tsx** - Quote Management
+**Quote review page** để xem và quản lý báo giá từ thợ.
+
+**Features:**
+- ✅ **Detailed Pricing**: Breakdown của costs
+- ✅ **Technician Profile**: Thông tin thợ và rating
+- ✅ **Material List**: Chi tiết vật liệu cần thiết
+- ✅ **Accept/Reject Actions**: Clear action buttons
+
+---
+
+### 📊 **Booking System State Management**
+
+```typescript
+// bookingStore.ts - Zustand store
+interface BookingState {
+  bookings: BookingItem[];
+  selectedFilter: 'all' | 'searching' | 'quoted' | 'completed';
+  isLoading: boolean;
+  // Actions
+  setFilter: (filter: string) => void;
+  createBooking: (booking: BookingItem) => Promise<void>;
+  updateBookingStatus: (id: string, status: string) => void;
+  acceptQuote: (bookingId: string) => Promise<void>;
+  rejectQuote: (bookingId: string) => Promise<void>;
+}
+```
+
+**TypeScript Interfaces:**
+```typescript
+interface BookingItem {
+  id: string;
+  serviceName: string;
+  servicePrice: string;
+  customerName: string;
+  phoneNumber: string;
+  address: string;
+  status: 'searching' | 'quoted' | 'accepted' | 'in-progress' | 'completed' | 'cancelled';
+  createdAt: string;
+  technicianName?: string;
+  quotePrice?: string;
+  notes?: string;
+}
+```
+
+---
+
+## �🐛 Troubleshooting
 
 ### ❗ **Common Issues**
 

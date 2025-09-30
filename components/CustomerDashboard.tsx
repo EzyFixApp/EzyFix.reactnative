@@ -49,7 +49,11 @@ export default function CustomerDashboard() {
 
   const handleTabPress = (tabId: string) => {
     setActiveTab(tabId);
-    console.log('Tab pressed:', tabId);
+    if (tabId === 'activity') {
+      router.push('../customer/booking-history' as any);
+    } else if (tabId === 'home') {
+      // Already on home page
+    }
   };
 
   const handleCenterButtonPress = () => {

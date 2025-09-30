@@ -101,7 +101,6 @@ export default function BottomNavigation({
       </View>
 
       {/* Home Indicator */}
-      <View style={[styles.homeIndicator, isDark && styles.homeIndicatorDark]} />
     </View>
   );
 }

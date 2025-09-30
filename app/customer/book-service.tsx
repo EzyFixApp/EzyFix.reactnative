@@ -95,12 +95,18 @@ export default function BookService() {
             text: 'Đặt ngay', 
             style: 'default',
             onPress: () => {
-              // TODO: Implement booking API call
-              Alert.alert(
-                'Thành công!',
-                'Đơn hàng của bạn đã được gửi. Chúng tôi sẽ liên hệ với bạn trong thời gian sớm nhất.',
-                [{ text: 'OK', onPress: () => router.back() }]
-              );
+              // Navigate to booking confirmation screen
+              router.push({
+                pathname: './booking-confirmation' as any,
+                params: {
+                  serviceName: serviceName,
+                  servicePrice: servicePrice,
+                  customerName: formData.customerName,
+                  phoneNumber: formData.phoneNumber,
+                  address: formData.address,
+                  notes: formData.notes,
+                },
+              });
             }
           }
         ]
