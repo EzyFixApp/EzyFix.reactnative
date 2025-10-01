@@ -6,5 +6,10 @@ export default function CustomerLogin() {
     router.push('/home');
   };
 
-  return <LoginScreen onBack={handleBack} />;
+  const handleLogin = () => {
+    // Navigate to customer dashboard after successful login
+    router.push('./dashboard');
+  };
+
+  return <LoginScreen onBack={handleBack} onLogin={handleLogin} userType="customer" />;
 }
