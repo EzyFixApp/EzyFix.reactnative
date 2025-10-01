@@ -1,16 +1,19 @@
 import * as React from 'react';
 import { View, Text, TouchableOpacity, StatusBar, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 
 export default function HomeScreen() {
   const handleThoPress = () => {
-    // Navigation to technician/worker flow
+    // Navigation to technician/worker login flow
     console.log('Tôi là thợ pressed');
+    router.push('./technician/login');
   };
 
   const handleKhachHangPress = () => {
     // Navigation to customer flow  
     console.log('Tôi là khách hàng pressed');
+    router.push('./customer/login');
   };
 
   return (

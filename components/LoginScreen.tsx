@@ -14,13 +14,23 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 interface LoginScreenProps {
   onBack: () => void;
+  onLogin?: () => void;
+  userType?: 'customer' | 'technician';
+  title?: string;
+  subtitle?: string;
 }
 
-export default function LoginScreen({ onBack }: LoginScreenProps) {
+export default function LoginScreen({ 
+  onBack, 
+  onLogin, 
+  userType = 'customer',
+  title,
+  subtitle 
+}: LoginScreenProps) {
   // Animation values
   const slideAnim = React.useRef(new Animated.Value(width)).current;
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
@@ -115,11 +125,19 @@ export default function LoginScreen({ onBack }: LoginScreenProps) {
   };
 
   const handleLogin = () => {
-    console.log('Login with:', { phoneNumber, password });
+    console.log('Login with:', { phoneNumber, password, userType });
     // TODO: Implement actual login logic
     
-    // Navigate to customer dashboard after successful login
-    router.push('/customer/dashboard');
+    if (onLogin) {
+      onLogin();
+    } else {
+      // Default navigation based on user type
+      if (userType === 'technician') {
+        router.push('/technician/dashboard' as any);
+      } else {
+        router.push('/customer/dashboard' as any);
+      }
+    }
   };
 
   const handleSocialLogin = (provider: string) => {
@@ -172,9 +190,13 @@ export default function LoginScreen({ onBack }: LoginScreenProps) {
               }
             ]}
           >
-            <Text style={styles.greeting}>Xin chào !</Text>
+            <Text style={styles.greeting}>
+              {title || (userType === 'technician' ? 'Chào mừng thợ sửa chữa!' : 'Xin chào !')}
+            </Text>
             <Text style={styles.title}>Đăng Nhập</Text>
-            <Text style={styles.subtitle}>Hãy để chúng tôi giúp bạn!</Text>
+            <Text style={styles.subtitle}>
+              {subtitle || (userType === 'technician' ? 'Đăng nhập để bắt đầu công việc' : 'Hãy để chúng tôi giúp bạn!')}
+            </Text>
           </Animated.View>
 
           {/* Form Section */}

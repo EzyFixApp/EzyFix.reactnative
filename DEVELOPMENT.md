@@ -145,7 +145,45 @@ const styles = StyleSheet.create({
 
 Dự án có 3 animation components chính:
 
-#### 1. **AnimatedDots.tsx** - Loading Dots
+### 🔧 Technician Components
+
+Các components chuyên biệt cho technician interface:
+
+#### 1. **TechnicianHeader.tsx** - Professional Header
+```typescript
+<TechnicianHeader 
+  showTechnicianName={false}        // Hide/show technician name
+  style={styles.header}             // Custom styling
+/>
+```
+Features:
+- 🌈 Linear gradient background (#609CEF → #3D7CE0)
+- 🔍 Search icon với onPress handler
+- 🔔 Notification bell với badge support
+- 📱 Safe area handling
+
+#### 2. **ReviewCard Component** - Star Rating System
+```typescript
+const ReviewCard = ({ customerName, rating, comment, date }) => (
+  <View style={styles.reviewCard}>
+    <Text style={styles.customerName}>{customerName}</Text>
+    <View style={styles.starsContainer}>
+      {[1, 2, 3, 4, 5].map(star => (
+        <Ionicons 
+          key={star}
+          name={star <= rating ? "star" : "star-outline"}
+          size={16} 
+          color="#fbbf24" 
+        />
+      ))}
+    </View>
+    <Text style={styles.comment}>{comment}</Text>
+    <Text style={styles.date}>{date}</Text>
+  </View>
+);
+```
+
+#### 3. **AnimatedDots.tsx** - Loading Dots
 ```typescript
 <AnimatedDots 
   size={8}                          // Kích thước dot
@@ -281,6 +319,56 @@ const navigateToSettings = () => {
 const navigateBack = () => {
   router.back();
 };
+```
+
+### 🔧 Technician Development Patterns
+
+#### **Role-Specific Login**
+```typescript
+// app/technician/login.tsx
+import LoginScreen from '../../components/LoginScreen';
+
+export default function TechnicianLogin() {
+  return (
+    <LoginScreen 
+      userType="technician"
+      customTitle="Chào mừng thợ sửa chữa"
+      customSubtitle="Đăng nhập để bắt đầu nhận việc"
+    />
+  );
+}
+```
+
+#### **Dashboard với Real-time Data**
+```typescript
+const [currentTime, setCurrentTime] = useState(new Date());
+const [todayStats, setTodayStats] = useState({
+  jobsCompleted: 8,
+  averageRating: 4.8,
+  todayEarnings: 850000
+});
+
+// Real-time clock update
+useEffect(() => {
+  const timer = setInterval(() => {
+    setCurrentTime(new Date());
+  }, 1000);
+  return () => clearInterval(timer);
+}, []);
+```
+
+#### **Professional Gradient Headers**
+```typescript
+const gradientColors = ['#609CEF', '#3D7CE0'];
+
+<LinearGradient
+  colors={gradientColors}
+  start={{x: 0, y: 0}}
+  end={{x: 1, y: 0}}
+  style={styles.headerGradient}
+>
+  {/* Header content */}
+</LinearGradient>
 ```
 
 ### 📊 State Management Pattern
