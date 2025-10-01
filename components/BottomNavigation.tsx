@@ -74,7 +74,7 @@ export default function BottomNavigation({
           activeOpacity={0.8}
         >
           <Image 
-            source={require('../assets/Logo.png')} 
+            source={require('../assets/logononame.png')} 
             style={styles.logo}
             resizeMode="contain"
           />

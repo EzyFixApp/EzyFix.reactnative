@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, SafeAreaView } from 'react-native';
+import { router } from 'expo-router';
 import CustomerHeader from './CustomerHeader';
 import HeroBanner from './HeroBanner';
 import ServiceCategories from './ServiceCategories';
@@ -16,11 +17,12 @@ export default function CustomerDashboard() {
   };
 
   const handleAvatarPress = () => {
-    console.log('Avatar pressed - navigate to profile');
+    router.navigate('../customer/profile' as any);
   };
 
   const handleNotificationPress = () => {
     console.log('Notification pressed - show notifications');
+    router.push('../customer/notifications' as any);
   };
 
   const handleLocationPress = () => {
@@ -38,6 +40,7 @@ export default function CustomerDashboard() {
 
   const handleViewAllServices = () => {
     console.log('View all services pressed');
+    router.push('../customer/all-services' as any);
   };
 
   const handleViewAllPromotions = () => {
@@ -46,7 +49,11 @@ export default function CustomerDashboard() {
 
   const handleTabPress = (tabId: string) => {
     setActiveTab(tabId);
-    console.log('Tab pressed:', tabId);
+    if (tabId === 'activity') {
+      router.push('../customer/booking-history' as any);
+    } else if (tabId === 'home') {
+      // Already on home page
+    }
   };
 
   const handleCenterButtonPress = () => {
