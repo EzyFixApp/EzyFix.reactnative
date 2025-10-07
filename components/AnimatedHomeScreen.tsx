@@ -189,8 +189,8 @@ export default function AnimatedHomeScreen() {
               useNativeDriver: true,
             }),
           ]).start(() => {
-            // Navigate to technician screen
-            router.push('/technician');
+            // Navigate to technician login screen
+            router.push('./technician/login');
             setTransitionState('idle');
             // Reset transition animations
             resetTransitionAnimations();
@@ -249,7 +249,7 @@ export default function AnimatedHomeScreen() {
             }),
           ]).start(() => {
             // Navigate to customer login screen
-            router.push('/customer/login');
+            router.push('./customer/login');
             setTransitionState('idle');
             // Reset transition animations
             resetTransitionAnimations();

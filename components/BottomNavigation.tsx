@@ -99,8 +99,6 @@ export default function BottomNavigation({
           </Text>
         </TouchableOpacity>
       </View>
-
-      {/* Home Indicator */}
     </View>
   );
 }
@@ -176,16 +174,5 @@ const styles = StyleSheet.create({
   logo: {
     width: 40,
     height: 40,
-  },
-  homeIndicator: {
-    width: 134,
-    height: 5,
-    backgroundColor: '#000000',
-    borderRadius: 2.5,
-    alignSelf: 'center',
-    marginBottom: 8,
-  },
-  homeIndicatorDark: {
-    backgroundColor: '#FFFFFF',
   },
 });
