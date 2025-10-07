@@ -8,6 +8,7 @@ import {
   Animated,
   Alert,
   Image,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -205,20 +206,24 @@ export default function QuoteReview() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Chi tiết báo giá',
-          headerStyle: { backgroundColor: '#3B82F6' },
-          headerTintColor: 'white',
-          headerTitleStyle: { fontWeight: '600' },
-          headerLeft: () => (
+      <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
+      <Stack.Screen options={{ headerShown: false }} />
+      
+      {/* Custom Header */}
+      <View style={styles.customHeader}>
+        <LinearGradient
+          colors={['#609CEF', '#3B82F6']}
+          style={styles.headerGradient}
+        >
+          <View style={styles.headerContent}>
             <TouchableOpacity onPress={handleBack} style={styles.backButton}>
               <Ionicons name="arrow-back" size={24} color="white" />
             </TouchableOpacity>
-          ),
-        }}
-      />
+            <Text style={styles.headerTitle}>Chi tiết báo giá</Text>
+            <View style={styles.headerPlaceholder} />
+          </View>
+        </LinearGradient>
+      </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <Animated.View
@@ -405,7 +410,30 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   backButton: {
-    marginLeft: -8,
+    padding: 8,
+  },
+  customHeader: {
+    backgroundColor: 'transparent',
+  },
+  headerGradient: {
+    paddingTop: 0,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    minHeight: 56,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: 'white',
+    textAlign: 'center',
+  },
+  headerPlaceholder: {
+    width: 40,
   },
   content: {
     padding: 16,
