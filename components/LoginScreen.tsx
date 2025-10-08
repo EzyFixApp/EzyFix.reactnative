@@ -9,12 +9,42 @@ import {
   StatusBar,
   StyleSheet,
   Dimensions,
-  Image
+  Image,
+  Modal,
+  FlatList,
+  ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
 const { width } = Dimensions.get('window');
+
+// Country codes data with flags
+interface CountryCode {
+  name: string;
+  code: string;
+  flag: string;
+  dialCode: string;
+}
+
+const COUNTRY_CODES: CountryCode[] = [
+  { name: 'Vietnam', code: 'VN', flag: '🇻🇳', dialCode: '+84' },
+  { name: 'United States', code: 'US', flag: '🇺🇸', dialCode: '+1' },
+  { name: 'United Kingdom', code: 'GB', flag: '🇬🇧', dialCode: '+44' },
+  { name: 'China', code: 'CN', flag: '🇨🇳', dialCode: '+86' },
+  { name: 'Japan', code: 'JP', flag: '🇯🇵', dialCode: '+81' },
+  { name: 'South Korea', code: 'KR', flag: '🇰🇷', dialCode: '+82' },
+  { name: 'Thailand', code: 'TH', flag: '🇹🇭', dialCode: '+66' },
+  { name: 'Singapore', code: 'SG', flag: '🇸🇬', dialCode: '+65' },
+  { name: 'Malaysia', code: 'MY', flag: '🇲🇾', dialCode: '+60' },
+  { name: 'Indonesia', code: 'ID', flag: '🇮🇩', dialCode: '+62' },
+  { name: 'Philippines', code: 'PH', flag: '🇵🇭', dialCode: '+63' },
+  { name: 'India', code: 'IN', flag: '🇮🇳', dialCode: '+91' },
+  { name: 'Australia', code: 'AU', flag: '🇦🇺', dialCode: '+61' },
+  { name: 'Canada', code: 'CA', flag: '🇨🇦', dialCode: '+1' },
+  { name: 'France', code: 'FR', flag: '🇫🇷', dialCode: '+33' },
+  { name: 'Germany', code: 'DE', flag: '🇩🇪', dialCode: '+49' },
+];
 
 interface LoginScreenProps {
   onBack: () => void;
@@ -43,6 +73,21 @@ export default function LoginScreen({
   const [phoneNumber, setPhoneNumber] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
+  
+  // Country code state
+  const [selectedCountry, setSelectedCountry] = React.useState<CountryCode>(COUNTRY_CODES[0]); // Default: Vietnam
+  const [showCountryPicker, setShowCountryPicker] = React.useState(false);
+  
+  // Two-step login state
+  const [currentStep, setCurrentStep] = React.useState<'phone' | 'password'>('phone');
+  
+  // Step animation values
+  const stepSlideAnim = React.useRef(new Animated.Value(0)).current;
+  const phoneStepOpacity = React.useRef(new Animated.Value(1)).current;
+  const passwordStepOpacity = React.useRef(new Animated.Value(0)).current;
+  const phoneStepTransform = React.useRef(new Animated.Value(0)).current;
+  const passwordStepTransform = React.useRef(new Animated.Value(50)).current;
+  const titleOpacity = React.useRef(new Animated.Value(1)).current;
 
   React.useEffect(() => {
     startEnterAnimation();
@@ -105,7 +150,17 @@ export default function LoginScreen({
   };
 
   const handleBack = () => {
-    // Exit animation
+    if (currentStep === 'password') {
+      // If on password step, go back to phone step
+      handleBackToPhone();
+    } else {
+      // If on phone step, exit to previous screen
+      handleExitToHome();
+    }
+  };
+
+  const handleExitToHome = () => {
+    // Exit animation to previous screen
     Animated.parallel([
       Animated.timing(slideAnim, {
         toValue: width,
@@ -143,6 +198,130 @@ export default function LoginScreen({
   const handleSocialLogin = (provider: string) => {
     console.log('Social login with:', provider);
     // TODO: Implement social login
+  };
+
+  const handleContinue = () => {
+    if (!phoneNumber.trim()) {
+      alert('Vui lòng nhập số điện thoại');
+      return;
+    }
+    
+    // Basic phone number validation
+    const phoneRegex = /^[0-9]{10,11}$/;
+    if (!phoneRegex.test(phoneNumber.replace(/\s+/g, ''))) {
+      alert('Số điện thoại không hợp lệ. Vui lòng nhập 10-11 chữ số');
+      return;
+    }
+    
+    // Professional slide transition to password step
+    Animated.parallel([
+      // Slide phone step out to the left
+      Animated.timing(phoneStepTransform, {
+        toValue: -width * 0.3,
+        duration: 400,
+        easing: Easing.bezier(0.25, 0.46, 0.45, 0.94),
+        useNativeDriver: true,
+      }),
+      // Fade out phone step
+      Animated.timing(phoneStepOpacity, {
+        toValue: 0,
+        duration: 300,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      // Fade out title for smooth text change
+      Animated.timing(titleOpacity, {
+        toValue: 0,
+        duration: 200,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setCurrentStep('password');
+      // Reset password step position and animate in
+      passwordStepTransform.setValue(width * 0.3);
+      Animated.parallel([
+        // Slide password step in from right
+        Animated.timing(passwordStepTransform, {
+          toValue: 0,
+          duration: 500,
+          easing: Easing.bezier(0.25, 0.46, 0.45, 0.94),
+          useNativeDriver: true,
+        }),
+        // Fade in password step
+        Animated.timing(passwordStepOpacity, {
+          toValue: 1,
+          duration: 400,
+          delay: 100,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        // Fade in title with new text
+        Animated.timing(titleOpacity, {
+          toValue: 1,
+          duration: 300,
+          delay: 200,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+  };
+
+  const handleBackToPhone = () => {
+    // Professional slide transition back to phone step
+    Animated.parallel([
+      // Slide password step out to the right
+      Animated.timing(passwordStepTransform, {
+        toValue: width * 0.3,
+        duration: 400,
+        easing: Easing.bezier(0.25, 0.46, 0.45, 0.94),
+        useNativeDriver: true,
+      }),
+      // Fade out password step
+      Animated.timing(passwordStepOpacity, {
+        toValue: 0,
+        duration: 300,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      // Fade out title for smooth text change
+      Animated.timing(titleOpacity, {
+        toValue: 0,
+        duration: 200,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setCurrentStep('phone');
+      // Reset phone step position and animate in
+      phoneStepTransform.setValue(-width * 0.3);
+      Animated.parallel([
+        // Slide phone step in from left
+        Animated.timing(phoneStepTransform, {
+          toValue: 0,
+          duration: 500,
+          easing: Easing.bezier(0.25, 0.46, 0.45, 0.94),
+          useNativeDriver: true,
+        }),
+        // Fade in phone step
+        Animated.timing(phoneStepOpacity, {
+          toValue: 1,
+          duration: 400,
+          delay: 100,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        // Fade in title with new text
+        Animated.timing(titleOpacity, {
+          toValue: 1,
+          duration: 300,
+          delay: 200,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
   };
 
   return (
@@ -191,15 +370,22 @@ export default function LoginScreen({
             ]}
           >
             <Text style={styles.greeting}>
-              {title || (userType === 'technician' ? 'Chào mừng thợ sửa chữa!' : 'Xin chào !')}
+              {title || (userType === 'technician' ? 'Chào mừng thợ sửa chữa!' : 'Chào mừng bạn! ')}
             </Text>
-            <Text style={styles.title}>Đăng Nhập</Text>
-            <Text style={styles.subtitle}>
-              {subtitle || (userType === 'technician' ? 'Đăng nhập để bắt đầu công việc' : 'Hãy để chúng tôi giúp bạn!')}
-            </Text>
+            <Animated.View style={{ opacity: titleOpacity }}>
+              <Text style={styles.title}>
+                {currentStep === 'phone' ? 'Đăng Nhập' : 'Nhập Mật Khẩu'}
+              </Text>
+              <Text style={styles.subtitle}>
+                {currentStep === 'phone' 
+                  ? (subtitle || (userType === 'technician' ? 'Đăng nhập để bắt đầu công việc' : 'App trong tay thợ tới ngay'))
+                  : 'Vui lòng nhập mật khẩu để hoàn tất đăng nhập'
+                }
+              </Text>
+            </Animated.View>
           </Animated.View>
 
-          {/* Form Section */}
+          {/* Form Section - Two Step Layout */}
           <Animated.View 
             style={[
               styles.formSection,
@@ -208,54 +394,125 @@ export default function LoginScreen({
               }
             ]}
           >
-            
-            {/* Phone Number Input */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Số điện thoại</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Nhập số điện thoại"
-                placeholderTextColor="#94a3b8"
-                value={phoneNumber}
-                onChangeText={setPhoneNumber}
-                keyboardType="phone-pad"
-                autoComplete="tel"
-              />
-            </View>
-
-            {/* Password Input */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Mật khẩu</Text>
-              <View style={styles.passwordContainer}>
-                <TextInput
-                  style={[styles.textInput, styles.passwordInput]}
-                  placeholder="Nhập mật khẩu"
-                  placeholderTextColor="#94a3b8"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  autoComplete="password"
-                />
+            {/* Conditional Step Display */}
+            {currentStep === 'phone' ? (
+              // Step 1: Phone Number Input
+              <Animated.View 
+                style={[
+                  styles.stepContainer,
+                  {
+                    opacity: phoneStepOpacity,
+                    transform: [
+                      { translateX: phoneStepTransform },
+                      { scale: phoneStepOpacity.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.95, 1],
+                      }) }
+                    ],
+                  }
+                ]}
+              >
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Số điện thoại</Text>
+                  <View style={styles.phoneInputContainer}>
+                    {/* Country Code Picker */}
+                    <TouchableOpacity 
+                      style={styles.countryCodeButton}
+                      onPress={() => setShowCountryPicker(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.flagText}>{selectedCountry.flag}</Text>
+                      <Text style={styles.dialCodeText}>{selectedCountry.dialCode}</Text>
+                      <Text style={styles.chevronDown}>▼</Text>
+                    </TouchableOpacity>
+                    
+                    {/* Phone Number Input */}
+                    <TextInput
+                      style={styles.phoneTextInput}
+                      placeholder="Nhập số điện thoại"
+                      placeholderTextColor="#94a3b8"
+                      value={phoneNumber}
+                      onChangeText={setPhoneNumber}
+                      keyboardType="phone-pad"
+                      autoComplete="tel"
+                      autoFocus={currentStep === 'phone'}
+                    />
+                  </View>
+                </View>
+              </Animated.View>
+            ) : (
+              // Step 2: Password Input
+              <Animated.View 
+                style={[
+                  styles.stepContainer,
+                  {
+                    opacity: passwordStepOpacity,
+                    transform: [
+                      { translateX: passwordStepTransform },
+                      { scale: passwordStepOpacity.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.95, 1],
+                      }) }
+                    ],
+                  }
+                ]}
+              >
+                {/* Phone Number Display */}
                 <TouchableOpacity 
-                  style={styles.eyeButton}
-                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.phoneNumberDisplay}
+                  onPress={handleBackToPhone}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.eyeIcon}>
-                    {showPassword ? '👁️' : '🙈'}
+                  <Text style={styles.phoneNumberText}>
+                    ({selectedCountry.dialCode}) {phoneNumber}
                   </Text>
+                  <Text style={styles.changePhoneText}>Thay đổi</Text>
                 </TouchableOpacity>
-              </View>
-            </View>
 
-            {/* Forgot Password */}
-            <TouchableOpacity style={styles.forgotPassword} activeOpacity={0.7}>
-              <Text style={styles.forgotPasswordText}>Quên mật khẩu ?</Text>
-            </TouchableOpacity>
+                {/* Password Input */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Mật khẩu</Text>
+                  <View style={styles.passwordContainer}>
+                    <TextInput
+                      style={[styles.textInput, styles.passwordInput]}
+                      placeholder="Nhập mật khẩu"
+                      placeholderTextColor="#94a3b8"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                      autoComplete="password"
+                      autoFocus={currentStep === 'password'}
+                    />
+                    <TouchableOpacity 
+                      style={styles.eyeButton}
+                      onPress={() => setShowPassword(!showPassword)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.eyeIcon}>
+                        {showPassword ? '👁️' : '🙈'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
 
+                {/* Forgot Password */}
+                <TouchableOpacity 
+                  style={styles.forgotPassword} 
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    const route = userType === 'customer' 
+                      ? '/customer/forgot-password' 
+                      : '/technician/forgot-password';
+                    router.push(route);
+                  }}
+                >
+                  <Text style={styles.forgotPasswordText}>Quên mật khẩu ?</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            )}
           </Animated.View>
 
-          {/* Login Button */}
+          {/* Step-based Button */}
           <Animated.View 
             style={[
               styles.buttonSection,
@@ -264,56 +521,131 @@ export default function LoginScreen({
               }
             ]}
           >
-            <TouchableOpacity
-              style={styles.loginButton}
-              onPress={handleLogin}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.loginButtonText}>Đăng nhập</Text>
-            </TouchableOpacity>
+            {currentStep === 'phone' ? (
+              // Step 1: Show "Tiếp theo" if phone number entered, disabled "Đăng nhập" if empty
+              phoneNumber.trim() ? (
+                <TouchableOpacity
+                  style={styles.continueButton}
+                  onPress={handleContinue}
+                  activeOpacity={0.9}
+                >
+                  <Text style={styles.continueButtonText}>Tiếp theo</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.loginButton, styles.disabledButton]}
+                  onPress={() => {
+                    // Do nothing or show alert to enter phone number first
+                    alert('Vui lòng nhập số điện thoại để tiếp tục');
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.loginButtonText, styles.disabledButtonText]}>Đăng nhập</Text>
+                </TouchableOpacity>
+              )
+            ) : (
+              // Step 2: Always show "Đăng nhập"
+              <TouchableOpacity
+                style={styles.loginButton}
+                onPress={handleLogin}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.loginButtonText}>Đăng nhập</Text>
+              </TouchableOpacity>
+            )}
           </Animated.View>
 
-          {/* Divider */}
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>hoặc</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Google Login */}
-          <Animated.View 
-            style={[
-              styles.googleSection,
-              {
-                transform: [{ scale: googleAnim }]
-              }
-            ]}
-          >
-            <TouchableOpacity
-              style={styles.googleButton}
-              onPress={() => handleSocialLogin('google')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.googleIconContainer}>
-                <Image 
-                  source={require('../assets/logogoogle.png')}
-                  style={styles.googleIconImage}
-                  resizeMode="contain"
-                />
+          {/* Divider & Social Login - Only show in phone step */}
+          {currentStep === 'phone' && (
+            <>
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>hoặc</Text>
+                <View style={styles.dividerLine} />
               </View>
-              <Text style={styles.googleButtonText}>Đăng nhập với Google</Text>
-            </TouchableOpacity>
 
-            <TouchableOpacity style={styles.registerLink} activeOpacity={0.7}>
-              <Text style={styles.registerText}>
-                Bạn chưa có tài khoản? <Text style={styles.registerLinkText}>Đăng ký ngay</Text>
-              </Text>
-            </TouchableOpacity>
+              <Animated.View 
+                style={[
+                  styles.googleSection,
+                  {
+                    transform: [{ scale: googleAnim }]
+                  }
+                ]}
+              >
+                <TouchableOpacity
+                  style={styles.googleButton}
+                  onPress={() => handleSocialLogin('google')}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.googleIconContainer}>
+                    <Image 
+                      source={require('../assets/logogoogle.png')}
+                      style={styles.googleIconImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                  <Text style={styles.googleButtonText}>Đăng nhập với Google</Text>
+                </TouchableOpacity>
 
-          </Animated.View>
+                <TouchableOpacity style={styles.registerLink} activeOpacity={0.7}>
+                  <Text style={styles.registerText}>
+                    Bạn chưa có tài khoản? <Text style={styles.registerLinkText}>Đăng ký ngay</Text>
+                  </Text>
+                </TouchableOpacity>
+
+              </Animated.View>
+            </>
+          )}
 
         </View>
       </SafeAreaView>
+
+      {/* Country Code Picker Modal */}
+      <Modal
+        visible={showCountryPicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCountryPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Chọn quốc gia</Text>
+              <TouchableOpacity 
+                onPress={() => setShowCountryPicker(false)}
+                style={styles.modalCloseButton}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Country List */}
+            <FlatList
+              data={COUNTRY_CODES}
+              keyExtractor={(item) => item.code}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.countryItem}
+                  onPress={() => {
+                    setSelectedCountry(item);
+                    setShowCountryPicker(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.countryFlag}>{item.flag}</Text>
+                  <Text style={styles.countryName}>{item.name}</Text>
+                  <Text style={styles.countryDialCode}>{item.dialCode}</Text>
+                  {selectedCountry.code === item.code && (
+                    <Text style={styles.checkMark}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+              ItemSeparatorComponent={() => <View style={styles.separator} />}
+            />
+          </View>
+        </View>
+      </Modal>
     </Animated.View>
   );
 }
@@ -358,7 +690,7 @@ const styles = StyleSheet.create({
   backIcon: {
     fontSize: 24,
     color: '#475569',
-    fontWeight: '300',
+    fontWeight: '600',
     lineHeight: 24,
   },
 
@@ -454,6 +786,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   loginButton: {
+    width: '100%',
     backgroundColor: '#609CEF',
     borderRadius: 16,
     paddingVertical: 18,
@@ -554,6 +887,207 @@ const styles = StyleSheet.create({
   registerLinkText: {
     color: '#609CEF',
     fontWeight: '600',
+  },
+
+  // Two-step login styles
+  stepContainer: {
+    width: '100%',
+    paddingHorizontal: 2, // Slight padding to prevent clipping during transform
+  },
+  stepHint: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
+    marginTop: 12,
+    lineHeight: 20,
+  },
+  phoneNumberDisplay: {
+    backgroundColor: '#f1f5f9',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  phoneNumberText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  changePhoneText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#609CEF',
+  },
+
+  // Step buttons
+  continueButton: {
+    width: '100%',
+    backgroundColor: '#609CEF',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#609CEF',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  continueButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  passwordButtonContainer: {
+    flexDirection: 'row',
+    width: '100%',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backStepButton: {
+    backgroundColor: '#f1f5f9',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  backStepButtonText: {
+    color: '#64748b',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  // Disabled button styles
+  disabledButton: {
+    backgroundColor: '#e2e8f0',
+    shadowOpacity: 0.1,
+  },
+  disabledButtonText: {
+    color: '#94a3b8',
+  },
+
+  // Phone input with country code
+  phoneInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  countryCodeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 16,
+    gap: 6,
+  },
+  flagText: {
+    fontSize: 24,
+  },
+  dialCodeText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  chevronDown: {
+    fontSize: 10,
+    color: '#64748b',
+    marginLeft: 2,
+  },
+  phoneTextInput: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1f2937',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+  },
+
+  // Country picker modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
+    paddingTop: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseText: {
+    fontSize: 18,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  countryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 12,
+  },
+  countryFlag: {
+    fontSize: 28,
+  },
+  countryName: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1f2937',
+  },
+  countryDialCode: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  checkMark: {
+    fontSize: 20,
+    color: '#609CEF',
+    fontWeight: '700',
+  },
+  separator: {
+    height: 1,
+    backgroundColor: '#f1f5f9',
+    marginLeft: 72, // Align with text after flag
   },
 
   // Home Indicator

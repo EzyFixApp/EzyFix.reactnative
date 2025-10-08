@@ -522,6 +522,102 @@ npm run android
 
 ---
 
+## 🆕 Recent Updates & Features
+
+### 🔐 Authentication System
+
+#### **2-Step Login Process**
+- ✅ **Step 1:** Phone number input with country code picker  
+- ✅ **Step 2:** Password input with phone number confirmation
+- ✅ **Country Support:** 16 countries with flags (Vietnam, USA, UK, etc.)
+- ✅ **Smart Navigation:** Context-aware back button behavior
+- ✅ **Professional Animations:** Slide transitions with bezier easing
+
+```tsx
+// Usage Example
+<LoginScreen 
+  onBack={handleBack}
+  onLogin={handleLogin}
+  userType="customer" // or "technician"
+/>
+```
+
+#### **Forgot Password Flow**
+- ✅ **3-Step Process:** Contact input → OTP verification → New password
+- ✅ **Multi-format Support:** Phone numbers (9-10 digits) or email addresses
+- ✅ **OTP Features:** 6-digit input, 60s countdown timer, resend functionality
+- ✅ **Password Requirements:** Minimum 6 characters with validation
+- ✅ **Smooth Transitions:** Professional slide animations between steps
+
+```tsx
+// Usage Example
+<ForgotPasswordScreen
+  onBack={handleBack}
+  onSuccess={handleSuccess}
+  userType="customer" // or "technician"
+/>
+```
+
+### 🎨 UI/UX Improvements
+
+#### **Design System**
+- **Primary Color:** `#609CEF` (EzyFix Blue)
+- **Border Radius:** 12-16px for modern look
+- **Shadows:** Consistent elevation with native shadows
+- **Typography:** Font weights from 500-800 for hierarchy
+- **Spacing:** 20-24px consistent margins
+
+#### **Animation Standards**
+- **Duration:** 400-500ms for transitions
+- **Easing:** `bezier(0.25, 0.46, 0.45, 0.94)` for professional feel
+- **Native Driver:** Always enabled for performance
+- **Staggered Timing:** 100ms delays for element sequences
+
+### 📱 Component Architecture
+
+#### **Shared Components**
+- `LoginScreen.tsx` - Used by both customer & technician
+- `ForgotPasswordScreen.tsx` - Universal forgot password flow
+- **Props Pattern:** `userType`, `onBack`, `onLogin/onSuccess` for flexibility
+
+#### **Route Structure**
+```
+app/
+├── customer/
+│   ├── login.tsx
+│   └── forgot-password.tsx
+└── technician/
+    ├── login.tsx
+    └── forgot-password.tsx
+```
+
+### 🔧 Technical Implementation
+
+#### **State Management**
+- **Step States:** `'phone' | 'password'` for login, `'contact' | 'otp' | 'newPassword'` for forgot password
+- **Animation Values:** Separate opacity and transform values for each step
+- **Form Validation:** Real-time validation with regex patterns
+
+#### **Performance Optimizations**
+- **useRef for Animations:** Prevents unnecessary re-renders
+- **Native Driver:** All animations use native thread
+- **Conditional Rendering:** Steps rendered based on current state
+- **Memoized Functions:** Callbacks wrapped with useCallback where needed
+
+### 🐛 Bug Fixes & Improvements
+
+#### **Layout Consistency**
+- ✅ **Header Alignment:** Consistent padding (20px header, 24px content)
+- ✅ **Back Button:** Uniform design with shadows and borders
+- ✅ **Phone Display:** Shows country code format `(+84) 0787171600`
+
+#### **TypeScript Fixes**
+- ✅ **Ref Assignments:** Proper TextInput ref handling for OTP inputs
+- ✅ **Interface Definitions:** Clear prop types for all components
+- ✅ **Type Safety:** Country code objects with proper typing
+
+---
+
 ## 📚 Resources
 
 ### 📖 Documentation
