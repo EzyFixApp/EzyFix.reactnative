@@ -4,15 +4,7 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-
-    <list default="true" id="868f0766-2637-44bf-ae60-358902ea7db5" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/booking-detail.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/booking-detail.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/quote-review.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/quote-review.tsx" afterDir="false" />
-    </list>
-
-
+    <list default="true" id="868f0766-2637-44bf-ae60-358902ea7db5" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />

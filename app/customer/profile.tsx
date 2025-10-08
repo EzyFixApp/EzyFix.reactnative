@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
@@ -69,6 +69,28 @@ export default function CustomerProfile() {
     router.back();
   };
 
+  const handleLogout = () => {
+    Alert.alert(
+      'Đăng xuất',
+      'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản?',
+      [
+        {
+          text: 'Hủy',
+          style: 'cancel'
+        },
+        {
+          text: 'Đăng xuất',
+          style: 'destructive',
+          onPress: () => {
+            // Navigate to login screen and reset navigation stack
+            router.replace('./login' as any);
+          }
+        }
+      ],
+      { cancelable: true }
+    );
+  };
+
   const handleItemPress = (item: string) => {
     console.log(`Pressed: ${item}`);
     // Navigate to specific screens based on item
@@ -101,7 +123,7 @@ export default function CustomerProfile() {
         // TODO: Open app store for rating
         break;
       case 'logout':
-        // TODO: Handle logout
+        handleLogout();
         break;
       default:
         break;
