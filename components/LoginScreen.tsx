@@ -587,7 +587,16 @@ export default function LoginScreen({
                   <Text style={styles.googleButtonText}>Đăng nhập với Google</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.registerLink} activeOpacity={0.7}>
+                <TouchableOpacity 
+                  style={styles.registerLink} 
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    const route = userType === 'customer' 
+                      ? '/customer/register' 
+                      : '/technician/register';
+                    router.push(route);
+                  }}
+                >
                   <Text style={styles.registerText}>
                     Bạn chưa có tài khoản? <Text style={styles.registerLinkText}>Đăng ký ngay</Text>
                   </Text>
