@@ -90,7 +90,10 @@ src/
 │   │   ├── notification-settings.tsx # ✅ Cài đặt TB
 │   │   └── promotions.tsx      # ✅ Ưu đãi
 │   ├── technician/        # Technician-specific screens  
-│   │   └── index.tsx           # Trang thợ
+│   │   ├── index.tsx           # ✅ Trang thợ
+│   │   ├── login.tsx           # ✅ Đăng nhập thợ
+│   │   ├── dashboard.tsx       # ✅ Dashboard thợ với stats
+│   │   └── technician-order-tracking.tsx # 🆕 Theo dõi đơn hàng với timeline
 │   └── _layout.tsx        # Root layout
 ├── 🧩 components/         # Reusable components
 │   ├── nativewindui/      # UI component library
@@ -232,6 +235,54 @@ const ReviewCard = ({ customerName, rating, comment, date }) => (
 />
 ```
 
+#### 4. **SwipeButton Component** 🆕 - Gesture-Based Actions
+```typescript
+<SwipeButton
+  title="Vuốt để chuyển bước tiếp theo"
+  isEnabled={true}
+  onSwipeComplete={handleUpdateStatus}
+  backgroundColor="#609CEF"
+/>
+```
+
+**Features:**
+- 🎭 **Animated Knob:** Smooth drag interaction with spring animations
+- 🔄 **Auto Reset:** Returns to start position if not fully swiped
+- 💫 **Visual Feedback:** Hint arrows, fade effects, scale transforms
+- 🎯 **Completion Detection:** Triggers action when 80% threshold reached
+- 🚫 **Disabled State:** Gray styling when action unavailable
+
+#### 5. **Professional Modal System** 🆕 - Earnings Display
+```typescript
+<Modal
+  visible={showEarningsModal}
+  transparent={true}
+  animationType="slide"
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContainer}>
+      {/* Gradient header with wallet icon */}
+      <LinearGradient colors={['#10B981', '#059669']}>
+        <Ionicons name="wallet-outline" size={32} />
+        <Text>Thực nhận của bạn</Text>
+      </LinearGradient>
+      
+      {/* Earnings breakdown */}
+      <View style={styles.earningsContent}>
+        {/* Service price, platform fee, final amount */}
+      </View>
+    </View>
+  </View>
+</Modal>
+```
+
+**Design Features:**
+- 🎨 **Professional Layout:** Gradient header, shadow effects, rounded corners
+- 💰 **Earnings Calculation:** Automatic 15% commission deduction
+- 📊 **Clear Breakdown:** Service price → Platform fee → Net earnings
+- 🔘 **Action Buttons:** Secondary (close) + Primary (confirm) with gradients
+- 📱 **Responsive Design:** Max width constraints, proper spacing hierarchy
+
 ---
 
 ## 🔄 Animation Guidelines
@@ -291,6 +342,90 @@ const animateSequence = () => {
 ---
 
 ## 📱 Page Development
+
+### 🔧 Technician Order Tracking Development 🆕
+
+#### **Complete Order Flow Implementation**
+
+```typescript
+// Status progression system
+const statusFlow = [
+  'quote_sent',      // Initial quote sent to customer
+  'quote_accepted',  // Customer accepts the quote
+  'on_the_way',      // Technician heading to location  
+  'arrived',         // Arrived at customer location
+  'price_confirmation', // Final price after inspection
+  'repairing',       // Active repair in progress
+  'payment_pending', // Repair complete, awaiting payment
+  'completed'        // Job fully completed
+];
+
+// Color-coded status system
+const statusColors = {
+  completed: '#10B981',  // Green for finished steps
+  current: '#3B82F6',    // Blue for current step
+  pending: '#E5E7EB'     // Gray for future steps
+};
+```
+
+#### **Inline Timeline Component**
+```typescript
+{showTimeline && (
+  <View style={styles.inlineTimelineContainer}>
+    {getTimeline().map((item, index) => {
+      const isCompleted = item.completed;
+      const isCurrentStep = item.status === currentStatus;
+      
+      return (
+        <View key={index} style={styles.timelineItem}>
+          <View style={[
+            styles.timelineIcon,
+            { backgroundColor: isCompleted ? '#10B981' : '#E5E7EB' }
+          ]}>
+            <Ionicons 
+              name={isCompleted ? "checkmark" : stepInfo.icon}
+              color={isCompleted ? "#FFFFFF" : "#9CA3AF"}
+            />
+          </View>
+          <Text style={styles.stepTitle}>{stepInfo.title}</Text>
+          <Text style={styles.stepTime}>{item.date} • {item.time}</Text>
+        </View>
+      );
+    })}
+  </View>
+)}
+```
+
+#### **Conditional Action Buttons**
+```typescript
+// Smart button visibility based on current status
+{currentStatus === 'arrived' && (
+  <TouchableOpacity onPress={() => handleTakePhoto('before')}>
+    <LinearGradient colors={['#8B5CF6', '#7C3AED']}>
+      <Ionicons name="camera" size={24} />
+      <Text>Chụp ảnh tình trạng ban đầu</Text>
+    </LinearGradient>
+  </TouchableOpacity>
+)}
+
+{currentStatus === 'completed' && (
+  <TouchableOpacity onPress={handleViewEarnings}>
+    <LinearGradient colors={['#10B981', '#059669']}>
+      <Ionicons name="cash" size={24} />
+      <Text>Xem thực nhận</Text>
+    </LinearGradient>
+  </TouchableOpacity>
+)}
+
+// Hide secondary buttons after arrival
+{!['arrived', 'repairing', 'completed'].includes(currentStatus) && (
+  <View style={styles.secondaryActions}>
+    <TouchableOpacity onPress={handleViewLocation}>
+      <Text>Xem địa chỉ</Text>
+    </TouchableOpacity>
+  </View>
+)}
+```
 
 ### 🏠 Page Template với Animation
 
@@ -356,6 +491,31 @@ export default function TechnicianLogin() {
   );
 }
 ```
+
+#### **Order Tracking System** 🆕
+```typescript
+// app/technician/technician-order-tracking.tsx
+export default function TechnicianOrderTracking() {
+  const [currentStatus, setCurrentStatus] = useState('quote_sent');
+  const [showTimeline, setShowTimeline] = useState(false);
+  const [showEarningsModal, setShowEarningsModal] = useState(false);
+
+  // Status flow progression
+  const statusFlow = [
+    'quote_sent', 'quote_accepted', 'on_the_way', 
+    'arrived', 'price_confirmation', 'repairing', 
+    'payment_pending', 'completed'
+  ];
+}
+```
+
+**Features:**
+- 🔄 **8-Step Status Flow:** From quote to completion with timeline
+- 📱 **SwipeButton Integration:** Professional gesture-based status updates
+- 🎨 **Inline Timeline:** Expandable timeline with color-coded progress
+- 📷 **Photo Capture:** Before/after repair documentation
+- 💰 **Earnings Modal:** Professional earnings calculation with commission
+- 🎯 **Conditional UI:** Smart button visibility based on current status
 
 #### **Dashboard với Real-time Data**
 ```typescript
@@ -436,6 +596,54 @@ export default function DataPage() {
 - Sử dụng NativeWind classes khi có thể
 - Fallback StyleSheet cho logic phức tạp  
 - Consistent spacing và colors
+
+### 🎯 Technician UI/UX Best Practices 🆕
+
+#### **Gesture-Based Interactions**
+```typescript
+// Always use native driver for gestures
+const panGesture = Gesture.Pan()
+  .onUpdate((event) => {
+    translateX.value = event.translationX;
+  });
+
+// Provide visual feedback during interaction
+const animatedStyle = useAnimatedStyle(() => ({
+  transform: [{ translateX: translateX.value }],
+  opacity: interpolate(translateX.value, [0, maxWidth], [1, 0.3])
+}));
+```
+
+#### **Conditional UI Patterns**
+```typescript
+// Smart component visibility based on state
+const ActionButtons = ({ currentStatus }) => {
+  const showSecondaryActions = !['arrived', 'completed'].includes(currentStatus);
+  const showEarningsButton = currentStatus === 'completed';
+  
+  return (
+    <View>
+      {showEarningsButton && <EarningsButton />}
+      {showSecondaryActions && <SecondaryActions />}
+    </View>
+  );
+};
+```
+
+#### **Professional Modal Design**
+- ✅ **Layout Hierarchy:** Header → Content → Actions
+- ✅ **Gradient Headers:** Use brand colors for importance
+- ✅ **Proper Spacing:** 24px padding, 16-20px gaps
+- ✅ **Shadow Effects:** Elevation for depth perception
+- ✅ **Button Hierarchy:** Secondary (outline) + Primary (filled)
+- ✅ **Responsive Constraints:** Max width for tablets
+
+#### **Timeline UI Standards**
+- ✅ **Color System:** Green (completed), Blue (current), Gray (pending)
+- ✅ **Icon Consistency:** Checkmarks for completed, status icons for pending
+- ✅ **Expandable Design:** Inline expansion preferred over modals
+- ✅ **Time Display:** Format as "DD/MM/YYYY • HH:MM"
+- ✅ **Status Badges:** Small pills for current state indication
 
 ### 🔧 Development Workflow
 
@@ -523,6 +731,168 @@ npm run android
 ---
 
 ## 🆕 Recent Updates & Features
+
+### 🔧 Technician Order Tracking System (Oct 13, 2025) 🆕
+
+#### **Complete Workflow Implementation**
+
+**Status Flow Management:**
+- ✅ **8-Step Progressive Flow:** `quote_sent` → `quote_accepted` → `on_the_way` → `arrived` → `price_confirmation` → `repairing` → `payment_pending` → `completed`
+- ✅ **Color-Coded Timeline:** Green for completed, Blue for current, Gray for pending
+- ✅ **Inline Timeline Display:** Expandable timeline with timestamps and status descriptions
+- ✅ **Real-time Status Updates:** SwipeButton gesture controls for status progression
+
+#### **SwipeButton Component System**
+```typescript
+// Advanced gesture-based interaction
+const SwipeButton: React.FC<{
+  onSwipeComplete: () => void;
+  title: string;
+  isEnabled: boolean;
+  backgroundColor?: string;
+}> = ({ onSwipeComplete, title, isEnabled, backgroundColor }) => {
+  const translateX = useSharedValue(0);
+  const scale = useSharedValue(1);
+  
+  const panGesture = Gesture.Pan()
+    .onUpdate((event) => {
+      if (isEnabled) {
+        translateX.value = Math.max(0, Math.min(maxTranslate, event.translationX));
+        // Visual feedback during swipe
+        opacity.value = Math.max(0.2, 1 - (event.translationX / maxTranslate));
+      }
+    })
+    .onEnd(() => {
+      if (translateX.value > maxTranslate * 0.8) {
+        // Success - trigger action
+        runOnJS(onSwipeComplete)();
+      } else {
+        // Reset to start position
+        translateX.value = withSpring(0);
+      }
+    });
+}
+```
+
+**Features:**
+- 🎭 **Smooth Animations:** Spring physics for natural feel
+- 🎯 **80% Threshold:** Requires significant swipe commitment
+- 💫 **Visual Feedback:** Hint arrows fade during interaction
+- 🔄 **Auto Reset:** Returns to start if not completed
+- 🚫 **Disabled State:** Gray styling when unavailable
+
+#### **Professional Earnings Modal**
+```typescript
+// Modal with professional design and calculations
+const EarningsModal = () => {
+  const { finalPrice, commission, actualEarnings } = calculateEarnings();
+  
+  return (
+    <Modal visible={showEarningsModal} animationType="slide">
+      <View style={styles.modalContainer}>
+        {/* Gradient Header */}
+        <LinearGradient colors={['#10B981', '#059669']}>
+          <View style={styles.modalHeaderLeft}>
+            <Ionicons name="wallet-outline" size={32} />
+            <Text style={styles.modalTitle}>Thực nhận của bạn</Text>
+          </View>
+          <TouchableOpacity style={styles.modalCloseButton}>
+            <Ionicons name="close" size={24} />
+          </TouchableOpacity>
+        </LinearGradient>
+
+        {/* Earnings Breakdown */}
+        <View style={styles.modalContent}>
+          <EarningsRow 
+            icon="pricetag" 
+            label="Giá dịch vụ" 
+            amount={formatMoney(finalPrice)} 
+          />
+          <EarningsRow 
+            icon="remove-circle" 
+            label="Phí nền tảng (15%)" 
+            amount={`-${formatMoney(commission)}`}
+            color="#EF4444"
+          />
+          
+          {/* Final Amount with Gradient */}
+          <LinearGradient colors={['#10B981', '#059669']}>
+            <Text>Số tiền thực nhận</Text>
+            <Text style={styles.finalAmount}>
+              {formatMoney(actualEarnings)}
+            </Text>
+          </LinearGradient>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+```
+
+**Design Features:**
+- 🎨 **Professional Layout:** Clean hierarchy, proper spacing
+- 📊 **Clear Breakdown:** Service price → Platform fee → Net earnings  
+- 💰 **Smart Calculation:** Automatic 15% commission deduction
+- 🎯 **Dual Actions:** Secondary close + Primary confirm buttons
+- 📱 **Responsive Design:** Max width constraints, shadow effects
+
+#### **Conditional UI System**
+```typescript
+// Smart button visibility based on workflow stage
+const ActionButtons = () => (
+  <View style={styles.actionSection}>
+    {/* Priority actions based on current status */}
+    {currentStatus === 'arrived' && (
+      <TouchableOpacity onPress={() => handleTakePhoto('before')}>
+        <LinearGradient colors={['#8B5CF6', '#7C3AED']}>
+          <Ionicons name="camera" size={24} />
+          <Text>Chụp ảnh tình trạng ban đầu</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    )}
+
+    {currentStatus === 'repairing' && (
+      <TouchableOpacity onPress={() => handleTakePhoto('after')}>
+        <LinearGradient colors={['#059669', '#047857']}>
+          <Ionicons name="camera" size={24} />
+          <Text>Chụp ảnh sau sửa chữa</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    )}
+
+    {currentStatus === 'completed' && (
+      <TouchableOpacity onPress={handleViewEarnings}>
+        <LinearGradient colors={['#10B981', '#059669']}>
+          <Ionicons name="cash" size={24} />
+          <Text>Xem thực nhận</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    )}
+
+    {/* Hide secondary buttons after arrival */}
+    {!['arrived', 'price_confirmation', 'repairing', 'payment_pending', 'completed'].includes(currentStatus) && (
+      <View style={styles.secondaryActions}>
+        <TouchableOpacity onPress={handleViewLocation}>
+          <Text>Xem địa chỉ</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleContactCustomer}>
+          <Text>Gọi khách hàng</Text>
+        </TouchableOpacity>
+      </View>
+    )}
+  </View>
+);
+```
+
+#### **UX Improvements Made**
+1. **SwipeButton Text Overlap Fix:** Restructured flexbox layout for proper text visibility
+2. **Customer Card Redesign:** Simplified from gradient header to clean contact layout
+3. **Timeline Color System:** Consistent green (#10B981) for completed, blue (#3B82F6) for current
+4. **Modal Professional Design:** Removed emojis, improved spacing, proper button hierarchy
+5. **Header Layout Fix:** Separated title and close button to prevent overlap
+6. **Conditional Actions:** Smart UI that adapts to workflow progression
+
+---
 
 ### 🔐 Authentication System
 

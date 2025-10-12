@@ -6,6 +6,7 @@ import HeroBanner from './HeroBanner';
 import ServiceCategories from './ServiceCategories';
 import { PromotionSection } from './PromotionSection';
 import BottomNavigation from './BottomNavigation';
+import ActiveOrdersSection from './ActiveOrdersSection';
 
 export default function CustomerDashboard() {
   const [activeTab, setActiveTab] = useState('home');
@@ -85,6 +86,9 @@ export default function CustomerDashboard() {
           onLocationPress={handleLocationPress}
           onSearchPress={handleSearchPress}
         />
+
+        {/* Active Orders Section - Shows current orders being processed */}
+        <ActiveOrdersSection />
 
         {/* Service Categories */}
         <ServiceCategories

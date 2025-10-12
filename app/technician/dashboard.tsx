@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, SafeAreaView, Text, TouchableOpacity } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import TechnicianHeader from '../../components/TechnicianHeader';
@@ -122,11 +122,34 @@ export default function TechnicianDashboard() {
   };
 
   const handleNewOrderPress = () => {
-    console.log('Xem đơn hàng mới pressed');
+    router.push('/technician/orders');
+  };
+
+  const handleTrackOrderPress = () => {
+    // Navigate to a sample order tracking
+    router.push({
+      pathname: '/technician/order-tracking',
+      params: { orderId: 'ORD-001' }
+    });
   };
 
   const handleQuickActionPress = (action: string) => {
-    console.log(`${action} pressed`);
+    switch (action) {
+      case 'Đơn hàng':
+        router.push('/technician/orders');
+        break;
+      case 'Thông tin':
+        console.log('Thông tin pressed - Sẽ tạo trang thông tin cá nhân sau');
+        break;
+      case 'Cài đặt':
+        console.log('Cài đặt pressed - Sẽ tạo trang cài đặt sau');
+        break;
+      case 'Thống kê':
+        console.log('Thống kê pressed - Sẽ tạo trang thống kê sau');
+        break;
+      default:
+        console.log(`${action} pressed`);
+    }
   };
 
   return (
@@ -258,23 +281,38 @@ export default function TechnicianDashboard() {
             </View>
           </View>
 
-          {/* Quick Action Button */}
+          {/* Quick Action Buttons */}
           <View style={styles.quickActionSection}>
             <View style={styles.sectionHeader}>
               <Ionicons name="flash-outline" size={20} color="#FF6B6B" />
               <Text style={styles.sectionTitle}>Thao tác nhanh</Text>
             </View>
             
-            <TouchableOpacity style={styles.newOrderButton} onPress={handleNewOrderPress}>
-              <LinearGradient
-                colors={['#10B981', '#10B981', '#10B981']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 0 }}
-                style={styles.newOrderGradient}
-              >
-                <Text style={styles.newOrderText}>Xem đơn hàng mới</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+            <View style={styles.quickActionButtons}>
+              <TouchableOpacity style={styles.newOrderButton} onPress={handleNewOrderPress}>
+                <LinearGradient
+                  colors={['#10B981', '#10B981', '#10B981']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 0 }}
+                  style={styles.newOrderGradient}
+                >
+                  <Ionicons name="list-outline" size={20} color="#FFFFFF" />
+                  <Text style={styles.newOrderText}>Xem đơn hàng</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.trackOrderButton} onPress={handleTrackOrderPress}>
+                <LinearGradient
+                  colors={['#609CEF', '#3B82F6']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 0 }}
+                  style={styles.trackOrderGradient}
+                >
+                  <Ionicons name="location-outline" size={20} color="#FFFFFF" />
+                  <Text style={styles.trackOrderText}>Theo dõi đơn</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Bottom Spacing for Navigation */}
@@ -480,6 +518,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   newOrderButton: {
+    flex: 1,
+    height: 56,
     borderRadius: 16,
     overflow: 'hidden',
     shadowColor: '#10B981',
@@ -492,9 +532,11 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   newOrderGradient: {
-    paddingVertical: 18,
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
   },
   newOrderText: {
     fontSize: 18,
@@ -589,5 +631,27 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 120,
+  },
+  quickActionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  trackOrderButton: {
+    flex: 1,
+    height: 56,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  trackOrderGradient: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  trackOrderText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

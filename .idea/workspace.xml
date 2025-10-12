@@ -5,8 +5,16 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="868f0766-2637-44bf-ae60-358902ea7db5" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/LoginScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/LoginScreen.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/DEVELOPMENT.md" beforeDir="false" afterPath="$PROJECT_DIR$/DEVELOPMENT.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/booking-detail-old.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/booking-detail.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/booking-detail.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/booking-history-old.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/booking-history.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/booking-history.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/technician/dashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/dashboard.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/CustomerDashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/CustomerDashboard.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/types/BookingTypes.ts" beforeDir="false" afterPath="$PROJECT_DIR$/types/BookingTypes.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
