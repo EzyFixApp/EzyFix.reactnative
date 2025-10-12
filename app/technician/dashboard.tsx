@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, SafeAreaView, Text, TouchableOpacity } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import TechnicianHeader from '../../components/TechnicianHeader';
@@ -127,6 +127,24 @@ export default function TechnicianDashboard() {
 
   const handleQuickActionPress = (action: string) => {
     console.log(`${action} pressed`);
+    
+    // Navigate based on action
+    switch (action) {
+      case 'Thông tin':
+        router.push('./profile' as any);
+        break;
+      case 'Đơn hàng':
+        // TODO: Navigate to orders page
+        break;
+      case 'Cài đặt':
+        // TODO: Navigate to settings page
+        break;
+      case 'Thống kê':
+        // TODO: Navigate to statistics page
+        break;
+      default:
+        break;
+    }
   };
 
   return (

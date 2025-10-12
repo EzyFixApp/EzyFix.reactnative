@@ -106,7 +106,12 @@ EzyFix.reactnative/
 │   ├── home/                   # Home screens
 │   │   └── index.tsx           # Home page
 │   ├── technician/             # Thợ sửa chữa flow  
-│   │   └── index.tsx           # Trang thợ
+│   │   ├── index.tsx           # Trang thợ chính
+│   │   ├── login.tsx           # Đăng nhập thợ sửa chữa
+│   │   ├── dashboard.tsx       # Dashboard thợ với stats & reviews
+│   │   ├── profile.tsx         # Profile thợ với wallet & contracts
+│   │   ├── personal-info.tsx   # Thông tin cá nhân với verification
+│   │   └── notification-settings.tsx # Cài đặt thông báo thợ
 │   ├── index.tsx               # Root page (Welcome screen)
 │   ├── modal.tsx               # Modal screens
 │   ├── +not-found.tsx          # 404 page
@@ -154,10 +159,10 @@ EzyFix.reactnative/
 - ✅ **LoginScreen.tsx** - Component đăng nhập với role customization
 - ✅ **TechnicianHeader.tsx** - Professional header cho technician interface
 
-#### � **Thợ sửa chữa (Technician)**
+#### 🔧 **Thợ sửa chữa (Technician)**
 - ✅ **login.tsx** - Trang đăng nhập chuyên biệt cho thợ
   - 🎨 Custom messaging "Chào mừng thợ sửa chữa"
-  - � Tích hợp với LoginScreen component
+  - 🔗 Tích hợp với LoginScreen component
   - 🚀 Professional welcome experience
 - ✅ **dashboard.tsx** - Dashboard hoàn chỉnh cho thợ sửa chữa
   - 👋 Personal greeting với thời gian thực
@@ -165,6 +170,23 @@ EzyFix.reactnative/
   - 📊 Today Stats: Công việc hoàn thành, Đánh giá, Thu nhập
   - ⭐ Reviews section với star rating system
   - 🎨 Professional blue gradient design (#609CEF → #3D7CE0)
+- ✅ **profile.tsx** - Profile system hoàn chỉnh cho thợ sửa chữa
+  - 💰 Wallet section với balance và payment methods
+  - ⚙️ Account settings menu (Personal info, Payment, Notifications)
+  - 🎓 Skills & Certificates management với inline links
+  - 📋 Contract management và premium features
+  - 🔄 Professional navigation với smooth routing
+- ✅ **personal-info.tsx** - Form thông tin cá nhân chi tiết
+  - 📝 Personal information form với verification badges
+  - ✅ Inline verification status ("ĐÃ XÁC THỰC" badges)
+  - 🔗 Social account linking (Google, Facebook, Apple)
+  - 💾 Real-time validation và save functionality
+  - 🎨 Gradient header với avatar section
+- ✅ **notification-settings.tsx** - Cài đặt thông báo
+  - 🔔 5 notification categories với toggle switches
+  - 📊 Statistics overview (BẬT/TẮT/TỔNG CỘNG counters)
+  - ⚡ Quick actions (Enable all, Disable all, Reset default)
+  - 🎨 Professional settings interface
 
 ### � Đang phát triển
 
