@@ -258,8 +258,15 @@ function ActiveOrderCard({ order }: { order: OrderItem }) {
 }
 
 function HistoryOrderCard({ order }: { order: OrderItem }) {
+  const handlePress = () => {
+    router.push({
+      pathname: '/technician/order-history-detail',
+      params: { orderId: order.id }
+    });
+  };
+
   return (
-    <View style={styles.historyOrderCard}>
+    <TouchableOpacity style={styles.historyOrderCard} onPress={handlePress} activeOpacity={0.7}>
       <View style={styles.historyOrderHeader}>
         <View style={styles.historyOrderLeft}>
           <Text style={styles.historyOrderTitle}>{order.serviceName}</Text>
@@ -317,7 +324,7 @@ function HistoryOrderCard({ order }: { order: OrderItem }) {
           </Text>
         </View>
       )}
-    </View>
+    </TouchableOpacity>
   );
 }
 

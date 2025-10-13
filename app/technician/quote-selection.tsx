@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -66,7 +66,7 @@ export default function QuoteSelection() {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
         <Stack.Screen options={{ headerShown: false }} />
-        
+
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Không tìm thấy đơn hàng</Text>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
@@ -79,7 +79,7 @@ export default function QuoteSelection() {
 
   const handleQuoteTypeSelect = (type: 'estimated' | 'final') => {
     setSelectedType(type);
-    
+
     // Auto scroll to amount input section when quote type is selected
     setTimeout(() => {
       scrollViewRef.current?.scrollTo({ y: 400, animated: true });
@@ -98,7 +98,7 @@ export default function QuoteSelection() {
     }
 
     const quoteTypeText = selectedType === 'estimated' ? 'dự kiến' : 'chốt';
-    const confirmMessage = selectedType === 'estimated' 
+    const confirmMessage = selectedType === 'estimated'
       ? 'Báo giá dự kiến có thể thay đổi sau khi kiểm tra thực tế. Bạn có chắc chắn gửi báo giá này?'
       : 'Báo giá chốt sẽ không thay đổi và khách hàng có thể chấp nhận ngay. Bạn có chắc chắn gửi báo giá này?';
 
@@ -115,7 +115,7 @@ export default function QuoteSelection() {
             setTimeout(() => {
               setLoading(false);
               Alert.alert(
-                '✅ Gửi báo giá thành công!', 
+                '✅ Gửi báo giá thành công!',
                 `Đã gửi báo giá ${quoteTypeText} với số tiền ${quoteAmount} VNĐ cho khách hàng.\n\nKhách hàng sẽ nhận được thông báo và có thể xem chi tiết báo giá.`,
                 [
                   {
@@ -124,7 +124,7 @@ export default function QuoteSelection() {
                       // Navigate to technician order tracking with quote info
                       router.push({
                         pathname: './technician-order-tracking',
-                        params: { 
+                        params: {
                           orderId: order.id,
                           quoteType: selectedType,
                           quoteAmount: quoteAmount
@@ -144,7 +144,7 @@ export default function QuoteSelection() {
   const formatCurrency = (text: string) => {
     // Remove non-numeric characters except commas
     const numericText = text.replace(/[^\d]/g, '');
-    
+
     // Format with thousand separators
     if (numericText) {
       const formatted = parseInt(numericText).toLocaleString('vi-VN');
@@ -156,7 +156,7 @@ export default function QuoteSelection() {
   const handleAmountChange = (text: string) => {
     const formatted = formatCurrency(text);
     setQuoteAmount(formatted);
-    
+
     // Auto scroll to summary section when user finishes typing
     if (formatted && selectedType) {
       setTimeout(() => {
@@ -181,7 +181,7 @@ export default function QuoteSelection() {
 
       {/* Header */}
       <LinearGradient colors={['#609CEF', '#3B82F6']} style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.headerBackButton}
           onPress={() => router.back()}
         >
@@ -191,7 +191,7 @@ export default function QuoteSelection() {
         <View style={styles.headerSpacer} />
       </LinearGradient>
 
-      <ScrollView 
+      <ScrollView
         ref={scrollViewRef}
         style={styles.content}
         showsVerticalScrollIndicator={false}
@@ -207,7 +207,7 @@ export default function QuoteSelection() {
         {/* Quote Type Selection */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Chọn loại báo giá</Text>
-          
+
           <TouchableOpacity
             style={[
               styles.quoteTypeCard,
@@ -231,14 +231,14 @@ export default function QuoteSelection() {
               ]}>
                 Báo giá dự kiến
               </Text>
-              <Ionicons 
-                name="calculator-outline" 
-                size={24} 
-                color={selectedType === 'estimated' ? '#609CEF' : '#6B7280'} 
+              <Ionicons
+                name="calculator-outline"
+                size={24}
+                color={selectedType === 'estimated' ? '#609CEF' : '#6B7280'}
               />
             </View>
             <Text style={styles.cardDescription}>
-              Giá có thể thay đổi sau khi kiểm tra thực tế tại hiện trường. 
+              Giá có thể thay đổi sau khi kiểm tra thực tế tại hiện trường.
               Phù hợp khi chưa thể đánh giá chính xác tình trạng thiết bị.
             </Text>
             <View style={styles.cardFeatures}>
@@ -271,14 +271,14 @@ export default function QuoteSelection() {
               ]}>
                 Báo giá chốt
               </Text>
-              <Ionicons 
-                name="checkmark-circle-outline" 
-                size={24} 
-                color={selectedType === 'final' ? '#10B981' : '#6B7280'} 
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={24}
+                color={selectedType === 'final' ? '#10B981' : '#6B7280'}
               />
             </View>
             <Text style={styles.cardDescription}>
-              Giá cố định không thay đổi. Khách hàng có thể chấp nhận ngay. 
+              Giá cố định không thay đổi. Khách hàng có thể chấp nhận ngay.
               Chỉ sử dụng khi đã đánh giá chính xác qua ảnh và mô tả.
             </Text>
             <View style={styles.cardFeatures}>
@@ -306,7 +306,7 @@ export default function QuoteSelection() {
               <Text style={styles.currencyUnit}>VNĐ</Text>
             </View>
             <Text style={styles.inputHint}>
-              {selectedType === 'estimated' 
+              {selectedType === 'estimated'
                 ? 'Giá này có thể thay đổi sau khi kiểm tra thực tế'
                 : 'Giá này sẽ không thay đổi và là giá cuối cùng'
               }
@@ -321,7 +321,7 @@ export default function QuoteSelection() {
               <Ionicons name="checkmark-circle" size={20} color="#10B981" />
               <Text style={styles.summaryTitle}>Xem lại báo giá</Text>
             </View>
-            
+
             <View style={[
               styles.quoteSummaryCard,
               { borderColor: selectedType === 'estimated' ? '#609CEF' : '#10B981' }
@@ -330,15 +330,15 @@ export default function QuoteSelection() {
               <View style={styles.quoteTypeDisplaySection}>
                 <View style={[
                   styles.quoteTypeDisplayTag,
-                  { 
+                  {
                     backgroundColor: selectedType === 'estimated' ? '#EBF4FF' : '#ECFDF5',
                     borderColor: selectedType === 'estimated' ? '#609CEF' : '#10B981'
                   }
                 ]}>
-                  <Ionicons 
-                    name={selectedType === 'estimated' ? "calculator" : "checkmark-circle"} 
-                    size={18} 
-                    color={selectedType === 'estimated' ? '#609CEF' : '#10B981'} 
+                  <Ionicons
+                    name={selectedType === 'estimated' ? "calculator" : "checkmark-circle"}
+                    size={18}
+                    color={selectedType === 'estimated' ? '#609CEF' : '#10B981'}
                   />
                   <Text style={[
                     styles.quoteTypeDisplayText,
@@ -348,7 +348,7 @@ export default function QuoteSelection() {
                   </Text>
                 </View>
               </View>
-              
+
               {/* Amount Display - Made more prominent */}
               <View style={styles.amountHighlightContainer}>
                 <View style={[
@@ -373,13 +373,13 @@ export default function QuoteSelection() {
                 styles.summaryInfoNote,
                 { backgroundColor: selectedType === 'estimated' ? '#FFFBEB' : '#F0FDF4' }
               ]}>
-                <Ionicons 
-                  name="information-circle" 
-                  size={16} 
-                  color={selectedType === 'estimated' ? '#F59E0B' : '#10B981'} 
+                <Ionicons
+                  name="information-circle"
+                  size={16}
+                  color={selectedType === 'estimated' ? '#F59E0B' : '#10B981'}
                 />
                 <Text style={styles.summaryInfoText}>
-                  {selectedType === 'estimated' 
+                  {selectedType === 'estimated'
                     ? 'Giá có thể thay đổi sau kiểm tra thực tế'
                     : 'Giá cố định - không thay đổi'
                   }
@@ -390,7 +390,7 @@ export default function QuoteSelection() {
               <View style={styles.summaryActionSection}>
                 <Text style={styles.actionSectionLabel}>Tùy chọn chỉnh sửa</Text>
                 <View style={styles.summaryActions}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.editAmountButton}
                     onPress={() => {
                       setQuoteAmount('');
@@ -405,7 +405,7 @@ export default function QuoteSelection() {
                     <Text style={styles.editAmountButtonText}>Sửa số tiền</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.editTypeButton}
                     onPress={() => {
                       Alert.alert(
@@ -413,12 +413,12 @@ export default function QuoteSelection() {
                         'Chọn loại báo giá khác (số tiền sẽ được giữ nguyên)',
                         [
                           { text: 'Hủy', style: 'cancel' },
-                          { 
-                            text: 'Báo giá dự kiến', 
+                          {
+                            text: 'Báo giá dự kiến',
                             onPress: () => setSelectedType('estimated')
                           },
-                          { 
-                            text: 'Báo giá chốt', 
+                          {
+                            text: 'Báo giá chốt',
                             onPress: () => setSelectedType('final')
                           }
                         ]
@@ -429,7 +429,7 @@ export default function QuoteSelection() {
                     <Text style={styles.editTypeButtonText}>Đổi loại</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.resetButton}
                     onPress={() => {
                       Alert.alert(
@@ -437,8 +437,8 @@ export default function QuoteSelection() {
                         'Bạn có muốn xóa tất cả và bắt đầu lại?',
                         [
                           { text: 'Hủy', style: 'cancel' },
-                          { 
-                            text: 'Bắt đầu lại', 
+                          {
+                            text: 'Bắt đầu lại',
                             style: 'destructive',
                             onPress: () => {
                               setSelectedType(null);

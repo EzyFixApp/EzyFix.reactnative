@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -113,7 +113,7 @@ export default function OrderDetails() {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
         <Stack.Screen options={{ headerShown: false }} />
-        
+
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Không tìm thấy đơn hàng</Text>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
@@ -137,7 +137,7 @@ export default function OrderDetails() {
       Alert.alert('Thông báo', 'Bạn cần nhận đơn trước khi có thể liên hệ khách hàng');
       return;
     }
-    
+
     const phoneNumber = `tel:${order.customerPhone}`;
     Linking.openURL(phoneNumber);
   };
@@ -147,12 +147,12 @@ export default function OrderDetails() {
       Alert.alert('Thông báo', 'Bạn cần nhận đơn trước khi có thể xem địa chỉ cụ thể');
       return;
     }
-    
+
     const url = Platform.select({
       ios: `maps://?address=${encodeURIComponent(order.address)}`,
       android: `geo:0,0?q=${encodeURIComponent(order.address)}`,
     });
-    
+
     if (url) {
       Linking.openURL(url);
     }
@@ -177,7 +177,7 @@ export default function OrderDetails() {
 
       {/* Header */}
       <LinearGradient colors={['#609CEF', '#3B82F6']} style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
         >
@@ -238,8 +238,8 @@ export default function OrderDetails() {
               <View style={styles.contactInfo}>
                 <Ionicons name="location-outline" size={20} color={isAccepted ? "#609CEF" : "#6B7280"} />
                 <Text style={[styles.contactText, !isAccepted && styles.maskedText]}>
-                  {isAccepted 
-                    ? order.address 
+                  {isAccepted
+                    ? order.address
                     : order.address.split(', ').slice(-2).join(', ')
                   }
                 </Text>
@@ -263,8 +263,8 @@ export default function OrderDetails() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Ảnh thiết bị ({order.images.length})</Text>
             <View style={styles.card}>
-              <ScrollView 
-                horizontal 
+              <ScrollView
+                horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.imagesContainer}
               >
@@ -314,29 +314,27 @@ export default function OrderDetails() {
       </ScrollView>
 
       {/* Action Button */}
-      {canAccept === 'false' && (
-        <View style={styles.actionContainer}>
-          <TouchableOpacity
-            style={styles.acceptButton}
-            onPress={handleAcceptOrder}
-            disabled={loading}
+      <View style={styles.actionContainer}>
+        <TouchableOpacity
+          style={styles.acceptButton}
+          onPress={handleAcceptOrder}
+          disabled={loading}
+        >
+          <LinearGradient
+            colors={['#10B981', '#059669']}
+            style={styles.acceptGradient}
           >
-            <LinearGradient
-              colors={['#10B981', '#059669']}
-              style={styles.acceptGradient}
-            >
-              {loading ? (
-                <Text style={styles.acceptButtonText}>Đang xử lý...</Text>
-              ) : (
-                <>
-                  <Ionicons name="calculator-outline" size={20} color="#FFFFFF" />
-                  <Text style={styles.acceptButtonText}>Gửi báo giá</Text>
-                </>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      )}
+            {loading ? (
+              <Text style={styles.acceptButtonText}>Đang xử lý...</Text>
+            ) : (
+              <>
+                <Ionicons name="calculator-outline" size={20} color="#FFFFFF" />
+                <Text style={styles.acceptButtonText}>Gửi báo giá</Text>
+              </>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
 
       {/* Image Modal */}
       <Modal
@@ -352,7 +350,7 @@ export default function OrderDetails() {
             onPress={handleCloseImageModal}
           >
             <StatusBar barStyle="light-content" backgroundColor="rgba(0,0,0,0.9)" />
-            
+
             <TouchableOpacity
               style={styles.closeButton}
               onPress={handleCloseImageModal}

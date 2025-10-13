@@ -378,7 +378,7 @@ export default function Dashboard() {
         // Navigation to settings page - will be implemented later
         break;
       case 'Thống kê':
-        // Navigation to statistics page - will be implemented later
+        router.push('/technician/statistics');
         break;
       default:
         // Default action handler

@@ -320,13 +320,10 @@ export default function TechnicianOrders() {
         params: { orderId }
       } as any);
     } else {
-      // Navigate to order details for pending orders
+      // Navigate to quote selection for pending orders (to send quote)
       router.push({
         pathname: './order-details',
-        params: { 
-          orderId,
-          canAccept: 'false'
-        }
+        params: { orderId }
       } as any);
     }
   };
