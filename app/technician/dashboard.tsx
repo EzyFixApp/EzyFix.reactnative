@@ -11,6 +11,7 @@ import {
   StatusBar 
 } from 'react-native';
 import { router, Stack } from 'expo-router';
+
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import BottomNavigation from '../../components/BottomNavigation';
@@ -367,39 +368,42 @@ export default function Dashboard() {
   };
 
   const handleQuickActionPress = (action: string) => {
-    switch (action) {
-      case 'Đơn hàng':
-        router.push('/technician/orders');
-        break;
-      case 'Thông tin':
-        // Navigation to profile page - will be implemented later
-        break;
-      case 'Cài đặt':
-        // Navigation to settings page - will be implemented later
-        break;
-      case 'Thống kê':
-        router.push('/technician/statistics');
-        break;
-      default:
-        // Default action handler
-        break;
-    }
-  };
+console.log(`${action} pressed`);
 
-  const formatMoney = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN', {
-      style: 'currency',
-      currency: 'VND'
-    }).format(amount);
-  };
+  switch (action) {
+    case 'Đơn hàng':
+      router.push('/technician/orders');
+      break;
+    case 'Thông tin':
+      router.push('/technician/profile'); // ✅ giữ lại từ repairmanProfile
+      break;
+    case 'Cài đặt':
+      // TODO: Navigate to settings page
+      break;
+    case 'Thống kê':
+      router.push('/technician/statistics');
+      break;
+    default:
+      // Default action handler
+      break;
+  }
+};
 
-  const getCompletionRate = () => {
-    return Math.round((todayStats.jobsCompleted / todayStats.totalJobs) * 100);
-  };
+// ✅ giữ lại các hàm tiện ích từ main
+const formatMoney = (amount: number) => {
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND'
+  }).format(amount);
+};
 
-  const toggleOnlineStatus = () => {
-    setIsOnline(!isOnline);
-  };
+const getCompletionRate = () => {
+  return Math.round((todayStats.jobsCompleted / todayStats.totalJobs) * 100);
+};
+
+const toggleOnlineStatus = () => {
+  setIsOnline(!isOnline);
+};
 
   return (
     <SafeAreaView style={styles.container}>

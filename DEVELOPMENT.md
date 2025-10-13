@@ -76,19 +76,6 @@ src/
 ├── 📱 app/                 # Expo Router - File-based routing
 │   ├── (tabs)/            # Tab navigation group
 │   ├── customer/          # Customer-specific screens
-│   │   ├── dashboard.tsx       # ✅ Dashboard với carousel
-│   │   ├── login.tsx           # ✅ Đăng nhập khách hàng
-│   │   ├── notifications.tsx  # ✅ Hệ thống thông báo & tin nhắn
-│   │   ├── all-services.tsx   # ✅ Catalog dịch vụ với tìm kiếm
-│   │   ├── book-service.tsx   # ✅ Form đặt lịch sửa chữa
-│   │   ├── profile.tsx         # ✅ Profile chính
-│   │   ├── personal-info.tsx   # ✅ Thông tin cá nhân
-│   │   ├── favorite-technicians.tsx # ✅ Thợ yêu thích
-│   │   ├── saved-addresses.tsx # ✅ Địa chỉ đã lưu
-│   │   ├── add-address.tsx     # ✅ Thêm địa chỉ
-│   │   ├── payment-methods.tsx # ✅ Thanh toán
-│   │   ├── notification-settings.tsx # ✅ Cài đặt TB
-│   │   └── promotions.tsx      # ✅ Ưu đãi
 │   ├── technician/        # Technician-specific screens  
 │   │   ├── index.tsx           # ✅ Trang thợ
 │   │   ├── login.tsx           # ✅ Đăng nhập thợ
@@ -99,10 +86,6 @@ src/
 │   ├── nativewindui/      # UI component library
 │   ├── AnimatedHomeScreen.tsx  # ✅ Main home screen
 │   ├── AnimatedDots.tsx        # ✅ Loading animations
-│   ├── CustomerDashboard.tsx   # ✅ Dashboard container
-│   ├── CustomerHeader.tsx      # ✅ Header với gradient
-│   ├── HeroBanner.tsx          # ✅ Hero với auto-slide
-│   ├── ServiceCategories.tsx   # ✅ Service grid 2x3
 │   └── ...
 ├── 📚 lib/               # Utilities & helpers
 ├── 🏪 store/             # State management
@@ -730,7 +713,32 @@ npm run android
 
 ---
 
-## 🆕 Recent Updates & Features
+## 📚 Resources
+
+### 📖 Documentation
+- [Expo Docs](https://docs.expo.dev/)
+- [React Native Docs](https://reactnative.dev/)
+- [NativeWind Docs](https://nativewind.dev/)
+
+### 🎨 Design Resources
+- [React Native Elements](https://react-native-elements.github.io/)
+- [Tamagui](https://tamagui.dev/) 
+- [Figma Design System](https://www.figma.com/community)
+
+### 🛠️ Tools
+- [Expo Snack](https://snack.expo.dev/) - Online playground
+- [React Native Directory](https://reactnative.directory/) - Package directory
+- [Can I Use](https://caniuse.com/) - Feature support
+
+---
+
+<div align="center">
+
+**Happy Coding! 🚀**
+
+*Made with ❤️ by EzyFix Development Team*
+
+</div>## 🆕 Recent Updates & Features
 
 ### � Bottom Navigation & Performance Fixes (Oct 13, 2025) 🆕
 
