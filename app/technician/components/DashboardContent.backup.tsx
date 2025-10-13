@@ -1,20 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  View, 
-  ScrollView, 
-  StyleSheet, 
-  Text, 
-  TouchableOpacity, 
-  Animated, 
-  Dimensions, 
-  SafeAreaView, 
-  StatusBar 
-} from 'react-native';
-import { router, Stack } from 'expo-router';
+import { View, ScrollView, StyleSheet, Text, TouchableOpacity, Animated, Dimensions } from 'react-native';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import BottomNavigation from '../../components/BottomNavigation';
-import TechnicianHeader from '../../components/TechnicianHeader';
 
 interface StatCardProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -238,61 +226,7 @@ interface DashboardContentProps {
 
 const { width } = Dimensions.get('window');
 
-export default function Dashboard() {
-  // State for time
-  const [currentTime, setCurrentTime] = useState(new Date());
-  
-  // Update time every second  
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-    
-    return () => {
-      clearInterval(timer);
-    };
-  }, []);
-  
-  // Format time function
-  const formatTime = () => {
-    return currentTime.toLocaleTimeString('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-  
-  // Format date function
-  const formatDate = () => {
-    return currentTime.toLocaleDateString('vi-VN', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  };
-  
-  // Handle tab press for navigation
-  const handleTabPress = (tabId: string) => {
-    if (tabId === 'activity') {
-      router.replace('/technician/activity');
-    }
-    // If tabId is 'home', we're already on this page, so do nothing
-  };
-  
-  // Handle center button press
-  const handleCenterButtonPress = () => {
-    // Logo pressed - could add navigation to main menu
-  };
-  
-  // Handle search press
-  const handleSearchPress = () => {
-    router.push('./orders');
-  };
-  
-  // Handle notification press
-  const handleNotificationPress = () => {
-    // Navigation to notifications page
-  };
+export default function DashboardContent({ currentTime, formatTime, formatDate }: DashboardContentProps) {
   const [isOnline, setIsOnline] = useState(true);
   const [todayStats, setTodayStats] = useState({
     jobsCompleted: 8,
@@ -372,17 +306,16 @@ export default function Dashboard() {
         router.push('/technician/orders');
         break;
       case 'Thông tin':
-        // Navigation to profile page - will be implemented later
+        console.log('Thông tin pressed - Sẽ tạo trang thông tin cá nhân sau');
         break;
       case 'Cài đặt':
-        // Navigation to settings page - will be implemented later
+        console.log('Cài đặt pressed - Sẽ tạo trang cài đặt sau');
         break;
       case 'Thống kê':
-        // Navigation to statistics page - will be implemented later
+        console.log('Thống kê pressed - Sẽ tạo trang thống kê sau');
         break;
       default:
-        // Default action handler
-        break;
+        console.log(`${action} pressed`);
     }
   };
 
@@ -402,24 +335,12 @@ export default function Dashboard() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
-      <Stack.Screen options={{ headerShown: false }} />
-
-      {/* Header - Giống hệt Activity */}
-      <TechnicianHeader
-        title="Trang chủ"
-        onSearchPress={handleSearchPress}
-        onAvatarPress={handleNotificationPress}
-        notificationCount={2}
-      />
-
-      <ScrollView 
-        style={styles.scrollContainer}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-      >
-        {/* Enhanced Greeting Section with Real-time Clock */}
+    <ScrollView 
+      style={styles.scrollContainer}
+      showsVerticalScrollIndicator={false}
+      bounces={false}
+    >
+      {/* Enhanced Greeting Section with Real-time Clock */}
       <View style={styles.greetingSection}>
         <LinearGradient
           colors={['#609CEF', '#4F8BE8', '#3D7CE0']}
@@ -506,7 +427,7 @@ export default function Dashboard() {
             </Text>
             <TouchableOpacity 
               style={styles.refreshButton}
-              onPress={() => {/* Refresh orders functionality */}}
+              onPress={() => console.log('Refresh orders')}
             >
               <Ionicons name="refresh" size={20} color="#609CEF" />
               <Text style={styles.refreshButtonText}>Làm mới</Text>
@@ -717,23 +638,11 @@ export default function Dashboard() {
       {/* Bottom Spacing for Navigation */}
       <View style={styles.bottomSpacing} />
     </ScrollView>
-
-    {/* Bottom Navigation */}
-    <BottomNavigation 
-      activeTab="home"
-      onTabPress={handleTabPress}
-      onLogoPress={handleCenterButtonPress}
-    />
-  </SafeAreaView>
   );
 }
 
 // Include all the styles from the original dashboard
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
   scrollContainer: {
     flex: 1,
   },
@@ -1421,6 +1330,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   bottomSpacing: {
-    height: 100,
+    height: 20,
   },
 });

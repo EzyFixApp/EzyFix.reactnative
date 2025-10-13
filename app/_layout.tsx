@@ -50,6 +50,7 @@ export default function RootLayout() {
                 <Stack.Screen name="technician/index" options={{ headerShown: false }} />
                 <Stack.Screen name="technician/login" options={{ headerShown: false }} />
                 <Stack.Screen name="technician/dashboard" options={{ headerShown: false }} />
+                <Stack.Screen name="technician/activity" options={{ headerShown: false }} />
                 <Stack.Screen name="modal" options={MODAL_OPTIONS} />
               </Stack>
             </NavThemeProvider>

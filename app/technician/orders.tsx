@@ -10,12 +10,12 @@ import {
   Alert,
   Platform,
   Animated,
+  TextInput,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
-import TechnicianHeader from '../../components/TechnicianHeader';
-import BottomNavigation from '../../components/BottomNavigation';
 
 interface OrderItem {
   id: string;
@@ -33,6 +33,7 @@ interface OrderItem {
   estimatedTime: string;
   appointmentDate: string;
   appointmentTime: string;
+  paymentMethod?: 'prepaid' | 'cash' | 'card';
 }
 
 // Mock data - Available orders (pending)
@@ -55,7 +56,8 @@ const availableOrders: OrderItem[] = [
     distance: '2.5km',
     estimatedTime: '45 phút',
     appointmentDate: '15/10/2025',
-    appointmentTime: '14:00'
+    appointmentTime: '14:00',
+    paymentMethod: 'prepaid'
   },
   {
     id: '2',
@@ -74,7 +76,59 @@ const availableOrders: OrderItem[] = [
     distance: '1.8km',
     estimatedTime: '30 phút',
     appointmentDate: '14/10/2025',
-    appointmentTime: '09:30'
+    appointmentTime: '09:30',
+    paymentMethod: 'cash'
+  },
+  {
+    id: '3',
+    serviceName: 'Lắp đặt hệ thống điện',
+    customerName: 'Phạm Văn C',
+    customerPhone: '0933445566',
+    address: '789 Lê Văn Sỹ, Quận 3, TP.HCM',
+    description: 'Lắp đặt hệ thống điện cho căn hộ mới',
+    status: 'pending',
+    createdAt: '2025-10-13T16:30:00Z',
+    priceRange: '800,000đ - 1,200,000đ',
+    priority: 'normal',
+    distance: '4.2km',
+    estimatedTime: '2 giờ',
+    appointmentDate: '16/10/2025',
+    appointmentTime: '19:00',
+    paymentMethod: 'prepaid'
+  },
+  {
+    id: '4',
+    serviceName: 'Sửa máy bơm nước',
+    customerName: 'Nguyễn Thị D',
+    customerPhone: '0944556677',
+    address: '321 Cách Mạng Tháng 8, Quận Tân Bình, TP.HCM',
+    description: 'Máy bơm nước không hoạt động, cần kiểm tra và sửa chữa',
+    status: 'pending',
+    createdAt: '2025-10-13T17:15:00Z',
+    priceRange: '300,000đ - 600,000đ',
+    priority: 'urgent',
+    distance: '6.5km',
+    estimatedTime: '1.5 giờ',
+    appointmentDate: '14/10/2025',
+    appointmentTime: '07:30',
+    paymentMethod: 'cash'
+  },
+  {
+    id: '5',
+    serviceName: 'Thay bóng đèn LED',
+    customerName: 'Hoàng Văn E',
+    customerPhone: '0955667788',
+    address: '654 Võ Văn Tần, Quận 10, TP.HCM',
+    description: 'Thay toàn bộ bóng đèn cũ sang LED cho văn phòng',
+    status: 'pending',
+    createdAt: '2025-10-13T18:00:00Z',
+    priceRange: '400,000đ - 700,000đ',
+    priority: 'normal',
+    distance: '3.8km',
+    estimatedTime: '1 giờ',
+    appointmentDate: '15/10/2025',
+    appointmentTime: '16:30',
+    paymentMethod: 'prepaid'
   }
 ];
 
@@ -98,15 +152,25 @@ const acceptedOrders: OrderItem[] = [
     distance: '3.2km',
     estimatedTime: '1 giờ',
     appointmentDate: '14/10/2025',
-    appointmentTime: '16:00'
+    appointmentTime: '16:00',
+    paymentMethod: 'cash'
   }
 ];
 
 export default function TechnicianOrders() {
-  const [activeTab, setActiveTab] = useState('orders');
   const [selectedTab, setSelectedTab] = useState<'available' | 'accepted'>('available');
   const [fadeAnim] = useState(new Animated.Value(1));
-  const [slideAnim] = useState(new Animated.Value(0));
+  
+  // Search and filter states
+  const [searchText, setSearchText] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    maxDistance: '', // '1km', '3km', '5km', '10km'
+    serviceType: '', // 'điện', 'nước', 'điều hòa'
+    priceRange: '', // 'under300k', '300k-500k', 'over500k'
+    timeSlot: '', // 'morning', 'afternoon', 'evening'
+    district: '' // 'q1', 'q3', 'q10', 'tanbinh'
+  });
 
   const animateTabChange = () => {
     Animated.sequence([
@@ -144,19 +208,101 @@ export default function TechnicianOrders() {
     animateTabChange();
   }, [selectedTab]);
 
-  const handleTabPress = (tabId: string) => {
-    if (tabId === 'home') {
-      router.push('./dashboard' as any);
-    } else {
-      setActiveTab(tabId);
+  // Filter and search functions
+  const filterOrders = (orders: OrderItem[]) => {
+    let filteredOrders = [...orders];
+
+    // Text search
+    if (searchText.trim()) {
+      filteredOrders = filteredOrders.filter(order =>
+        order.serviceName.toLowerCase().includes(searchText.toLowerCase()) ||
+        order.customerName.toLowerCase().includes(searchText.toLowerCase()) ||
+        order.address.toLowerCase().includes(searchText.toLowerCase())
+      );
     }
+
+    // Distance filter
+    if (filters.maxDistance) {
+      const maxKm = parseFloat(filters.maxDistance.replace('km', ''));
+      filteredOrders = filteredOrders.filter(order => {
+        const orderKm = parseFloat(order.distance.replace('km', ''));
+        return orderKm <= maxKm;
+      });
+    }
+
+    // Time slot filter
+    if (filters.timeSlot) {
+      filteredOrders = filteredOrders.filter(order => {
+        const time = order.appointmentTime;
+        const hour = parseInt(time.split(':')[0]);
+        switch (filters.timeSlot) {
+          case 'morning':
+            return hour >= 6 && hour < 12;
+          case 'afternoon':
+            return hour >= 12 && hour < 18;
+          case 'evening':
+            return hour >= 18 && hour < 22;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // District filter
+    if (filters.district) {
+      filteredOrders = filteredOrders.filter(order =>
+        order.address.toLowerCase().includes(filters.district.toLowerCase())
+      );
+    }
+
+
+
+    // Service type filter
+    if (filters.serviceType) {
+      filteredOrders = filteredOrders.filter(order =>
+        order.serviceName.toLowerCase().includes(filters.serviceType.toLowerCase())
+      );
+    }
+
+    // Price range filter
+    if (filters.priceRange) {
+      filteredOrders = filteredOrders.filter(order => {
+        const priceText = order.priceRange.toLowerCase();
+        switch (filters.priceRange) {
+          case 'under300k':
+            return priceText.includes('150,000') || priceText.includes('200,000');
+          case '300k-500k':
+            return priceText.includes('300,000') || priceText.includes('500,000');
+          case 'over500k':
+            return priceText.includes('600,000') || priceText.includes('800,000');
+          default:
+            return true;
+        }
+      });
+    }
+
+    return filteredOrders;
   };
 
-  const handleCenterButtonPress = () => {
-    router.push('./dashboard' as any);
+  const clearFilters = () => {
+    setFilters({
+      maxDistance: '',
+      serviceType: '',
+      priceRange: '',
+      timeSlot: '',
+      district: ''
+    });
+    setSearchText('');
   };
 
-
+  const hasActiveFilters = () => {
+    return searchText.trim() || 
+           filters.maxDistance || 
+           filters.serviceType || 
+           filters.priceRange ||
+           filters.timeSlot ||
+           filters.district;
+  };
 
   const handleAcceptOrder = (orderId: string) => {
     // Navigate to quote selection screen
@@ -296,7 +442,8 @@ export default function TechnicianOrders() {
     );
   };
 
-  const currentOrders = selectedTab === 'available' ? availableOrders : acceptedOrders;
+  const baseOrders = selectedTab === 'available' ? availableOrders : acceptedOrders;
+  const currentOrders = filterOrders(baseOrders);
   
   // Debug log
   console.log('Current tab:', selectedTab);
@@ -309,12 +456,154 @@ export default function TechnicianOrders() {
       <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Header */}
-      <TechnicianHeader
-        title="Đơn hàng"
-        onAvatarPress={() => router.push('./profile' as any)}
-        notificationCount={5}
-      />
+      {/* Custom Header with Back Button */}
+      <LinearGradient
+        colors={['#609CEF', '#4F8EF7']}
+        style={styles.header}
+      >
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={26} color="white" />
+        </TouchableOpacity>
+        
+        <Text style={styles.headerTitle}>Đơn hàng</Text>
+        
+        {/* Empty view for centering title */}
+        <View style={styles.headerRight} />
+      </LinearGradient>
+
+      {/* Search and Filter Section */}
+      <View style={styles.searchFilterContainer}>
+        <View style={styles.searchRow}>
+          <View style={styles.searchInputContainer}>
+            <Ionicons name="search-outline" size={20} color="#9CA3AF" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Tìm theo dịch vụ, khách hàng, địa chỉ..."
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholderTextColor="#9CA3AF"
+            />
+            {searchText ? (
+              <TouchableOpacity onPress={() => setSearchText('')}>
+                <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          
+          <TouchableOpacity 
+            style={[styles.filterButton, showFilters && styles.filterButtonActive]}
+            onPress={() => setShowFilters(!showFilters)}
+          >
+            <Ionicons name="options-outline" size={20} color={showFilters ? "#609CEF" : "#6B7280"} />
+            {hasActiveFilters() && <View style={styles.filterDot} />}
+          </TouchableOpacity>
+        </View>
+
+        {/* Filter Options */}
+        {showFilters && (
+          <View style={styles.filtersContainer}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersScroll}>
+              {/* Distance Filter */}
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Khoảng cách</Text>
+                <View style={styles.filterOptions}>
+                  {['1km', '3km', '5km', '10km'].map(distance => (
+                    <TouchableOpacity
+                      key={distance}
+                      style={[styles.filterChip, filters.maxDistance === distance && styles.filterChipActive]}
+                      onPress={() => setFilters({...filters, maxDistance: filters.maxDistance === distance ? '' : distance})}
+                    >
+                      <Text style={[styles.filterChipText, filters.maxDistance === distance && styles.filterChipTextActive]}>
+                        ≤ {distance}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Time Slot Filter */}
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Khung giờ</Text>
+                <View style={styles.filterOptions}>
+                  {[
+                    { key: 'morning', label: 'Sáng (6-12h)' },
+                    { key: 'afternoon', label: 'Chiều (12-18h)' },
+                    { key: 'evening', label: 'Tối (18-22h)' }
+                  ].map(timeSlot => (
+                    <TouchableOpacity
+                      key={timeSlot.key}
+                      style={[styles.filterChip, filters.timeSlot === timeSlot.key && styles.filterChipActive]}
+                      onPress={() => setFilters({...filters, timeSlot: filters.timeSlot === timeSlot.key ? '' : timeSlot.key})}
+                    >
+                      <Text style={[styles.filterChipText, filters.timeSlot === timeSlot.key && styles.filterChipTextActive]}>
+                        {timeSlot.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* District Filter */}
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Khu vực</Text>
+                <View style={styles.filterOptions}>
+                  {[
+                    { key: 'Q1', label: 'Quận 1' },
+                    { key: 'Q3', label: 'Quận 3' },
+                    { key: 'Q10', label: 'Quận 10' },
+                    { key: 'Tân Bình', label: 'Tân Bình' },
+                    { key: 'Bình Thạnh', label: 'Bình Thạnh' }
+                  ].map(district => (
+                    <TouchableOpacity
+                      key={district.key}
+                      style={[styles.filterChip, filters.district === district.key && styles.filterChipActive]}
+                      onPress={() => setFilters({...filters, district: filters.district === district.key ? '' : district.key})}
+                    >
+                      <Text style={[styles.filterChipText, filters.district === district.key && styles.filterChipTextActive]}>
+                        {district.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Service Type Filter */}
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Loại dịch vụ</Text>
+                <View style={styles.filterOptions}>
+                  {[
+                    { key: 'điều hòa', label: 'Điều hòa' },
+                    { key: 'điện', label: 'Điện' },
+                    { key: 'nước', label: 'Nước' },
+                    { key: 'tủ lạnh', label: 'Tủ lạnh' }
+                  ].map(service => (
+                    <TouchableOpacity
+                      key={service.key}
+                      style={[styles.filterChip, filters.serviceType === service.key && styles.filterChipActive]}
+                      onPress={() => setFilters({...filters, serviceType: filters.serviceType === service.key ? '' : service.key})}
+                    >
+                      <Text style={[styles.filterChipText, filters.serviceType === service.key && styles.filterChipTextActive]}>
+                        {service.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+
+            {/* Clear Filters */}
+            {hasActiveFilters() && (
+              <TouchableOpacity style={styles.clearFiltersButton} onPress={clearFilters}>
+                <Ionicons name="refresh-outline" size={16} color="#EF4444" />
+                <Text style={styles.clearFiltersText}>Xóa bộ lọc</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
 
       {/* Tab selector */}
       <View style={styles.tabSelector}>
@@ -326,7 +615,7 @@ export default function TechnicianOrders() {
           }}
         >
           <Text style={[styles.tabText, selectedTab === 'available' && styles.activeTabText]}>
-            Có thể nhận ({availableOrders.length})
+            Có thể nhận ({selectedTab === 'available' ? currentOrders.length : filterOrders(availableOrders).length})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -337,7 +626,7 @@ export default function TechnicianOrders() {
           }}
         >
           <Text style={[styles.tabText, selectedTab === 'accepted' && styles.activeTabText]}>
-            Đã nhận ({acceptedOrders.length})
+            Đã nhận ({selectedTab === 'accepted' ? currentOrders.length : filterOrders(acceptedOrders).length})
           </Text>
         </TouchableOpacity>
       </View>
@@ -355,6 +644,16 @@ export default function TechnicianOrders() {
             showsVerticalScrollIndicator={false}
           >
           <View style={styles.ordersList}>
+            {/* Filter Results Info */}
+            {hasActiveFilters() && currentOrders.length > 0 && (
+              <View style={styles.filterResultsInfo}>
+                <Ionicons name="funnel-outline" size={16} color="#609CEF" />
+                <Text style={styles.filterResultsText}>
+                  Tìm thấy {currentOrders.length} đơn phù hợp
+                </Text>
+              </View>
+            )}
+
             {currentOrders.length > 0 ? (
               currentOrders.map(renderOrderCard)
             ) : (
@@ -372,15 +671,19 @@ export default function TechnicianOrders() {
                   </LinearGradient>
                 </View>
                 <Text style={styles.emptyTitle}>
-                  {selectedTab === 'available' 
-                    ? 'Chưa có đơn hàng mới'
-                    : 'Chưa có đơn đã nhận'
+                  {hasActiveFilters() 
+                    ? 'Không tìm thấy đơn phù hợp'
+                    : selectedTab === 'available' 
+                      ? 'Chưa có đơn hàng mới'
+                      : 'Chưa có đơn đã nhận'
                   }
                 </Text>
                 <Text style={styles.emptySubtitle}>
-                  {selectedTab === 'available'
-                    ? 'Các đơn hàng mới sẽ xuất hiện ở đây'
-                    : 'Đơn hàng đã nhận sẽ hiển thị ở đây'
+                  {hasActiveFilters()
+                    ? 'Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm'
+                    : selectedTab === 'available'
+                      ? 'Các đơn hàng mới sẽ xuất hiện ở đây'
+                      : 'Đơn hàng đã nhận sẽ hiển thị ở đây'
                   }
                 </Text>
               </View>
@@ -391,14 +694,6 @@ export default function TechnicianOrders() {
           </ScrollView>
         </Animated.View>
       </View>
-
-      {/* Bottom Navigation */}
-      <BottomNavigation
-        activeTab={activeTab}
-        onTabPress={handleTabPress}
-        onLogoPress={handleCenterButtonPress}
-        theme="light"
-      />
     </SafeAreaView>
   );
 }
@@ -408,6 +703,162 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    paddingTop: Platform.OS === 'ios' ? 50 : 40,
+    minHeight: Platform.OS === 'ios' ? 100 : 80,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 20,
+    fontWeight: '700',
+    color: 'white',
+  },
+  headerRight: {
+    width: 44,
+  },
+  
+  // Search and Filter Styles
+  searchFilterContainer: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  searchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  filterButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  filterButtonActive: {
+    backgroundColor: 'rgba(96, 156, 239, 0.1)',
+  },
+  filterDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+  },
+  filtersContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  filtersScroll: {
+    flexGrow: 0,
+  },
+  filterGroup: {
+    marginRight: 24,
+    minWidth: 120,
+  },
+  filterLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  filterOptions: {
+    flexDirection: 'column',
+    gap: 6,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  filterChipActive: {
+    backgroundColor: 'rgba(96, 156, 239, 0.1)',
+    borderColor: '#609CEF',
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  filterChipTextActive: {
+    color: '#609CEF',
+    fontWeight: '600',
+  },
+  clearFiltersButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 12,
+    paddingVertical: 8,
+  },
+  clearFiltersText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#EF4444',
+  },
+  filterResultsInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(96, 156, 239, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  filterResultsText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#609CEF',
+  },
+
   tabSelector: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
