@@ -39,6 +39,10 @@ export default function BottomNavigation({
 }: BottomNavigationProps) {
   const isDark = theme === 'dark';
   
+  const handleTabPress = (tabId: string) => {
+    onTabPress(tabId);
+  };
+  
   return (
     <View style={[
       styles.container, 
@@ -51,7 +55,7 @@ export default function BottomNavigation({
         {/* Left Tab - Trang chủ */}
         <TouchableOpacity
           style={styles.tabItem}
-          onPress={() => onTabPress('home')}
+          onPress={() => handleTabPress('home')}
           activeOpacity={0.7}
         >
           <Ionicons
@@ -83,7 +87,7 @@ export default function BottomNavigation({
         {/* Right Tab - Hoạt động */}
         <TouchableOpacity
           style={styles.tabItem}
-          onPress={() => onTabPress('activity')}
+          onPress={() => handleTabPress('activity')}
           activeOpacity={0.7}
         >
           <Ionicons
@@ -107,6 +111,7 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: 'transparent',
     position: 'relative',
+    zIndex: 1000,
   },
   containerDark: {
     backgroundColor: '#1F2937',

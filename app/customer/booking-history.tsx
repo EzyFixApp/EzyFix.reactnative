@@ -29,6 +29,11 @@ interface BookingItem {
   notes?: string;
 }
 
+// Check if booking is trackable (active order)
+const isTrackableStatus = (status: BookingItem['status']): boolean => {
+  return status !== 'completed' && status !== 'cancelled';
+};
+
 const mockBookings: BookingItem[] = [
   {
     id: '1',
@@ -200,8 +205,8 @@ export default function BookingHistory() {
         key={booking.id}
         style={styles.bookingCard}
         onPress={() => router.push({
-          pathname: './booking-detail',
-          params: { bookingId: booking.id }
+          pathname: './order-tracking',
+          params: { orderId: booking.id }
         } as any)}
         activeOpacity={0.7}
       >
@@ -247,8 +252,27 @@ export default function BookingHistory() {
         </View>
 
         <View style={styles.cardFooter}>
-          <Text style={styles.viewDetails}>Xem chi tiết</Text>
-          <Ionicons name="chevron-forward" size={16} color="#609CEF" />
+          {isTrackableStatus(booking.status) ? (
+            <TouchableOpacity
+              style={styles.trackButton}
+              onPress={(e) => {
+                e.stopPropagation(); // Prevent card press
+                router.push({
+                  pathname: './order-tracking',
+                  params: { orderId: booking.id }
+                } as any);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="location" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.trackButtonText}>Theo dõi đơn</Text>
+            </TouchableOpacity>
+          ) : (
+            <>
+              <Text style={styles.viewDetails}>Xem đơn hàng</Text>
+              <Ionicons name="chevron-forward" size={16} color="#609CEF" />
+            </>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -651,6 +675,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#609CEF',
+  },
+  trackButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#609CEF',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    shadowColor: '#609CEF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  trackButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
 
   // Empty State

@@ -6,11 +6,12 @@
   <component name="ChangeListManager">
     <list default="true" id="868f0766-2637-44bf-ae60-358902ea7db5" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/CHANGELOG.md" beforeDir="false" afterPath="$PROJECT_DIR$/CHANGELOG.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/DEVELOPMENT.md" beforeDir="false" afterPath="$PROJECT_DIR$/DEVELOPMENT.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/_layout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/_layout.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/technician/activity.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/activity.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/technician/dashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/dashboard.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/technician/order-details.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/order-details.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/technician/orders.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/orders.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/technician/quote-selection.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/quote-selection.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -42,7 +43,7 @@
     "RunOnceActivity.readMode.enableVisualFormatting": "true",
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "repairmanProfile",
+    "git-widget-placeholder": "main",
     "last_opened_file_path": "C:/học đại/ki 8/exe2/EzyFix.reactnative"
   }
 }]]></component>
