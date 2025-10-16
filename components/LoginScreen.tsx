@@ -625,28 +625,45 @@ export default function LoginScreen({
             ]}
           >
             {currentStep === 'email' ? (
-              // Step 1: Show "Tiếp theo" if email entered, disabled "Đăng nhập" if empty
-              email.trim() && !isLoading ? (
-                <TouchableOpacity
-                  style={styles.continueButton}
-                  onPress={handleContinue}
-                  disabled={isLoading}
-                  activeOpacity={0.9}
-                >
-                  <Text style={styles.continueButtonText}>Tiếp theo</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.loginButton, styles.disabledButton]}
-                  onPress={() => {
-                    // Do nothing or show alert to enter email first
-                    alert('Vui lòng nhập email để tiếp tục');
-                  }}
+              // Step 1: Always show "Quên mật khẩu?" and appropriate button
+              <View style={styles.emailStepContainer}>
+                {/* Forgot Password Link - Above button, aligned right - Always visible */}
+                <TouchableOpacity 
+                  style={styles.forgotPasswordLinkAbove}
                   activeOpacity={0.7}
+                  onPress={() => {
+                    const route = userType === 'customer' 
+                      ? '/customer/forgot-password' 
+                      : '/technician/forgot-password';
+                    router.push(route);
+                  }}
                 >
-                  <Text style={[styles.loginButtonText, styles.disabledButtonText]}>Đăng nhập</Text>
+                  <Text style={styles.forgotPasswordText}>Quên mật khẩu?</Text>
                 </TouchableOpacity>
-              )
+                
+                {/* Button based on email input state */}
+                {email.trim() && !isLoading ? (
+                  <TouchableOpacity
+                    style={styles.continueButton}
+                    onPress={handleContinue}
+                    disabled={isLoading}
+                    activeOpacity={0.9}
+                  >
+                    <Text style={styles.continueButtonText}>Tiếp theo</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.loginButton, styles.disabledButton]}
+                    onPress={() => {
+                      // Do nothing or show alert to enter email first
+                      alert('Vui lòng nhập email để tiếp tục');
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.loginButtonText, styles.disabledButtonText]}>Đăng nhập</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             ) : (
               // Step 2: Always show "Đăng nhập"
               <TouchableOpacity
@@ -802,7 +819,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 28,
   },
   inputLabel: {
     fontSize: 16,
@@ -858,7 +875,7 @@ const styles = StyleSheet.create({
 
   // Button Section
   buttonSection: {
-    marginBottom: 32,
+    marginBottom: 20,
   },
   loginButton: {
     width: '100%',
@@ -885,7 +902,8 @@ const styles = StyleSheet.create({
 
   // Divider
   divider: {
-    marginBottom: 32,
+    marginTop: 20,
+    marginBottom: 24,
     alignItems: 'center',
     flexDirection: 'row',
     paddingHorizontal: 20,
@@ -905,6 +923,7 @@ const styles = StyleSheet.create({
   // Google Section
   googleSection: {
     alignItems: 'center',
+    marginBottom: 8,
   },
   googleButton: {
     width: '100%',
@@ -916,7 +935,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 16,
     paddingHorizontal: 16,
-    marginBottom: 24,
+    marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -951,7 +970,8 @@ const styles = StyleSheet.create({
     marginRight: 24, // Để text căn giữa với icon
   },
   registerLink: {
-    paddingVertical: 8,
+    paddingVertical: 16,
+    marginTop: 8,
   },
   registerText: {
     fontSize: 14,
@@ -962,6 +982,24 @@ const styles = StyleSheet.create({
   registerLinkText: {
     color: '#609CEF',
     fontWeight: '600',
+  },
+  forgotPasswordLink: {
+    paddingVertical: 6,
+    alignItems: 'center',
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  
+  // Email step container - vertical layout with forgot password above
+  emailStepContainer: {
+    width: '100%',
+  },
+  forgotPasswordLinkAbove: {
+    alignSelf: 'flex-end',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    marginBottom: 8,
+    marginTop: -50,
   },
 
   // Two-step login styles
