@@ -10,46 +10,21 @@ import {
   StyleSheet,
   Dimensions,
   Image,
-  Modal,
-  FlatList,
-  ScrollView
+  ScrollView,
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useAuthActions, useAuth } from '../store/authStore';
+import { logger } from '../lib/logger';
+import type { UserType } from '../lib/api/config';
 
 const { width } = Dimensions.get('window');
-
-// Country codes data with flags
-interface CountryCode {
-  name: string;
-  code: string;
-  flag: string;
-  dialCode: string;
-}
-
-const COUNTRY_CODES: CountryCode[] = [
-  { name: 'Vietnam', code: 'VN', flag: '🇻🇳', dialCode: '+84' },
-  { name: 'United States', code: 'US', flag: '🇺🇸', dialCode: '+1' },
-  { name: 'United Kingdom', code: 'GB', flag: '🇬🇧', dialCode: '+44' },
-  { name: 'China', code: 'CN', flag: '🇨🇳', dialCode: '+86' },
-  { name: 'Japan', code: 'JP', flag: '🇯🇵', dialCode: '+81' },
-  { name: 'South Korea', code: 'KR', flag: '🇰🇷', dialCode: '+82' },
-  { name: 'Thailand', code: 'TH', flag: '🇹🇭', dialCode: '+66' },
-  { name: 'Singapore', code: 'SG', flag: '🇸🇬', dialCode: '+65' },
-  { name: 'Malaysia', code: 'MY', flag: '🇲🇾', dialCode: '+60' },
-  { name: 'Indonesia', code: 'ID', flag: '🇮🇩', dialCode: '+62' },
-  { name: 'Philippines', code: 'PH', flag: '🇵🇭', dialCode: '+63' },
-  { name: 'India', code: 'IN', flag: '🇮🇳', dialCode: '+91' },
-  { name: 'Australia', code: 'AU', flag: '🇦🇺', dialCode: '+61' },
-  { name: 'Canada', code: 'CA', flag: '🇨🇦', dialCode: '+1' },
-  { name: 'France', code: 'FR', flag: '🇫🇷', dialCode: '+33' },
-  { name: 'Germany', code: 'DE', flag: '🇩🇪', dialCode: '+49' },
-];
 
 interface LoginScreenProps {
   onBack: () => void;
   onLogin?: () => void;
-  userType?: 'customer' | 'technician';
+  userType?: UserType;
   title?: string;
   subtitle?: string;
 }
@@ -61,6 +36,10 @@ export default function LoginScreen({
   title,
   subtitle 
 }: LoginScreenProps) {
+  // Auth store
+  const { isLoading, error } = useAuth();
+  const { login, clearError } = useAuthActions();
+
   // Animation values
   const slideAnim = React.useRef(new Animated.Value(width)).current;
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
@@ -70,16 +49,14 @@ export default function LoginScreen({
   const googleAnim = React.useRef(new Animated.Value(0.9)).current;
 
   // Form states
-  const [phoneNumber, setPhoneNumber] = React.useState('');
+  const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
-  
-  // Country code state
-  const [selectedCountry, setSelectedCountry] = React.useState<CountryCode>(COUNTRY_CODES[0]); // Default: Vietnam
-  const [showCountryPicker, setShowCountryPicker] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState('');
+  const [showError, setShowError] = React.useState(false);
   
   // Two-step login state
-  const [currentStep, setCurrentStep] = React.useState<'phone' | 'password'>('phone');
+  const [currentStep, setCurrentStep] = React.useState<'email' | 'password'>('email');
   
   // Step animation values
   const stepSlideAnim = React.useRef(new Animated.Value(0)).current;
@@ -92,6 +69,18 @@ export default function LoginScreen({
   React.useEffect(() => {
     startEnterAnimation();
   }, []);
+
+  React.useEffect(() => {
+    // Removed automatic error alert to prevent duplicate notifications
+    // Error handling is now done directly in handleLogin
+  }, []);
+
+  React.useEffect(() => {
+    if (error) {
+      // Clear error immediately to prevent it from showing
+      clearError();
+    }
+  }, [error, clearError]);
 
   const startEnterAnimation = () => {
     Animated.parallel([
@@ -179,50 +168,133 @@ export default function LoginScreen({
     });
   };
 
-  const handleLogin = () => {
-    console.log('Login with:', { phoneNumber, password, userType });
-    // TODO: Implement actual login logic
-    
-    if (onLogin) {
-      onLogin();
-    } else {
-      // Default navigation based on user type
-      if (userType === 'technician') {
-        router.push('/technician/dashboard' as any);
+  const handleLogin = async () => {
+    if (!password.trim()) {
+      setErrorMessage('Vui lòng nhập mật khẩu để tiếp tục');
+      setShowError(true);
+      
+      // Auto-hide after 3 seconds
+      setTimeout(() => {
+        setShowError(false);
+        setErrorMessage('');
+      }, 3000);
+      return;
+    }
+
+    try {
+      // Clear any previous errors
+      clearError();
+      setShowError(false);
+      setErrorMessage('');
+      
+      // Call API login
+      await login({ email: email.trim(), password }, userType);
+      
+      // Success - call onLogin callback if provided
+      if (onLogin) {
+        onLogin();
       } else {
-        router.push('/customer/dashboard' as any);
+        // Default navigation based on user type
+        if (userType === 'technician') {
+          router.replace('/technician/dashboard' as any);
+        } else {
+          router.replace('/(tabs)/' as any);
+        }
       }
+      
+      // Development logging - helpful for debugging
+      if (__DEV__) {
+        console.group('✅ Login Successful');
+        console.log('📧 Email:', email);
+        console.log('👤 User Type:', userType);
+        console.log('🎯 Navigation:', userType === 'technician' ? '/technician/dashboard' : '/(tabs)/');
+        console.groupEnd();
+      }
+    } catch (error: any) {
+      // Extract meaningful error message for user
+      let userErrorMessage = '';
+      
+      if (error.status_code === 401) {
+        userErrorMessage = 'Email hoặc mật khẩu không chính xác';
+      } else if (error.status_code === 404) {
+        userErrorMessage = 'Tài khoản không tồn tại';
+      } else if (error.status_code === 400) {
+        userErrorMessage = 'Thông tin đăng nhập không hợp lệ';
+      } else if (error.status_code === 0) {
+        userErrorMessage = 'Không thể kết nối đến server';
+      } else {
+        userErrorMessage = 'Đã có lỗi xảy ra, vui lòng thử lại';
+      }
+      
+      // Show professional error message
+      setErrorMessage(userErrorMessage);
+      setShowError(true);
+      
+      // Development logging - helpful for debugging
+      if (__DEV__) {
+        console.group('🔐 Login Failed');
+        console.log('📧 Email:', email);
+        console.log('📊 Status Code:', error.status_code);
+        console.log('💬 User Message:', userErrorMessage);
+        console.log('🔍 Original Error:', error.message || error);
+        console.groupEnd();
+      }
+      
+      // Auto-hide error after 5 seconds
+      setTimeout(() => {
+        setShowError(false);
+        setErrorMessage('');
+      }, 5000);
     }
   };
 
   const handleSocialLogin = (provider: string) => {
-    console.log('Social login with:', provider);
+    if (__DEV__) {
+      logger.info('Social login with:', provider);
+    }
     // TODO: Implement social login
   };
 
   const handleContinue = () => {
-    if (!phoneNumber.trim()) {
-      alert('Vui lòng nhập số điện thoại');
+    if (!email.trim()) {
+      setErrorMessage('Vui lòng nhập email');
+      setShowError(true);
       return;
     }
     
-    // Basic phone number validation
-    const phoneRegex = /^[0-9]{10,11}$/;
-    if (!phoneRegex.test(phoneNumber.replace(/\s+/g, ''))) {
-      alert('Số điện thoại không hợp lệ. Vui lòng nhập 10-11 chữ số');
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setErrorMessage('Định dạng email không hợp lệ');
+      setShowError(true);
+      
+      // Auto-hide after 3 seconds
+      setTimeout(() => {
+        setShowError(false);
+        setErrorMessage('');
+      }, 3000);
       return;
+    }
+    
+    // Clear any existing errors
+    setShowError(false);
+    setErrorMessage('');
+    
+    // Development logging
+    if (__DEV__) {
+      console.log('📧➡️📱 Email step completed, moving to password step');
     }
     
     // Professional slide transition to password step
     Animated.parallel([
-      // Slide phone step out to the left
+      // Slide email step out to the left
       Animated.timing(phoneStepTransform, {
         toValue: -width * 0.3,
         duration: 400,
         easing: Easing.bezier(0.25, 0.46, 0.45, 0.94),
         useNativeDriver: true,
       }),
-      // Fade out phone step
+      // Fade out email step
       Animated.timing(phoneStepOpacity, {
         toValue: 0,
         duration: 300,
@@ -293,8 +365,8 @@ export default function LoginScreen({
         useNativeDriver: true,
       }),
     ]).start(() => {
-      setCurrentStep('phone');
-      // Reset phone step position and animate in
+      setCurrentStep('email');
+      // Reset email step position and animate in
       phoneStepTransform.setValue(-width * 0.3);
       Animated.parallel([
         // Slide phone step in from left
@@ -374,11 +446,11 @@ export default function LoginScreen({
             </Text>
             <Animated.View style={{ opacity: titleOpacity }}>
               <Text style={styles.title}>
-                {currentStep === 'phone' ? 'Đăng Nhập' : 'Nhập Mật Khẩu'}
+                {currentStep === 'email' ? 'Đăng Nhập' : 'Nhập Mật Khẩu'}
               </Text>
               <Text style={styles.subtitle}>
-                {currentStep === 'phone' 
-                  ? (subtitle || (userType === 'technician' ? 'Đăng nhập để bắt đầu công việc' : 'App trong tay thợ tới ngay'))
+                {currentStep === 'email' 
+                  ? (subtitle || (userType === 'technician' ? 'Đăng nhập để bắt đầu công việc' : 'EzyFix - App trong tay thợ tới ngay'))
                   : 'Vui lòng nhập mật khẩu để hoàn tất đăng nhập'
                 }
               </Text>
@@ -395,8 +467,8 @@ export default function LoginScreen({
             ]}
           >
             {/* Conditional Step Display */}
-            {currentStep === 'phone' ? (
-              // Step 1: Phone Number Input
+            {currentStep === 'email' ? (
+              // Step 1: Email Input
               <Animated.View 
                 style={[
                   styles.stepContainer,
@@ -413,31 +485,42 @@ export default function LoginScreen({
                 ]}
               >
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Số điện thoại</Text>
+                  <Text style={styles.inputLabel}>Email</Text>
                   <View style={styles.phoneInputContainer}>
-                    {/* Country Code Picker */}
-                    <TouchableOpacity 
-                      style={styles.countryCodeButton}
-                      onPress={() => setShowCountryPicker(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.flagText}>{selectedCountry.flag}</Text>
-                      <Text style={styles.dialCodeText}>{selectedCountry.dialCode}</Text>
-                      <Text style={styles.chevronDown}>▼</Text>
-                    </TouchableOpacity>
-                    
-                    {/* Phone Number Input */}
+                    {/* Email Input */}
                     <TextInput
-                      style={styles.phoneTextInput}
-                      placeholder="Nhập số điện thoại"
+                      style={[
+                        styles.phoneTextInput, 
+                        { flex: 1, borderLeftWidth: 0 },
+                        showError && styles.inputError
+                      ]}
+                      placeholder="Nhập địa chỉ email"
                       placeholderTextColor="#94a3b8"
-                      value={phoneNumber}
-                      onChangeText={setPhoneNumber}
-                      keyboardType="phone-pad"
-                      autoComplete="tel"
-                      autoFocus={currentStep === 'phone'}
+                      value={email}
+                      onChangeText={(text) => {
+                        setEmail(text);
+                        // Clear error when user starts typing
+                        if (showError) {
+                          setShowError(false);
+                          setErrorMessage('');
+                        }
+                      }}
+                      keyboardType="email-address"
+                      autoComplete="email"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoFocus={currentStep === 'email'}
+                      editable={!isLoading}
                     />
                   </View>
+                  
+                  {/* Inline Error Message for Email */}
+                  {showError && currentStep === 'email' && (
+                    <Animated.View style={styles.inlineError}>
+                      <Text style={styles.errorIcon}>⚠️</Text>
+                      <Text style={styles.errorText}>{errorMessage}</Text>
+                    </Animated.View>
+                  )}
                 </View>
               </Animated.View>
             ) : (
@@ -457,14 +540,14 @@ export default function LoginScreen({
                   }
                 ]}
               >
-                {/* Phone Number Display */}
+                {/* Email Display */}
                 <TouchableOpacity 
                   style={styles.phoneNumberDisplay}
                   onPress={handleBackToPhone}
                   activeOpacity={0.7}
                 >
                   <Text style={styles.phoneNumberText}>
-                    ({selectedCountry.dialCode}) {phoneNumber}
+                    {email}
                   </Text>
                   <Text style={styles.changePhoneText}>Thay đổi</Text>
                 </TouchableOpacity>
@@ -474,14 +557,26 @@ export default function LoginScreen({
                   <Text style={styles.inputLabel}>Mật khẩu</Text>
                   <View style={styles.passwordContainer}>
                     <TextInput
-                      style={[styles.textInput, styles.passwordInput]}
+                      style={[
+                        styles.textInput, 
+                        styles.passwordInput,
+                        showError && styles.inputError
+                      ]}
                       placeholder="Nhập mật khẩu"
                       placeholderTextColor="#94a3b8"
                       value={password}
-                      onChangeText={setPassword}
+                      onChangeText={(text) => {
+                        setPassword(text);
+                        // Clear error when user starts typing
+                        if (showError) {
+                          setShowError(false);
+                          setErrorMessage('');
+                        }
+                      }}
                       secureTextEntry={!showPassword}
                       autoComplete="password"
                       autoFocus={currentStep === 'password'}
+                      editable={!isLoading}
                     />
                     <TouchableOpacity 
                       style={styles.eyeButton}
@@ -493,6 +588,14 @@ export default function LoginScreen({
                       </Text>
                     </TouchableOpacity>
                   </View>
+                  
+                  {/* Inline Error Message for Password */}
+                  {showError && currentStep === 'password' && (
+                    <Animated.View style={styles.inlineError}>
+                      <Text style={styles.errorIcon}>⚠️</Text>
+                      <Text style={styles.errorText}>{errorMessage}</Text>
+                    </Animated.View>
+                  )}
                 </View>
 
                 {/* Forgot Password */}
@@ -521,12 +624,13 @@ export default function LoginScreen({
               }
             ]}
           >
-            {currentStep === 'phone' ? (
-              // Step 1: Show "Tiếp theo" if phone number entered, disabled "Đăng nhập" if empty
-              phoneNumber.trim() ? (
+            {currentStep === 'email' ? (
+              // Step 1: Show "Tiếp theo" if email entered, disabled "Đăng nhập" if empty
+              email.trim() && !isLoading ? (
                 <TouchableOpacity
                   style={styles.continueButton}
                   onPress={handleContinue}
+                  disabled={isLoading}
                   activeOpacity={0.9}
                 >
                   <Text style={styles.continueButtonText}>Tiếp theo</Text>
@@ -535,8 +639,8 @@ export default function LoginScreen({
                 <TouchableOpacity
                   style={[styles.loginButton, styles.disabledButton]}
                   onPress={() => {
-                    // Do nothing or show alert to enter phone number first
-                    alert('Vui lòng nhập số điện thoại để tiếp tục');
+                    // Do nothing or show alert to enter email first
+                    alert('Vui lòng nhập email để tiếp tục');
                   }}
                   activeOpacity={0.7}
                 >
@@ -546,17 +650,26 @@ export default function LoginScreen({
             ) : (
               // Step 2: Always show "Đăng nhập"
               <TouchableOpacity
-                style={styles.loginButton}
+                style={[
+                  styles.loginButton,
+                  (isLoading || !password.trim()) && styles.disabledButton
+                ]}
                 onPress={handleLogin}
+                disabled={isLoading || !password.trim()}
                 activeOpacity={0.9}
               >
-                <Text style={styles.loginButtonText}>Đăng nhập</Text>
+                <Text style={[
+                  styles.loginButtonText,
+                  (isLoading || !password.trim()) && styles.disabledButtonText
+                ]}>
+                  {isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
+                </Text>
               </TouchableOpacity>
             )}
           </Animated.View>
 
-          {/* Divider & Social Login - Only show in phone step */}
-          {currentStep === 'phone' && (
+          {/* Divider & Social Login - Only show in email step */}
+          {currentStep === 'email' && (
             <>
               <View style={styles.divider}>
                 <View style={styles.dividerLine} />
@@ -608,53 +721,6 @@ export default function LoginScreen({
 
         </View>
       </SafeAreaView>
-
-      {/* Country Code Picker Modal */}
-      <Modal
-        visible={showCountryPicker}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowCountryPicker(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {/* Modal Header */}
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chọn quốc gia</Text>
-              <TouchableOpacity 
-                onPress={() => setShowCountryPicker(false)}
-                style={styles.modalCloseButton}
-              >
-                <Text style={styles.modalCloseText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Country List */}
-            <FlatList
-              data={COUNTRY_CODES}
-              keyExtractor={(item) => item.code}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.countryItem}
-                  onPress={() => {
-                    setSelectedCountry(item);
-                    setShowCountryPicker(false);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.countryFlag}>{item.flag}</Text>
-                  <Text style={styles.countryName}>{item.name}</Text>
-                  <Text style={styles.countryDialCode}>{item.dialCode}</Text>
-                  {selectedCountry.code === item.code && (
-                    <Text style={styles.checkMark}>✓</Text>
-                  )}
-                </TouchableOpacity>
-              )}
-              ItemSeparatorComponent={() => <View style={styles.separator} />}
-            />
-          </View>
-        </View>
-      </Modal>
     </Animated.View>
   );
 }
@@ -1111,5 +1177,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     borderRadius: 3,
     opacity: 0.3,
+  },
+
+  // Inline Error Styles - Subtle và Professional
+  inputError: {
+    borderColor: '#fca5a5',
+    borderWidth: 1.5,
+    backgroundColor: '#fef7f7',
+  },
+  inlineError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#fef2f2',
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#f87171',
+  },
+  errorIcon: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#dc2626',
+    lineHeight: 18,
   },
 });

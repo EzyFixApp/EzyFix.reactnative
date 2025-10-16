@@ -9,8 +9,14 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { authService } from '../lib/api/auth';
+import type { 
+  SendEmailOTPRequest, 
+  ValidateOTPRequest, 
+  ForgotPasswordResetRequest 
+} from '../types/api';
 
 interface ForgotPasswordScreenProps {
   onBack: () => void;
@@ -32,6 +38,12 @@ export default function ForgotPasswordScreen({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [countdown, setCountdown] = useState(60);
   const [canResend, setCanResend] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  
+  // Loading and error states
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   // Animation values
   const contactStepOpacity = useRef(new Animated.Value(1)).current;
@@ -56,73 +68,89 @@ export default function ForgotPasswordScreen({
     }
   }, [countdown, currentStep]);
 
-  // Validate contact (phone or email)
+  // Validate contact (email only)
   const validateContact = (text: string): boolean => {
-    const phoneRegex = /^[0-9]{9,10}$/;
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return phoneRegex.test(text) || emailRegex.test(text);
+    return emailRegex.test(text);
   };
 
   // Handle continue from contact step
-  const handleContinue = () => {
+  const handleContinue = async () => {
+    setError('');
+    
     if (!validateContact(contact)) {
-      Alert.alert('Lỗi', 'Vui lòng nhập số điện thoại hoặc email hợp lệ');
+      setError('Vui lòng nhập email hợp lệ');
       return;
     }
 
-    // Animate transition to OTP step
-    Animated.parallel([
-      Animated.timing(contactStepOpacity, {
-        toValue: 0,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-      Animated.timing(contactStepTransform, {
-        toValue: -100,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-      Animated.timing(titleOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(titleScale, {
-        toValue: 0.95,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setCurrentStep('otp');
-      setCountdown(60);
-      setCanResend(false);
+    setIsLoading(true);
 
-      // Reset and animate in OTP step
+    try {
+      const sendOTPData: SendEmailOTPRequest = {
+        email: contact.trim().toLowerCase(),
+        purpose: 'forgot-password'
+      };
+
+      await authService.sendForgotPasswordOTP(sendOTPData);
+
+      // If successful, animate transition to OTP step
       Animated.parallel([
-        Animated.timing(otpStepOpacity, {
-          toValue: 1,
-          duration: 500,
+        Animated.timing(contactStepOpacity, {
+          toValue: 0,
+          duration: 400,
           useNativeDriver: true,
         }),
-        Animated.timing(otpStepTransform, {
-          toValue: 0,
-          duration: 500,
+        Animated.timing(contactStepTransform, {
+          toValue: -100,
+          duration: 400,
           useNativeDriver: true,
         }),
         Animated.timing(titleOpacity, {
-          toValue: 1,
-          duration: 300,
-          delay: 100,
+          toValue: 0,
+          duration: 200,
           useNativeDriver: true,
         }),
         Animated.timing(titleScale, {
-          toValue: 1,
-          duration: 300,
-          delay: 100,
+          toValue: 0.95,
+          duration: 200,
           useNativeDriver: true,
         }),
-      ]).start();
-    });
+      ]).start(() => {
+        setCurrentStep('otp');
+        setCountdown(60);
+        setCanResend(false);
+
+        // Reset and animate in OTP step
+        Animated.parallel([
+          Animated.timing(otpStepOpacity, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(otpStepTransform, {
+            toValue: 0,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(titleOpacity, {
+            toValue: 1,
+            duration: 300,
+            delay: 100,
+            useNativeDriver: true,
+          }),
+          Animated.timing(titleScale, {
+            toValue: 1,
+            duration: 300,
+            delay: 100,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
+    } catch (error: any) {
+      setError(error.message || 'Gửi email reset mật khẩu thất bại');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Handle OTP input change
@@ -138,90 +166,151 @@ export default function ForgotPasswordScreen({
   };
 
   // Handle OTP verification
-  const handleVerifyOtp = () => {
+  const handleVerifyOtp = async () => {
+    setError('');
     const otpCode = otp.join('');
+    
     if (otpCode.length !== 6) {
-      Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ 6 chữ số OTP');
+      setError('Vui lòng nhập đầy đủ 6 chữ số OTP');
       return;
     }
 
-    // Animate transition to new password step
-    Animated.parallel([
-      Animated.timing(otpStepOpacity, {
-        toValue: 0,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-      Animated.timing(otpStepTransform, {
-        toValue: -100,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-      Animated.timing(titleOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(titleScale, {
-        toValue: 0.95,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setCurrentStep('newPassword');
+    setIsLoading(true);
 
-      // Reset and animate in password step
+    try {
+      // Verify OTP for password reset
+      const validateOTPData: ValidateOTPRequest = {
+        email: contact.trim().toLowerCase(),
+        otp: otpCode,
+        purpose: 'forgot-password'
+      };
+
+      await authService.validateForgotPasswordOTP(validateOTPData);
+
+      // If successful, animate transition to new password step
       Animated.parallel([
-        Animated.timing(passwordStepOpacity, {
-          toValue: 1,
-          duration: 500,
+        Animated.timing(otpStepOpacity, {
+          toValue: 0,
+          duration: 400,
           useNativeDriver: true,
         }),
-        Animated.timing(passwordStepTransform, {
-          toValue: 0,
-          duration: 500,
+        Animated.timing(otpStepTransform, {
+          toValue: -100,
+          duration: 400,
           useNativeDriver: true,
         }),
         Animated.timing(titleOpacity, {
-          toValue: 1,
-          duration: 300,
-          delay: 100,
+          toValue: 0,
+          duration: 200,
           useNativeDriver: true,
         }),
         Animated.timing(titleScale, {
-          toValue: 1,
-          duration: 300,
-          delay: 100,
+          toValue: 0.95,
+          duration: 200,
           useNativeDriver: true,
         }),
-      ]).start();
-    });
+      ]).start(() => {
+        setCurrentStep('newPassword');
+
+        // Reset and animate in password step
+        Animated.parallel([
+          Animated.timing(passwordStepOpacity, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(passwordStepTransform, {
+            toValue: 0,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(titleOpacity, {
+            toValue: 1,
+            duration: 300,
+            delay: 100,
+            useNativeDriver: true,
+          }),
+          Animated.timing(titleScale, {
+            toValue: 1,
+            duration: 300,
+            delay: 100,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
+    } catch (error: any) {
+      setError(error.message || 'Mã OTP không chính xác');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Handle resend OTP
-  const handleResendOtp = () => {
-    setCountdown(60);
-    setCanResend(false);
-    setOtp(['', '', '', '', '', '']);
-    Alert.alert('Thành công', 'Mã OTP đã được gửi lại');
+  const handleResendOtp = async () => {
+    setError('');
+    setSuccessMessage('');
+    setIsLoading(true);
+    
+    try {
+      const forgotPasswordData: SendEmailOTPRequest = {
+        email: contact.trim().toLowerCase(),
+        purpose: 'forgot-password'
+      };
+
+      await authService.sendForgotPasswordOTP(forgotPasswordData);
+      
+      setCountdown(60);
+      setCanResend(false);
+      setOtp(['', '', '', '', '', '']);
+      
+      setSuccessMessage('Mã OTP đã được gửi lại đến email của bạn');
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccessMessage('');
+      }, 3000);
+    } catch (error: any) {
+      setError(error.message || 'Không thể gửi lại OTP');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Handle reset password
-  const handleResetPassword = () => {
+  const handleResetPassword = async () => {
+    setError('');
+    
     if (newPassword.length < 6) {
-      Alert.alert('Lỗi', 'Mật khẩu phải có ít nhất 6 ký tự');
+      setError('Mật khẩu phải có ít nhất 6 ký tự');
       return;
     }
     if (newPassword !== confirmPassword) {
-      Alert.alert('Lỗi', 'Mật khẩu xác nhận không khớp');
+      setError('Mật khẩu xác nhận không khớp');
       return;
     }
 
-    Alert.alert(
-      'Thành công',
-      'Đổi mật khẩu thành công! Vui lòng đăng nhập lại.',
-      [{ text: 'OK', onPress: onSuccess }]
-    );
+    setIsLoading(true);
+
+    try {
+      const resetPasswordData: ForgotPasswordResetRequest = {
+        email: contact.trim().toLowerCase(),
+        newPassword,
+        otp: otp.join(''),
+      };
+
+      await authService.resetForgotPassword(resetPasswordData);
+
+      setIsSuccess(true);
+      
+      // Auto navigate back after 3 seconds
+      setTimeout(() => {
+        onSuccess();
+      }, 3000);
+    } catch (error: any) {
+      setError(error.message || 'Đổi mật khẩu thất bại');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Handle back button
@@ -329,9 +418,9 @@ export default function ForgotPasswordScreen({
   const getSubtitle = () => {
     switch (currentStep) {
       case 'contact':
-        return 'Nhập số điện thoại hoặc email để nhận mã OTP';
+        return 'Nhập email để nhận mã OTP reset mật khẩu';
       case 'otp':
-        return `Chúng tôi đã gửi mã OTP đến ${contact}`;
+        return `Chúng tôi đã gửi mã OTP đến email ${contact}`;
       case 'newPassword':
         return 'Vui lòng nhập mật khẩu mới của bạn';
     }
@@ -352,19 +441,51 @@ export default function ForgotPasswordScreen({
 
         {/* Content */}
         <View style={styles.content}>
-          {/* Title */}
-          <Animated.View
-            style={[
-              styles.titleContainer,
-              {
-                opacity: titleOpacity,
-                transform: [{ scale: titleScale }],
-              },
-            ]}
-          >
-            <Text style={styles.title}>{getTitle()}</Text>
-            <Text style={styles.subtitle}>{getSubtitle()}</Text>
-          </Animated.View>
+          {/* Success Screen */}
+          {isSuccess ? (
+            <View style={styles.successScreenContainer}>
+              <View style={styles.successIconContainer}>
+                <Text style={styles.successIcon}>✅</Text>
+              </View>
+              <Text style={styles.successTitle}>Đổi mật khẩu thành công!</Text>
+              <Text style={styles.successDescription}>
+                Mật khẩu của bạn đã được cập nhật.{'\n'}
+                Bạn sẽ được chuyển đến màn hình đăng nhập.
+              </Text>
+              <View style={styles.successFooter}>
+                <ActivityIndicator color="#609CEF" size="small" />
+                <Text style={styles.successFooterText}>Đang chuyển hướng...</Text>
+              </View>
+            </View>
+          ) : (
+            <>
+              {/* Title */}
+              <Animated.View
+                style={[
+                  styles.titleContainer,
+                  {
+                    opacity: titleOpacity,
+                    transform: [{ scale: titleScale }],
+                  },
+                ]}
+              >
+                <Text style={styles.title}>{getTitle()}</Text>
+                <Text style={styles.subtitle}>{getSubtitle()}</Text>
+              </Animated.View>
+
+              {/* Error Display */}
+              {error ? (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
+
+              {/* Success Message Display */}
+              {successMessage ? (
+                <View style={styles.successContainer}>
+                  <Text style={styles.successText}>{successMessage}</Text>
+                </View>
+              ) : null}
 
           {/* Step 1: Contact Input */}
           {currentStep === 'contact' && (
@@ -380,12 +501,13 @@ export default function ForgotPasswordScreen({
               <View style={styles.inputContainer}>
                 <TextInput
                   style={styles.input}
-                  placeholder="Số điện thoại hoặc Email"
+                  placeholder="Nhập email của bạn"
                   placeholderTextColor="#94a3b8"
                   value={contact}
                   onChangeText={setContact}
-                  keyboardType="default"
+                  keyboardType="email-address"
                   autoCapitalize="none"
+                  autoComplete="email"
                   autoFocus
                 />
               </View>
@@ -393,19 +515,23 @@ export default function ForgotPasswordScreen({
               <View style={styles.noteContainer}>
                 <Text style={styles.noteIcon}>ℹ️</Text>
                 <Text style={styles.noteText}>
-                  Chúng tôi sẽ gửi mã OTP về số điện thoại hoặc email của bạn để xác thực
+                  Chúng tôi sẽ gửi mã OTP về email của bạn để xác thực
                 </Text>
               </View>
 
               <TouchableOpacity
                 style={[
                   styles.button,
-                  !validateContact(contact) && styles.disabledButton,
+                  (!validateContact(contact) || isLoading) && styles.disabledButton,
                 ]}
                 onPress={handleContinue}
-                disabled={!validateContact(contact)}
+                disabled={!validateContact(contact) || isLoading}
               >
-                <Text style={styles.buttonText}>Tiếp theo</Text>
+                {isLoading ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.buttonText}>Tiếp theo</Text>
+                )}
               </TouchableOpacity>
             </Animated.View>
           )}
@@ -442,10 +568,15 @@ export default function ForgotPasswordScreen({
               </View>
 
               <View style={styles.resendContainer}>
-                {canResend ? (
+                {canResend && !isLoading ? (
                   <TouchableOpacity onPress={handleResendOtp}>
                     <Text style={styles.resendTextActive}>Gửi lại mã OTP</Text>
                   </TouchableOpacity>
+                ) : isLoading ? (
+                  <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                    <ActivityIndicator size="small" color="#609CEF" />
+                    <Text style={styles.resendText}>Đang gửi...</Text>
+                  </View>
                 ) : (
                   <Text style={styles.resendText}>
                     Gửi lại mã sau {countdown}s
@@ -456,12 +587,16 @@ export default function ForgotPasswordScreen({
               <TouchableOpacity
                 style={[
                   styles.button,
-                  otp.join('').length !== 6 && styles.disabledButton,
+                  (otp.join('').length !== 6 || isLoading) && styles.disabledButton,
                 ]}
                 onPress={handleVerifyOtp}
-                disabled={otp.join('').length !== 6}
+                disabled={otp.join('').length !== 6 || isLoading}
               >
-                <Text style={styles.buttonText}>Xác nhận</Text>
+                {isLoading ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.buttonText}>Xác nhận</Text>
+                )}
               </TouchableOpacity>
             </Animated.View>
           )}
@@ -514,17 +649,23 @@ export default function ForgotPasswordScreen({
               <TouchableOpacity
                 style={[
                   styles.button,
-                  (newPassword.length < 6 || newPassword !== confirmPassword) &&
+                  (newPassword.length < 6 || newPassword !== confirmPassword || isLoading) &&
                     styles.disabledButton,
                 ]}
                 onPress={handleResetPassword}
                 disabled={
-                  newPassword.length < 6 || newPassword !== confirmPassword
+                  newPassword.length < 6 || newPassword !== confirmPassword || isLoading
                 }
               >
-                <Text style={styles.buttonText}>Đổi mật khẩu</Text>
+                {isLoading ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.buttonText}>Đổi mật khẩu</Text>
+                )}
               </TouchableOpacity>
             </Animated.View>
+          )}
+          </>
           )}
         </View>
       </KeyboardAvoidingView>
@@ -696,5 +837,84 @@ const styles = StyleSheet.create({
     backgroundColor: '#e2e8f0',
     shadowOpacity: 0,
     elevation: 0,
+  },
+  // Error styles
+  errorContainer: {
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 20,
+    marginBottom: 16,
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  // Success styles
+  successContainer: {
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 20,
+    marginBottom: 16,
+  },
+  successText: {
+    color: '#166534',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  // Success Screen styles
+  successScreenContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  successIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#f0fdf4',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+    borderWidth: 2,
+    borderColor: '#bbf7d0',
+  },
+  successIcon: {
+    fontSize: 48,
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1f2937',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  successDescription: {
+    fontSize: 16,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  successFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  successFooterText: {
+    fontSize: 16,
+    color: '#609CEF',
+    fontWeight: '500',
   },
 });

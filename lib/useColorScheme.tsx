@@ -2,6 +2,7 @@ import * as NavigationBar from 'expo-navigation-bar';
 import { useColorScheme as useNativewindColorScheme } from 'nativewind';
 import * as React from 'react';
 import { Platform } from 'react-native';
+import { logger } from './logger';
 
 import { COLORS } from '~/theme/colors';
 
@@ -14,7 +15,7 @@ function useColorScheme() {
     try {
       await setNavigationBar(colorScheme);
     } catch (error) {
-      console.error('useColorScheme.tsx", "setColorScheme', error);
+      logger.error('useColorScheme.tsx", "setColorScheme', error);
     }
   }
 
@@ -39,7 +40,7 @@ function useInitialAndroidBarSync() {
   React.useEffect(() => {
     if (Platform.OS !== 'android') return;
     setNavigationBar(colorScheme).catch((error) => {
-      console.error('useColorScheme.tsx", "useInitialColorScheme', error);
+      logger.error('useColorScheme.tsx", "useInitialColorScheme', error);
     });
   }, [colorScheme]);
 }

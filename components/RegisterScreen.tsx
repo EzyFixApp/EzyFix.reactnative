@@ -13,8 +13,11 @@ import {
   ScrollView,
   Modal,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
+import { authService } from '../lib/api/auth';
+import type { RegisterRequest } from '../types/api';
 
 interface CountryCode {
   name: string;
@@ -54,18 +57,26 @@ export default function RegisterScreen({
   userType,
 }: RegisterScreenProps) {
   // Form states
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   
+  // OTP states
+  const [showOTPModal, setShowOTPModal] = useState(false);
+  const [otp, setOTP] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  
   // UI states
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState<CountryCode>(COUNTRY_CODES[0]);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -103,7 +114,8 @@ export default function RegisterScreen({
 
   const isFormValid = (): boolean => {
     return (
-      fullName.trim().length >= 2 &&
+      firstName.trim().length >= 1 &&
+      lastName.trim().length >= 1 &&
       validatePhone(phoneNumber) &&
       validateEmail(email) &&
       validatePassword(password) &&
@@ -113,29 +125,113 @@ export default function RegisterScreen({
   };
 
   // Handle registration
-  const handleRegister = () => {
+  const handleRegister = async () => {
+    setError('');
+    
     if (!isFormValid()) {
-      if (fullName.trim().length < 2) {
-        Alert.alert('Lỗi', 'Vui lòng nhập họ tên đầy đủ');
+      if (firstName.trim().length < 1) {
+        setError('Vui lòng nhập tên');
+      } else if (lastName.trim().length < 1) {
+        setError('Vui lòng nhập họ');
       } else if (!validatePhone(phoneNumber)) {
-        Alert.alert('Lỗi', 'Số điện thoại không hợp lệ (9-10 chữ số)');
+        setError('Số điện thoại không hợp lệ (9-10 chữ số)');
       } else if (!validateEmail(email)) {
-        Alert.alert('Lỗi', 'Email không hợp lệ');
+        setError('Email không hợp lệ');
       } else if (!validatePassword(password)) {
-        Alert.alert('Lỗi', 'Mật khẩu phải có ít nhất 6 ký tự');
+        setError('Mật khẩu phải có ít nhất 6 ký tự');
       } else if (password !== confirmPassword) {
-        Alert.alert('Lỗi', 'Mật khẩu xác nhận không khớp');
+        setError('Mật khẩu xác nhận không khớp');
       } else if (!agreedToTerms) {
-        Alert.alert('Lỗi', 'Vui lòng đồng ý với điều khoản dịch vụ');
+        setError('Vui lòng đồng ý với điều khoản dịch vụ');
       }
       return;
     }
 
-    Alert.alert(
-      'Thành công',
-      'Đăng ký thành công! Vui lòng đăng nhập.',
-      [{ text: 'OK', onPress: onSuccess }]
-    );
+    setIsLoading(true);
+    
+    try {
+      const registerData: RegisterRequest = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        confirmPassword,
+        phoneNumber: `${selectedCountry.dialCode}${phoneNumber}`,
+        userType,
+        acceptTerms: agreedToTerms,
+      };
+
+      const response = await authService.register(registerData);
+      
+      if (response.requiresEmailVerification) {
+        // Send OTP
+        await authService.sendOTP({
+          email: email.trim().toLowerCase(),
+          purpose: 'registration'
+        });
+        
+        setShowOTPModal(true);
+      } else {
+        // Registration complete
+        Alert.alert(
+          'Thành công',
+          'Đăng ký thành công! Vui lòng đăng nhập.',
+          [{ text: 'OK', onPress: onSuccess }]
+        );
+      }
+    } catch (error: any) {
+      setError(error.message || 'Đăng ký thất bại. Vui lòng thử lại.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle OTP verification
+  const handleVerifyOTP = async () => {
+    if (otp.length !== 6) {
+      setError('Vui lòng nhập đầy đủ 6 chữ số');
+      return;
+    }
+
+    setIsVerifying(true);
+    setError('');
+
+    try {
+      const response = await authService.verifyOTP({
+        email: email.trim().toLowerCase(),
+        otp,
+        purpose: 'registration'
+      });
+
+      if (response.isValid) {
+        setShowOTPModal(false);
+        Alert.alert(
+          'Thành công',
+          'Xác thực email thành công! Vui lòng đăng nhập.',
+          [{ text: 'OK', onPress: onSuccess }]
+        );
+      } else {
+        setError('Mã OTP không chính xác');
+      }
+    } catch (error: any) {
+      setError(error.message || 'Xác thực thất bại. Vui lòng thử lại.');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // Resend OTP
+  const handleResendOTP = async () => {
+    try {
+      await authService.sendOTP({
+        email: email.trim().toLowerCase(),
+        purpose: 'registration'
+      });
+      
+      Alert.alert('Thành công', 'Mã OTP mới đã được gửi đến email của bạn');
+    } catch (error: any) {
+      setError(error.message || 'Không thể gửi lại OTP');
+    }
   };
 
   return (
@@ -175,15 +271,35 @@ export default function RegisterScreen({
               </Text>
             </View>
 
-            {/* Full Name */}
+            {/* Error Display */}
+            {error ? (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
+
+            {/* First Name */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Họ và tên</Text>
+              <Text style={styles.inputLabel}>Tên</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Nhập họ và tên đầy đủ"
+                placeholder="Nhập tên của bạn"
                 placeholderTextColor="#94a3b8"
-                value={fullName}
-                onChangeText={setFullName}
+                value={firstName}
+                onChangeText={setFirstName}
+                autoCapitalize="words"
+              />
+            </View>
+
+            {/* Last Name */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Họ</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Nhập họ của bạn"
+                placeholderTextColor="#94a3b8"
+                value={lastName}
+                onChangeText={setLastName}
                 autoCapitalize="words"
               />
             </View>
@@ -295,12 +411,16 @@ export default function RegisterScreen({
             <TouchableOpacity
               style={[
                 styles.registerButton,
-                !isFormValid() && styles.disabledButton,
+                (!isFormValid() || isLoading) && styles.disabledButton,
               ]}
               onPress={handleRegister}
-              disabled={!isFormValid()}
+              disabled={!isFormValid() || isLoading}
             >
-              <Text style={styles.registerButtonText}>Đăng Ký</Text>
+              {isLoading ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.registerButtonText}>Đăng Ký</Text>
+              )}
             </TouchableOpacity>
 
             {/* Login Link */}
@@ -352,6 +472,72 @@ export default function RegisterScreen({
                 )}
                 ItemSeparatorComponent={() => <View style={styles.separator} />}
               />
+            </View>
+          </View>
+        </Modal>
+
+        {/* OTP Verification Modal */}
+        <Modal
+          visible={showOTPModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowOTPModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.otpModalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Xác thực Email</Text>
+                <TouchableOpacity
+                  style={styles.modalCloseButton}
+                  onPress={() => setShowOTPModal(false)}
+                >
+                  <Text style={styles.modalCloseText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              
+              <Text style={styles.otpDescription}>
+                Chúng tôi đã gửi mã xác thực 6 chữ số đến email:
+              </Text>
+              <Text style={styles.otpEmail}>{email}</Text>
+              
+              {error ? (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
+              
+              <TextInput
+                style={styles.otpInput}
+                placeholder="Nhập mã 6 chữ số"
+                placeholderTextColor="#94a3b8"
+                value={otp}
+                onChangeText={setOTP}
+                keyboardType="number-pad"
+                maxLength={6}
+                textAlign="center"
+              />
+              
+              <TouchableOpacity
+                style={[
+                  styles.verifyButton,
+                  (otp.length !== 6 || isVerifying) && styles.disabledButton,
+                ]}
+                onPress={handleVerifyOTP}
+                disabled={otp.length !== 6 || isVerifying}
+              >
+                {isVerifying ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.verifyButtonText}>Xác Thực</Text>
+                )}
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.resendButton}
+                onPress={handleResendOTP}
+              >
+                <Text style={styles.resendButtonText}>Gửi lại mã</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -651,5 +837,85 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#f1f5f9',
     marginLeft: 72,
+  },
+  // Error styles
+  errorContainer: {
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  // OTP Modal styles
+  otpModalContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 8,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  otpDescription: {
+    fontSize: 16,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 8,
+    lineHeight: 24,
+  },
+  otpEmail: {
+    fontSize: 16,
+    color: '#1f2937',
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  otpInput: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1f2937',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8fafc',
+    borderWidth: 2,
+    borderColor: '#e2e8f0',
+    borderRadius: 16,
+    textAlign: 'center',
+    letterSpacing: 8,
+    marginBottom: 24,
+  },
+  verifyButton: {
+    backgroundColor: '#609CEF',
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    shadowColor: '#609CEF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+    marginBottom: 16,
+  },
+  verifyButtonText: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  resendButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  resendButtonText: {
+    color: '#609CEF',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

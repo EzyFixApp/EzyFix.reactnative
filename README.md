@@ -305,7 +305,29 @@ EzyFix.reactnative/
 
 ---
 
-## 📞 Liên hệ
+## 📚 Documentation
+
+Tài liệu chi tiết được tổ chức trong folder [`docs/`](./docs/) theo chuyên mục:
+
+### � API Documentation
+- � [**API Integration Guide**](./docs/api/API_INTEGRATION.md) - Hướng dẫn tích hợp API
+- 📋 [**API Rules**](./docs/api/API_RULES.md) - Quy tắc viết API
+
+### 📱 Features Documentation  
+- 🔐 [**Authentication System**](./docs/features/AUTHENTICATION.md) - Hệ thống xác thực
+- 📱 [**Screen Documentation**](./docs/features/SCREEN_DOCUMENTATION.md) - Chi tiết tất cả màn hình
+
+### � Development Guidelines
+- 💎 [**Code Standards**](./docs/guidelines/CODE_STANDARDS.md) - Chuẩn viết code
+
+### 🔄 Updates & Changes
+- 🔄 [**Recent Updates**](./docs/updates/RECENT_UPDATES.md) - Cập nhật gần đây
+
+**📚 [Xem tất cả tài liệu](./docs/README.md)**
+
+---
+
+## �📞 Liên hệ
 
 - **Team:** EzyFix Development Team
 - **Repository:** [EzyFix.reactnative](https://github.com/EzyFixApp/EzyFix.reactnative)

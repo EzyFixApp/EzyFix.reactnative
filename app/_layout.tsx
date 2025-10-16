@@ -1,6 +1,8 @@
 import 'react-native-reanimated';
 import '../global.css';
 import 'expo-dev-client';
+// Development configuration
+import '../lib/devConfig';
 import { ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { Icon } from '@roninoss/icons';
 
