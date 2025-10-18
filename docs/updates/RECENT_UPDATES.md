@@ -2,9 +2,33 @@
 
 Các cập nhật gần đây cho EzyFix React Native App.
 
-## 📅 October 2025 - Authentication System Overhaul
+## 📅 October 18, 2025 - Authentication Flow Optimization
 
 ### 🎯 Major Changes
+
+#### 🔐 **Forgot Password Flow Refactoring**
+- ✅ **Separated OTP validation**: OTP validation riêng biệt với password reset
+- ✅ **Cleaner API flow**: `/api/v1/auth/forgot-password` không cần OTP parameter
+- ✅ **Better error handling**: Comprehensive Vietnamese error messages
+- ✅ **Professional UI**: App color scheme (#609CEF) consistent across all screens
+- ✅ **Auto-submit OTP**: Tự động submit khi nhập đủ 6 số
+
+#### 📱 **UI/UX Improvements** 
+- ✅ **Reusable OTP screen**: OTPVerificationScreen cho cả registration và password reset
+- ✅ **Modern design**: LoginScreen-inspired design cho reset password screens
+- ✅ **Smooth animations**: Slide, fade, và spring animations
+- ✅ **Success modals**: Professional animated feedback
+- ✅ **Header hiding**: Clean navigation without redundant headers
+
+#### � **Technical Improvements**
+- ✅ **Type updates**: `ForgotPasswordRequest.otp` optional
+- ✅ **Better navigation**: Email-only parameters cho reset screens
+- ✅ **Debug logging**: Comprehensive logging cho development
+- ✅ **Error categorization**: Specific error handling cho các trường hợp khác nhau
+
+## 📅 October 2025 - Authentication System Overhaul
+
+### 🎯 Previous Major Changes
 
 #### 🔐 **Authentication System Redesign**
 - ✅ **Email-only authentication**: Loại bỏ phone number support
@@ -12,12 +36,6 @@ Các cập nhật gần đây cho EzyFix React Native App.
 - ✅ **3-step forgot password**: Email → OTP → New Password
 - ✅ **Real API integration**: Kết nối với backend thực tế
 - ✅ **TypeScript support**: Type definitions đầy đủ
-
-#### 📱 **UI/UX Improvements**
-- ✅ **Consistent styling**: Professional error messages
-- ✅ **Loading states**: Proper loading indicators
-- ✅ **Input validation**: Real-time email validation
-- ✅ **Smooth animations**: Professional transitions
 
 ### 🏗️ **Code Architecture Updates**
 

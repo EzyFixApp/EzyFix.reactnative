@@ -20,9 +20,11 @@
 ### ✨ Tính năng chính
 - 🏠 **Trang chủ động** với animation chuyên nghiệp
 - 👥 **Đăng nhập phân vai trò** (Khách hàng/Thợ sửa chữa)
-- 🎨 **UI/UX hiện đại** với NativeWind
+- 🔐 **Authentication hoàn chỉnh** với OTP verification và forgot password
+- 🎨 **UI/UX hiện đại** với NativeWind và app color scheme (#609CEF)
 - ⚡ **Loading animation** mượt mà
-- 📱 **Responsive design** 
+- 📱 **Responsive design**
+- 🌍 **Vietnamese localization** cho error messages 
 
 ---
 

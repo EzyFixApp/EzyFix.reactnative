@@ -45,6 +45,7 @@ export default function LoginScreen({
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const headerAnim = React.useRef(new Animated.Value(-50)).current;
   const formAnim = React.useRef(new Animated.Value(30)).current;
+
   const buttonAnim = React.useRef(new Animated.Value(0.9)).current;
   const googleAnim = React.useRef(new Animated.Value(0.9)).current;
 

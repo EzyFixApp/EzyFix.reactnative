@@ -40,12 +40,30 @@ const [error, setError] = useState('');
 
 ### 🔄 ForgotPasswordScreen (`components/ForgotPasswordScreen.tsx`)
 - **3-step process**:
-  1. Nhập email → Send OTP
-  2. Nhập OTP → Verify
-  3. Đặt mật khẩu mới → Reset
+  1. Nhập email → Send OTP via `/api/v1/email/send-otp`
+  2. Nhập OTP → Verify via `/api/v1/otp/validate` 
+  3. Đặt mật khẩu mới → Reset via `/api/v1/auth/forgot-password` (no OTP needed)
 - **Email validation**: Chỉ accept email format
-- **OTP input**: 6-digit custom input với auto-focus
-- **Success feedback**: Professional success messages
+- **Separated OTP validation**: OTP được validate riêng, không gửi kèm reset password
+- **Professional UI**: App color scheme (#609CEF), animations, success modals
+- **Auto-submit OTP**: Tự động submit khi nhập đủ 6 số
+- **Vietnamese error handling**: Comprehensive error messages in Vietnamese
+
+### 🔢 OTPVerificationScreen (`components/OTPVerificationScreen.tsx`)
+- **Reusable component**: Dùng cho cả registration và password reset
+- **6-digit input**: Custom OTP input với auto-focus và auto-submit
+- **Real-time validation**: Validate OTP ngay khi nhập đủ 6 số
+- **Professional animations**: Slide, fade, và spring animations
+- **Countdown timer**: 60-second countdown cho resend OTP
+- **Purpose-based navigation**: Navigate khác nhau tùy theo purpose (registration/password-reset)
+
+### 🔐 ResetPasswordScreen (`app/customer|technician/reset-password.tsx`)
+- **Email-only parameter**: Chỉ nhận email từ navigation (không cần OTP)
+- **Password validation**: Minimum 6 characters, confirm password matching
+- **Modern UI**: LoginScreen-inspired design với app color scheme
+- **Professional success modal**: Animated success feedback với auto-redirect
+- **Error handling**: Chi tiết error messages bằng tiếng Việt
+- **Consistent design**: Matching typography, spacing, và animations across app
 
 ## 🔧 Service Layer
 
@@ -105,21 +123,33 @@ graph TD
     I -->|No| K[Retry OTP]
 ```
 
-### 3. 🔄 Forgot Password Flow
+### 3. 🔄 Forgot Password Flow (Updated)
 ```mermaid
 graph TD
-    A[User nhập email] --> B[Send OTP request]
+    A[User nhập email] --> B[Send OTP via /api/v1/email/send-otp]
     B --> C{Email exists?}
     C -->|Yes| D[OTP sent to email]
     C -->|No| E[Email not found error]
     D --> F[User nhập OTP]
-    F --> G[Validate OTP]
+    F --> G[Validate OTP via /api/v1/otp/validate]
     G --> H{OTP valid?}
-    H -->|Yes| I[Enter new password]
+    H -->|Yes| I[Navigate to Reset Password Screen]
     H -->|No| J[Invalid OTP error]
-    I --> K[Reset password]
-    K --> L[Success - Back to login]
+    I --> K[Enter new password]
+    K --> L[Submit via /api/v1/auth/forgot-password]
+    L --> M[Success - Auto redirect to login]
+    
+    Note1[OTP validation separated from password reset]
+    Note2[No OTP sent in forgot-password API call]
+    G -.-> Note1
+    L -.-> Note2
 ```
+
+**Key Changes:**
+- ✅ **Separated OTP validation**: `/api/v1/otp/validate` xử lý riêng
+- ✅ **No OTP in reset API**: `/api/v1/auth/forgot-password` chỉ cần `{email, newPassword}`
+- ✅ **Professional UI flow**: Consistent design across all screens
+- ✅ **Better UX**: Auto-submit OTP, proper loading states, Vietnamese errors
 
 ## 🎨 UX Design Principles
 

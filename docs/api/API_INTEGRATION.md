@@ -62,39 +62,45 @@ await authService.verifyOTP({
 });
 ```
 
-### 3. Forgot Password Flow
+### 3. Forgot Password Flow (Updated)
 ```typescript
 // Bước 1: Gửi OTP reset password
-await authService.sendForgotPasswordOTP({
+await authService.sendOtp({
   email: "user@example.com",
-  purpose: "forgot-password"
+  purpose: "password-reset"
 });
 
-// Bước 2: Verify OTP
-await authService.validateForgotPasswordOTP({
+// Bước 2: Validate OTP (separated from reset)
+const isValid = await authService.validateOtp({
   email: "user@example.com",
   otp: "123456", 
-  purpose: "forgot-password"
+  purpose: "password-reset"
 });
 
-// Bước 3: Reset password
-await authService.resetForgotPassword({
-  email: "user@example.com",
-  newPassword: "newPassword123",
-  otp: "123456"
-});
+// Bước 3: Reset password (NO OTP needed - validation done separately)
+if (isValid) {
+  await authService.forgotPassword({
+    email: "user@example.com",
+    newPassword: "newPassword123"
+    // otp: not needed anymore ✅
+  });
+}
 ```
+
+**Key Changes:**
+- ✅ **OTP validation separated**: Validate OTP trước khi reset
+- ✅ **No OTP in reset call**: `forgotPassword()` không cần OTP parameter
+- ✅ **Cleaner API flow**: Tách biệt validation và password reset
 
 ## 📦 Service Layer
 
 ### 🔧 Auth Service (`lib/api/auth.ts`)
 - `login()` - Đăng nhập
 - `register()` - Đăng ký
-- `sendForgotPasswordOTP()` - Gửi OTP forgot password
-- `validateForgotPasswordOTP()` - Verify OTP
-- `resetForgotPassword()` - Reset mật khẩu
-- `sendOTP()` - Gửi OTP chung
-- `verifyOTP()` - Verify OTP chung
+- `sendOtp()` - Gửi OTP (for both registration & password reset)
+- `validateOtp()` - Validate OTP (separated validation)
+- `forgotPassword()` - Reset mật khẩu (no OTP required)
+- `verifyAccount()` - Verify account registration
 
 ### 🌐 Base Service (`lib/api/base.ts`)
 - Xử lý HTTP requests

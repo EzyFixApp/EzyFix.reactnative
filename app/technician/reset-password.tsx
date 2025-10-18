@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,40 +13,40 @@ import {
   StatusBar,
   Dimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { authService } from '../lib/api/auth';
-import type { 
-  SendOtpRequest 
-} from '../types/api';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { authService } from '../../lib/api/auth';
+import type { ForgotPasswordRequest } from '../../types/api';
 
 const { width } = Dimensions.get('window');
 
-interface ForgotPasswordScreenProps {
-  onBack: () => void;
-  onSuccess: () => void;
-  userType: 'customer' | 'technician';
-}
-
-export default function ForgotPasswordScreen({
-  onBack,
-  onSuccess,
-  userType,
-}: ForgotPasswordScreenProps) {
+export default function TechnicianResetPasswordScreen() {
   const router = useRouter();
-  const [contact, setContact] = useState('');
+  const { email } = useLocalSearchParams<{ email: string }>();
   
-  // Loading and error states
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showSuccess, setShowSuccess] = useState(false);
 
   // Animation values
   const slideAnim = useRef(new Animated.Value(width)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const headerAnim = useRef(new Animated.Value(-50)).current;
   const formAnim = useRef(new Animated.Value(30)).current;
+  const successScale = useRef(new Animated.Value(0)).current;
+  const successOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     startEnterAnimation();
+    
+    // Debug logging to check parameters
+    if (__DEV__) {
+      console.group('🔍 Technician Reset Password Screen Parameters');
+      console.log('📧 Email:', email);
+      console.log('✅ Email present:', !!email);
+      console.groupEnd();
+    }
   }, []);
 
   const startEnterAnimation = () => {
@@ -74,60 +74,100 @@ export default function ForgotPasswordScreen({
     ]).start();
   };
 
-  // Validate contact (email only) - more lenient validation
-  const validateContact = (text: string): boolean => {
-    if (!text || text.trim().length === 0) return false;
-    
-    // More lenient email regex
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const isValid = emailRegex.test(text.trim());
-    
-    if (__DEV__) {
-      console.log('📧 Email validation:', {
-        input: text,
-        trimmed: text.trim(),
-        isValid: isValid,
-        regex: emailRegex.toString()
-      });
+  // Validate password strength
+  const validatePassword = (password: string): string | null => {
+    if (password.length < 6) {
+      return 'Mật khẩu phải có ít nhất 6 ký tự';
     }
-    
-    return isValid;
+    return null;
   };
 
-  // Handle continue from contact step - send OTP and navigate to OTP screen
-  const handleContinue = async () => {
-    setError('');
+  // Show success modal with animation
+  const showSuccessModal = () => {
+    setShowSuccess(true);
     
-    if (!validateContact(contact)) {
-      setError('Vui lòng nhập email hợp lệ');
+    Animated.parallel([
+      Animated.spring(successScale, {
+        toValue: 1,
+        tension: 150,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+      Animated.timing(successOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  // Hide success modal and navigate
+  const hideSuccessModal = () => {
+    Animated.parallel([
+      Animated.timing(successScale, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(successOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowSuccess(false);
+      router.replace('/technician/login');
+    });
+  };
+
+  // Handle password reset
+  const handleResetPassword = async () => {
+    setError('');
+
+    // Validate inputs
+    const passwordError = validatePassword(newPassword);
+    if (passwordError) {
+      setError(passwordError);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError('Mật khẩu xác nhận không khớp');
+      return;
+    }
+
+    if (!email) {
+      setError('Thông tin email không hợp lệ');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      // Step 1: Send OTP to email
-      const sendOTPData: SendOtpRequest = {
-        email: contact.trim().toLowerCase(),
-        purpose: 'password-reset'
+      const resetPasswordData: ForgotPasswordRequest = {
+        email: email.trim().toLowerCase(),
+        newPassword,
       };
 
-      await authService.sendEmailOtp(sendOTPData);
+      await authService.forgotPassword(resetPasswordData);
+      
       if (__DEV__) {
-        console.log('📧 Password reset OTP sent', { email: contact.trim().toLowerCase() });
+        console.log('✅ Password reset successful', { email });
       }
 
-      // Navigate to OTP verification screen instead of internal step
-      const otpRoute = userType === 'customer' 
-        ? `/customer/otp-verification?email=${encodeURIComponent(contact.trim().toLowerCase())}&purpose=password-reset`
-        : `/technician/otp-verification?email=${encodeURIComponent(contact.trim().toLowerCase())}&purpose=password-reset`;
-      router.replace(otpRoute as any);
+      // Show success modal
+      showSuccessModal();
+      
+      // Auto hide after 3 seconds
+      setTimeout(() => {
+        hideSuccessModal();
+      }, 3000);
 
     } catch (error: any) {
       if (__DEV__) {
-        console.error('❌ Send OTP failed', error);
+        console.error('❌ Password reset failed', error);
       }
-      setError(error.reason || 'Gửi email reset mật khẩu thất bại');
+      setError(error.reason || 'Đổi mật khẩu thất bại. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
     }
@@ -156,7 +196,7 @@ export default function ForgotPasswordScreen({
         >
           <TouchableOpacity 
             style={styles.backButton}
-            onPress={onBack}
+            onPress={() => router.back()}
             activeOpacity={0.8}
           >
             <View style={styles.backIconContainer}>
@@ -182,9 +222,9 @@ export default function ForgotPasswordScreen({
                 }
               ]}
             >
-              <Text style={styles.greeting}>Quên mật khẩu?</Text>
+              <Text style={styles.greeting}>Tạo mật khẩu mới</Text>
               <Text style={styles.subGreeting}>
-                Đừng lo lắng! Nhập email của bạn và chúng tôi sẽ gửi mã xác thực để đặt lại mật khẩu.
+                Mật khẩu mới phải khác với mật khẩu cũ và có ít nhất 6 ký tự
               </Text>
             </Animated.View>
 
@@ -213,33 +253,39 @@ export default function ForgotPasswordScreen({
               ]}
             >
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Email</Text>
+                <Text style={styles.inputLabel}>Mật khẩu mới</Text>
                 <TextInput
                   style={[
                     styles.input,
-                    error ? styles.inputError : null,
+                    error && error.includes('6 ký tự') ? styles.inputError : null,
                   ]}
-                  value={contact}
+                  value={newPassword}
                   onChangeText={(text) => {
-                    setContact(text);
+                    setNewPassword(text);
                     if (error) setError('');
-                    
-                    // Debug validation
-                    if (__DEV__) {
-                      console.log('🔍 Email input debug:', {
-                        text: text,
-                        hasContact: !!text,
-                        isValidEmail: validateContact(text),
-                        isLoading: isLoading,
-                        shouldEnable: !(!text || text.trim().length === 0 || isLoading)
-                      });
-                    }
                   }}
-                  placeholder="Nhập email của bạn"
+                  placeholder="Nhập mật khẩu mới"
                   placeholderTextColor="#94a3b8"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
+                  secureTextEntry
+                  editable={!isLoading}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Xác nhận mật khẩu</Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    error && error.includes('không khớp') ? styles.inputError : null,
+                  ]}
+                  value={confirmPassword}
+                  onChangeText={(text) => {
+                    setConfirmPassword(text);
+                    if (error) setError('');
+                  }}
+                  placeholder="Nhập lại mật khẩu mới"
+                  placeholderTextColor="#94a3b8"
+                  secureTextEntry
                   editable={!isLoading}
                 />
               </View>
@@ -248,21 +294,51 @@ export default function ForgotPasswordScreen({
                 style={[
                   styles.button,
                   styles.primaryButton,
-                  (!contact || contact.trim().length === 0 || isLoading) && styles.disabledButton,
+                  (!newPassword || !confirmPassword || isLoading) && styles.disabledButton,
                 ]}
-                onPress={handleContinue}
-                disabled={!contact || contact.trim().length === 0 || isLoading}
+                onPress={handleResetPassword}
+                disabled={!newPassword || !confirmPassword || isLoading}
                 activeOpacity={0.9}
               >
                 {isLoading ? (
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
-                  <Text style={styles.buttonText}>Gửi mã xác thực</Text>
+                  <Text style={styles.buttonText}>Đặt lại mật khẩu</Text>
                 )}
               </TouchableOpacity>
             </Animated.View>
           </View>
         </KeyboardAvoidingView>
+
+        {/* Success Modal */}
+        {showSuccess && (
+          <View style={styles.successOverlay}>
+            <Animated.View 
+              style={[
+                styles.successModal,
+                {
+                  opacity: successOpacity,
+                  transform: [{ scale: successScale }],
+                },
+              ]}
+            >
+              <View style={styles.successIcon}>
+                <Text style={styles.successIconText}>✓</Text>
+              </View>
+              <Text style={styles.successTitle}>Thành công!</Text>
+              <Text style={styles.successMessage}>
+                Mật khẩu của bạn đã được đặt lại thành công! 
+                Bạn sẽ được chuyển đến trang đăng nhập.
+              </Text>
+              <TouchableOpacity
+                style={styles.successButton}
+                onPress={hideSuccessModal}
+              >
+                <Text style={styles.successButtonText}>Đăng nhập ngay</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+        )}
       </SafeAreaView>
     </Animated.View>
   );
@@ -282,7 +358,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 20,
-    marginTop: 20, // Push down from system UI
+    marginTop: 20,
   },
   backButton: {
     width: 44,
@@ -384,7 +460,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#609CEF', // Match button color
+    shadowColor: '#609CEF',
     shadowOffset: {
       width: 0,
       height: 4,
@@ -395,7 +471,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   primaryButton: {
-    backgroundColor: '#609CEF', // App's primary color
+    backgroundColor: '#609CEF',
   },
   buttonText: {
     color: '#ffffff',
@@ -424,5 +500,71 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',
+  },
+
+  // Success Modal Styles
+  successOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  successModal: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 32,
+    margin: 20,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: {
+      width: 0,
+      height: 10,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 25,
+    elevation: 25,
+  },
+  successIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#609CEF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  successIconText: {
+    fontSize: 40,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#333333',
+    marginBottom: 12,
+  },
+  successMessage: {
+    fontSize: 16,
+    color: '#666666',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  successButton: {
+    backgroundColor: '#609CEF',
+    borderRadius: 12,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+  },
+  successButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

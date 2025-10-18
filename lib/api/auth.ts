@@ -12,20 +12,17 @@ import type {
   LoginResponse,
   RegisterRequest,
   RegisterResponse,
-  SendOTPRequest,
-  VerifyOTPRequest,
-  OTPResponse,
-  RefreshTokenRequest,
-  RefreshTokenResponse,
-  ForgotPasswordRequest,
-  SendEmailOTPRequest,
-  SendEmailOTPResponse,
-  ValidateOTPRequest,
-  ValidateOTPResponse,
-  ForgotPasswordResetRequest,
-  ChangePasswordRequest,
   SendOtpRequest,
   SendOtpResponse,
+  VerifyAccountRequest,
+  VerifyAccountResponse,
+  ValidateOtpRequest,
+  ValidateOtpResponse,
+  ForgotPasswordRequest,
+  ForgotPasswordResponse,
+  RefreshTokenRequest,
+  RefreshTokenResponse,
+  ChangePasswordRequest,
   UserData,
   ApiResponse
 } from '../../types/api';
@@ -84,10 +81,23 @@ export class AuthService {
   }
 
   /**
-   * Register a new user
+   * Register a new user (Step 1: Create account with isVerified: false)
    */
   public async register(registerData: RegisterRequest): Promise<RegisterResponse> {
     try {
+      // Development logging for request
+      if (__DEV__) {
+        console.group('📤 Registration Request');
+        console.log('🔗 Endpoint:', API_ENDPOINTS.AUTH.REGISTER);
+        console.log('📧 Email:', registerData.email);
+        console.log('👤 Name:', `${registerData.firstName} ${registerData.lastName}`);
+        console.log('📱 Phone:', registerData.phoneNumber);
+        console.log('🎯 User Type:', registerData.userType);
+        console.log('✅ Accept Terms:', registerData.acceptTerms);
+        console.log('📋 Full Payload:', JSON.stringify(registerData, null, 2));
+        console.groupEnd();
+      }
+      
       const response = await apiService.post<RegisterResponse>(
         API_ENDPOINTS.AUTH.REGISTER,
         registerData
@@ -96,12 +106,13 @@ export class AuthService {
       if (response.is_success && response.data) {
         // Development logging
         if (__DEV__) {
-          console.group('✅ Registration Initiated');
+          console.group('✅ Registration Response');
           console.log('📧 Email:', registerData.email);
           console.log('👤 Name:', `${registerData.firstName} ${registerData.lastName}`);
           console.log('📱 Phone:', registerData.phoneNumber);
           console.log('🎯 User Type:', registerData.userType);
-          console.log('📬 Requires Email Verification:', response.data.requiresEmailVerification);
+          console.log('✅ Is Verified:', response.data.isVerified);
+          console.log('📋 Full Response:', JSON.stringify(response, null, 2));
           console.groupEnd();
         }
         
@@ -114,8 +125,10 @@ export class AuthService {
       if (__DEV__) {
         console.group('❌ Registration Failed');
         console.log('📧 Email:', registerData.email);
+        console.log('📱 Phone:', registerData.phoneNumber);
         console.log('📊 Status:', error.status_code || 'Network Error');
         console.log('💬 Error:', error.message);
+        console.log('📋 Full Error:', JSON.stringify(error, null, 2));
         console.groupEnd();
       }
       
@@ -124,11 +137,11 @@ export class AuthService {
   }
 
   /**
-   * Send OTP to email for verification
+   * Send email OTP (Step 2: for registration or password reset)
    */
-  public async sendOTP(otpData: SendOTPRequest): Promise<OTPResponse> {
+  public async sendEmailOtp(otpData: SendOtpRequest): Promise<SendOtpResponse> {
     try {
-      const response = await apiService.post<OTPResponse>(
+      const response = await apiService.post<SendOtpResponse>(
         API_ENDPOINTS.EMAIL.SEND_OTP,
         otpData
       );
@@ -162,36 +175,170 @@ export class AuthService {
   }
 
   /**
-   * Verify OTP code
+   * Verify account with OTP (Step 3: for registration completion)
    */
-  public async verifyOTP(verifyData: VerifyOTPRequest): Promise<OTPResponse> {
+  public async verifyAccount(verifyData: VerifyAccountRequest): Promise<VerifyAccountResponse> {
     try {
-      const response = await apiService.post<OTPResponse>(
-        API_ENDPOINTS.EMAIL.VERIFY_OTP,
+      const response = await apiService.post<VerifyAccountResponse>(
+        API_ENDPOINTS.AUTH.VERIFY,
         verifyData
       );
 
       if (response.is_success && response.data) {
         // Development logging
         if (__DEV__) {
-          console.group('✅ OTP Verified');
+          console.group('✅ Account Verified');
           console.log('📧 Email:', verifyData.email);
-          console.log('🎯 Purpose:', verifyData.purpose);
-          console.log('✨ Valid:', response.data.isValid);
-          console.log('🎫 Token:', response.data.token ? '✅ Received' : '❌ None');
+          console.log('✨ Verified:', response.data.isVerified);
           console.groupEnd();
         }
         
         return response.data;
       } else {
-        throw new Error(response.message || 'OTP verification failed');
+        throw new Error(response.message || 'Account verification failed');
+      }
+    } catch (error: any) {
+      // Convert errors to Vietnamese
+      let vietnameseError = { ...error };
+      
+      if (error.message) {
+        const message = error.message.toLowerCase();
+        if (message.includes('invalid') || message.includes('incorrect') || message.includes('wrong')) {
+          vietnameseError.reason = 'Mã OTP không chính xác';
+        } else if (message.includes('expired') || message.includes('expire')) {
+          vietnameseError.reason = 'Mã OTP đã hết hạn';
+        } else if (message.includes('verification failed') || message.includes('failed')) {
+          vietnameseError.reason = 'Xác thực thất bại';
+        }
+      }
+      
+      if (error.status_code) {
+        switch (error.status_code) {
+          case 400:
+            vietnameseError.reason = 'Mã OTP không hợp lệ';
+            break;
+          case 401:
+            vietnameseError.reason = 'Mã OTP không chính xác';
+            break;
+          case 404:
+            vietnameseError.reason = 'Không tìm thấy thông tin';
+            break;
+          case 500:
+            vietnameseError.reason = 'Lỗi server. Vui lòng thử lại sau';
+            break;
+        }
+      }
+      
+      // Only log in development, never in production
+      if (__DEV__) {
+        console.group('❌ Account Verification Failed');
+        console.log('� Email:', verifyData.email);
+        console.log('📊 Status:', error.status_code || 'Network Error');
+        console.log('💬 Vietnamese Error:', vietnameseError.reason);
+        console.groupEnd();
+      }
+      
+      throw vietnameseError;
+    }
+  }
+
+  /**
+   * Validate OTP (for forgot password flow)
+   */
+  public async validateOtp(validateData: ValidateOtpRequest): Promise<ValidateOtpResponse> {
+    try {
+      const response = await apiService.post<ValidateOtpResponse>(
+        API_ENDPOINTS.OTP.VALIDATE,
+        validateData
+      );
+
+      if (response.is_success && response.data) {
+        // Development logging
+        if (__DEV__) {
+          console.group('✅ OTP Validated');
+          console.log('📧 Email:', validateData.email);
+          console.log('🎯 Purpose:', validateData.purpose);
+          console.log('✨ Valid:', response.data.isValid);
+          console.groupEnd();
+        }
+        
+        return response.data;
+      } else {
+        throw new Error(response.message || 'OTP validation failed');
+      }
+    } catch (error: any) {
+      // Convert errors to Vietnamese
+      let vietnameseError = { ...error };
+      
+      if (error.message) {
+        const message = error.message.toLowerCase();
+        if (message.includes('invalid') || message.includes('incorrect') || message.includes('wrong')) {
+          vietnameseError.reason = 'Mã OTP không chính xác';
+        } else if (message.includes('expired') || message.includes('expire')) {
+          vietnameseError.reason = 'Mã OTP đã hết hạn';
+        } else if (message.includes('validation failed') || message.includes('failed')) {
+          vietnameseError.reason = 'Xác thực thất bại';
+        }
+      }
+      
+      if (error.status_code) {
+        switch (error.status_code) {
+          case 400:
+            vietnameseError.reason = 'Mã OTP không hợp lệ';
+            break;
+          case 401:
+            vietnameseError.reason = 'Mã OTP không chính xác';
+            break;
+          case 404:
+            vietnameseError.reason = 'Không tìm thấy thông tin';
+            break;
+          case 500:
+            vietnameseError.reason = 'Lỗi server. Vui lòng thử lại sau';
+            break;
+        }
+      }
+      
+      // Only log in development, never in production
+      if (__DEV__) {
+        console.group('❌ OTP Validation Failed');
+        console.log('� Email:', validateData.email);
+        console.log('📊 Status:', error.status_code || 'Network Error');
+        console.log('💬 Vietnamese Error:', vietnameseError.reason);
+        console.groupEnd();
+      }
+      
+      throw vietnameseError;
+    }
+  }
+
+  /**
+   * Reset password with validated OTP (final step of forgot password)
+   */
+  public async forgotPassword(resetData: ForgotPasswordRequest): Promise<ForgotPasswordResponse> {
+    try {
+      const response = await apiService.post<ForgotPasswordResponse>(
+        API_ENDPOINTS.AUTH.FORGOT_PASSWORD,
+        resetData
+      );
+
+      if (response.is_success && response.data) {
+        // Development logging
+        if (__DEV__) {
+          console.group('✅ Password Reset Successful');
+          console.log('📧 Email:', resetData.email);
+          console.log('💬 Message:', response.data.message);
+          console.groupEnd();
+        }
+        
+        return response.data;
+      } else {
+        throw new Error(response.message || 'Password reset failed');
       }
     } catch (error: any) {
       // Development logging
       if (__DEV__) {
-        console.group('❌ OTP Verification Failed');
-        console.log('📧 Email:', verifyData.email);
-        console.log('🔢 OTP:', verifyData.otp);
+        console.group('❌ Password Reset Failed');
+        console.log('📧 Email:', resetData.email);
         console.log('📊 Status:', error.status_code || 'Network Error');
         console.log('💬 Error:', error.message);
         console.groupEnd();
@@ -330,11 +477,14 @@ export class AuthService {
   }
 
   /**
-   * Send OTP to email
+   * Send OTP to email (deprecated - use sendEmailOtp instead)
    */
   public async sendOtp(email: string): Promise<SendOtpResponse> {
     try {
-      const requestData: SendOtpRequest = { email };
+      const requestData: SendOtpRequest = { 
+        email,
+        purpose: 'registration' // Default purpose
+      };
       const response = await apiService.post<SendOtpResponse>(
         API_ENDPOINTS.EMAIL.SEND_OTP,
         requestData
@@ -347,137 +497,6 @@ export class AuthService {
       }
     } catch (error: any) {
       logger.error('Send OTP error:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Send forgot password OTP to email
-   */
-  public async sendForgotPasswordOTP(requestData: SendEmailOTPRequest): Promise<SendEmailOTPResponse> {
-    try {
-      const response = await apiService.post<SendEmailOTPResponse>(
-        API_ENDPOINTS.EMAIL.SEND_OTP,
-        requestData
-      );
-
-      if (response.is_success && response.data) {
-        // Development logging
-        if (__DEV__) {
-          console.group('📧 Forgot Password OTP Sent');
-          console.log('📧 Email:', requestData.email);
-          console.log('🎯 Purpose:', requestData.purpose);
-          console.log('💬 Message:', response.data.message);
-          console.groupEnd();
-        }
-        
-        return response.data;
-      } else {
-        throw new Error(response.message || 'Failed to send forgot password OTP');
-      }
-    } catch (error: any) {
-      // Development logging
-      if (__DEV__) {
-        console.group('❌ Forgot Password OTP Failed');
-        console.log('📧 Email:', requestData.email);
-        console.log('📊 Status:', error.status_code || 'Network Error');
-        console.log('💬 Error:', error.message);
-        console.groupEnd();
-      }
-      
-      throw error;
-    }
-  }
-
-  /**
-   * Validate OTP for forgot password
-   */
-  public async validateForgotPasswordOTP(requestData: ValidateOTPRequest): Promise<ValidateOTPResponse> {
-    try {
-      const response = await apiService.post<ValidateOTPResponse>(
-        API_ENDPOINTS.OTP.VALIDATE,
-        requestData
-      );
-
-      if (response.is_success && response.data) {
-        // Development logging
-        if (__DEV__) {
-          console.group('✅ OTP Validated');
-          console.log('📧 Email:', requestData.email);
-          console.log('🎯 Purpose:', requestData.purpose);
-          console.log('✨ Valid:', response.data.isValid);
-          console.groupEnd();
-        }
-        
-        return response.data;
-      } else {
-        throw new Error(response.message || 'OTP validation failed');
-      }
-    } catch (error: any) {
-      // Development logging
-      if (__DEV__) {
-        console.group('❌ OTP Validation Failed');
-        console.log('📧 Email:', requestData.email);
-        console.log('🔢 OTP:', requestData.otp);
-        console.log('📊 Status:', error.status_code || 'Network Error');
-        console.log('💬 Error:', error.message);
-        console.groupEnd();
-      }
-      
-      throw error;
-    }
-  }
-
-  /**
-   * Reset password after OTP validation
-   */
-  public async resetForgotPassword(requestData: ForgotPasswordResetRequest): Promise<void> {
-    try {
-      const response = await apiService.post<any>(
-        API_ENDPOINTS.AUTH.CHANGE_PASSWORD,
-        requestData
-      );
-
-      if (response.is_success) {
-        // Development logging
-        if (__DEV__) {
-          console.group('✅ Password Reset Successful');
-          console.log('📧 Email:', requestData.email);
-          console.log('💬 Message:', response.message);
-          console.groupEnd();
-        }
-      } else {
-        throw new Error(response.message || 'Failed to reset password');
-      }
-    } catch (error: any) {
-      // Development logging
-      if (__DEV__) {
-        console.group('❌ Password Reset Failed');
-        console.log('📧 Email:', requestData.email);
-        console.log('📊 Status:', error.status_code || 'Network Error');
-        console.log('💬 Error:', error.message);
-        console.groupEnd();
-      }
-      
-      throw error;
-    }
-  }
-
-  /**
-   * Forgot password (deprecated - use sendForgotPasswordOTP instead)
-   */
-  public async forgotPassword(requestData: ForgotPasswordRequest): Promise<void> {
-    try {
-      const response = await apiService.post(
-        API_ENDPOINTS.AUTH.FORGOT_PASSWORD,
-        requestData
-      );
-
-      if (!response.is_success) {
-        throw new Error(response.message || 'Failed to reset password');
-      }
-    } catch (error: any) {
-      logger.error('Forgot password error:', error);
       throw error;
     }
   }

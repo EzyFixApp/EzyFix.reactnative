@@ -33,36 +33,65 @@ export interface RegisterRequest {
   password: string;
   confirmPassword: string;
   phoneNumber: string;
+  phone?: string; // Optional field for backend compatibility
   userType: UserType;
   acceptTerms: boolean;
 }
 
-// Register Response
+// Register Response (updated for isVerified flow)
 export interface RegisterResponse {
   message: string;
-  userId: string;
   email: string;
-  requiresEmailVerification: boolean;
+  isVerified: boolean;
 }
 
-// Email OTP Request
-export interface SendOTPRequest {
+// Email OTP Request (updated)
+export interface SendOtpRequest {
   email: string;
   purpose: 'registration' | 'password-reset';
 }
 
-// Email OTP Verification Request  
-export interface VerifyOTPRequest {
+// Email OTP Response (updated)
+export interface SendOtpResponse {
+  message: string;
+  email: string;
+}
+
+// Verify Account Request (for registration)
+export interface VerifyAccountRequest {
+  email: string;
+  otp: string;
+}
+
+// Verify Account Response
+export interface VerifyAccountResponse {
+  message: string;
+  isVerified: boolean;
+}
+
+// OTP Validation Request (for forgot password)
+export interface ValidateOtpRequest {
   email: string;
   otp: string;
   purpose: 'registration' | 'password-reset';
 }
 
-// OTP Response
-export interface OTPResponse {
+// OTP Validation Response
+export interface ValidateOtpResponse {
   message: string;
   isValid: boolean;
-  token?: string; // For completing registration
+}
+
+// Forgot Password Request (OTP validation done separately)
+export interface ForgotPasswordRequest {
+  email: string;
+  newPassword: string;
+  otp?: string; // Optional - OTP validation is done in separate step
+}
+
+// Forgot Password Response
+export interface ForgotPasswordResponse {
+  message: string;
 }
 
 // Login Response (based on backend LoginResponse.cs)
@@ -95,8 +124,8 @@ export interface RefreshTokenResponse {
   accessToken: string;
 }
 
-// Forgot Password Request (send email)
-export interface ForgotPasswordRequest {
+// Forgot Password Request (send email) - DEPRECATED, use SendOtpRequest instead
+export interface ForgotPasswordEmailRequest {
   email: string;
 }
 

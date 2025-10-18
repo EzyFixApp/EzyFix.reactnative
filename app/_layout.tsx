@@ -48,11 +48,13 @@ export default function RootLayout() {
                 <Stack.Screen name="home/index" options={{ headerShown: false }} />
                 <Stack.Screen name="customer/login" options={{ headerShown: false }} />
                 <Stack.Screen name="customer/dashboard" options={{ headerShown: false }} />
+                <Stack.Screen name="customer/reset-password" options={{ headerShown: false }} />
                 <Stack.Screen name="(tabs)" options={TABS_OPTIONS} />
                 <Stack.Screen name="technician/index" options={{ headerShown: false }} />
                 <Stack.Screen name="technician/login" options={{ headerShown: false }} />
                 <Stack.Screen name="technician/dashboard" options={{ headerShown: false }} />
                 <Stack.Screen name="technician/profile" options={{ headerShown: false }} />
+                <Stack.Screen name="technician/reset-password" options={{ headerShown: false }} />
                 <Stack.Screen name="technician/personal-info" options={{ headerShown: false }} />
                 <Stack.Screen name="technician/activity" options={{ headerShown: false }} />
                 <Stack.Screen name="technician/order-history-detail" options={{ headerShown: false }} />

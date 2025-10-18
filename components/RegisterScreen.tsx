@@ -65,11 +65,6 @@ export default function RegisterScreen({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   
-  // OTP states
-  const [showOTPModal, setShowOTPModal] = useState(false);
-  const [otp, setOTP] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
-  
   // UI states
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -104,8 +99,9 @@ export default function RegisterScreen({
   };
 
   const validatePhone = (text: string): boolean => {
-    const phoneRegex = /^[0-9]{9,10}$/;
-    return phoneRegex.test(text);
+    // More flexible phone validation - allow 9-11 digits
+    const phoneRegex = /^[0-9]{9,11}$/;
+    return phoneRegex.test(text.trim());
   };
 
   const validatePassword = (text: string): boolean => {
@@ -134,7 +130,7 @@ export default function RegisterScreen({
       } else if (lastName.trim().length < 1) {
         setError('Vui lòng nhập họ');
       } else if (!validatePhone(phoneNumber)) {
-        setError('Số điện thoại không hợp lệ (9-10 chữ số)');
+        setError(`Số điện thoại không hợp lệ (9-11 chữ số). Hiện tại: "${phoneNumber}"`);
       } else if (!validateEmail(email)) {
         setError('Email không hợp lệ');
       } else if (!validatePassword(password)) {
@@ -150,87 +146,96 @@ export default function RegisterScreen({
     setIsLoading(true);
     
     try {
+      // Validate and format phone number with multiple formats
+      const rawPhone = phoneNumber.trim();
+      if (!rawPhone) {
+        throw new Error('Số điện thoại không được để trống');
+      }
+      
+      const formattedPhone = `${selectedCountry.dialCode}${rawPhone}`;
+      const phoneWithoutPlus = formattedPhone.replace('+', ''); // Remove + if present
+      const phoneWithSpaces = `${selectedCountry.dialCode} ${rawPhone}`; // With space
+      const vietnamPhone = rawPhone.startsWith('0') ? rawPhone : `0${rawPhone}`; // Vietnam format
+      
       const registerData: RegisterRequest = {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim().toLowerCase(),
         password,
         confirmPassword,
-        phoneNumber: `${selectedCountry.dialCode}${phoneNumber}`,
+        phoneNumber: formattedPhone,
         userType,
         acceptTerms: agreedToTerms,
       };
 
-      const response = await authService.register(registerData);
-      
-      if (response.requiresEmailVerification) {
-        // Send OTP
-        await authService.sendOTP({
-          email: email.trim().toLowerCase(),
-          purpose: 'registration'
+      // Create a payload with multiple possible field names and formats for backend compatibility
+      const registerPayload = {
+        ...registerData,
+        phone: formattedPhone, // +84xxxxxxxxx
+        phoneNumber: formattedPhone, // Our current field name
+        mobile: phoneWithoutPlus, // 84xxxxxxxxx (without +)
+        cellPhone: phoneWithSpaces, // +84 xxxxxxxxx (with space)
+        user_phone: formattedPhone, // Snake case version
+        phone_number: formattedPhone, // Snake case version
+        vietnamPhone: vietnamPhone, // 0xxxxxxxxx (Vietnam format)
+        rawPhone: rawPhone, // Original input
+      };
+
+      // Debug logging
+      if (__DEV__) {
+        console.log('📋 Register Data Debug:', {
+          firstName: registerData.firstName,
+          lastName: registerData.lastName,
+          email: registerData.email,
+          rawPhoneInput: rawPhone,
+          formattedPhone: formattedPhone,
+          phoneWithoutPlus: phoneWithoutPlus,
+          phoneWithSpaces: phoneWithSpaces,
+          vietnamPhone: vietnamPhone,
+          dialCode: selectedCountry.dialCode,
+          country: selectedCountry.name,
+          userType: registerData.userType,
+          acceptTerms: registerData.acceptTerms,
+          phoneLength: rawPhone.length,
+          isPhoneValid: validatePhone(rawPhone),
+          fullPayload: JSON.stringify(registerPayload, null, 2)
         });
-        
-        setShowOTPModal(true);
-      } else {
-        // Registration complete
-        Alert.alert(
-          'Thành công',
-          'Đăng ký thành công! Vui lòng đăng nhập.',
-          [{ text: 'OK', onPress: onSuccess }]
-        );
       }
+
+      // Validate phone one more time before sending
+      if (!validatePhone(rawPhone)) {
+        throw new Error(`Số điện thoại "${rawPhone}" không hợp lệ`);
+      }
+
+      // Step 1: Register user (isVerified: false) - send payload with both field names
+      const registerResponse = await authService.register(registerPayload as RegisterRequest);
+      if (__DEV__) {
+        console.log('✅ Registration successful', { email: registerData.email, isVerified: registerResponse.isVerified });
+      }
+      
+      // Step 2: Send OTP for verification
+      await authService.sendEmailOtp({
+        email: email.trim().toLowerCase(),
+        purpose: 'registration'
+      });
+      
+      if (__DEV__) {
+        console.log('📧 OTP sent for registration verification', { email: registerData.email });
+      }
+      
+      // Navigate to OTP verification screen
+      const otpRoute = userType === 'customer' 
+        ? `/customer/otp-verification?email=${encodeURIComponent(email.trim().toLowerCase())}&purpose=registration`
+        : `/technician/otp-verification?email=${encodeURIComponent(email.trim().toLowerCase())}&purpose=registration`;
+      router.replace(otpRoute as any);
+      
     } catch (error: any) {
-      setError(error.message || 'Đăng ký thất bại. Vui lòng thử lại.');
+      if (__DEV__) {
+        console.error('❌ Registration failed', error);
+      }
+      setError(error.reason || 'Đăng ký thất bại. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  // Handle OTP verification
-  const handleVerifyOTP = async () => {
-    if (otp.length !== 6) {
-      setError('Vui lòng nhập đầy đủ 6 chữ số');
-      return;
-    }
-
-    setIsVerifying(true);
-    setError('');
-
-    try {
-      const response = await authService.verifyOTP({
-        email: email.trim().toLowerCase(),
-        otp,
-        purpose: 'registration'
-      });
-
-      if (response.isValid) {
-        setShowOTPModal(false);
-        Alert.alert(
-          'Thành công',
-          'Xác thực email thành công! Vui lòng đăng nhập.',
-          [{ text: 'OK', onPress: onSuccess }]
-        );
-      } else {
-        setError('Mã OTP không chính xác');
-      }
-    } catch (error: any) {
-      setError(error.message || 'Xác thực thất bại. Vui lòng thử lại.');
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  // Resend OTP
-  const handleResendOTP = async () => {
-    try {
-      await authService.sendOTP({
-        email: email.trim().toLowerCase(),
-        purpose: 'registration'
-      });
-      
-      Alert.alert('Thành công', 'Mã OTP mới đã được gửi đến email của bạn');
-    } catch (error: any) {
-      setError(error.message || 'Không thể gửi lại OTP');
     }
   };
 
@@ -472,72 +477,6 @@ export default function RegisterScreen({
                 )}
                 ItemSeparatorComponent={() => <View style={styles.separator} />}
               />
-            </View>
-          </View>
-        </Modal>
-
-        {/* OTP Verification Modal */}
-        <Modal
-          visible={showOTPModal}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowOTPModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.otpModalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Xác thực Email</Text>
-                <TouchableOpacity
-                  style={styles.modalCloseButton}
-                  onPress={() => setShowOTPModal(false)}
-                >
-                  <Text style={styles.modalCloseText}>✕</Text>
-                </TouchableOpacity>
-              </View>
-              
-              <Text style={styles.otpDescription}>
-                Chúng tôi đã gửi mã xác thực 6 chữ số đến email:
-              </Text>
-              <Text style={styles.otpEmail}>{email}</Text>
-              
-              {error ? (
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{error}</Text>
-                </View>
-              ) : null}
-              
-              <TextInput
-                style={styles.otpInput}
-                placeholder="Nhập mã 6 chữ số"
-                placeholderTextColor="#94a3b8"
-                value={otp}
-                onChangeText={setOTP}
-                keyboardType="number-pad"
-                maxLength={6}
-                textAlign="center"
-              />
-              
-              <TouchableOpacity
-                style={[
-                  styles.verifyButton,
-                  (otp.length !== 6 || isVerifying) && styles.disabledButton,
-                ]}
-                onPress={handleVerifyOTP}
-                disabled={otp.length !== 6 || isVerifying}
-              >
-                {isVerifying ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <Text style={styles.verifyButtonText}>Xác Thực</Text>
-                )}
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={styles.resendButton}
-                onPress={handleResendOTP}
-              >
-                <Text style={styles.resendButtonText}>Gửi lại mã</Text>
-              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -853,69 +792,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',
-  },
-  // OTP Modal styles
-  otpModalContent: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 8,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
-  otpDescription: {
-    fontSize: 16,
-    color: '#64748b',
-    textAlign: 'center',
-    marginBottom: 8,
-    lineHeight: 24,
-  },
-  otpEmail: {
-    fontSize: 16,
-    color: '#1f2937',
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  otpInput: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1f2937',
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    backgroundColor: '#f8fafc',
-    borderWidth: 2,
-    borderColor: '#e2e8f0',
-    borderRadius: 16,
-    textAlign: 'center',
-    letterSpacing: 8,
-    marginBottom: 24,
-  },
-  verifyButton: {
-    backgroundColor: '#609CEF',
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: '#609CEF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-    marginBottom: 16,
-  },
-  verifyButtonText: {
-    color: '#ffffff',
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  resendButton: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  resendButtonText: {
-    color: '#609CEF',
-    fontSize: 15,
-    fontWeight: '600',
   },
 });

@@ -16,6 +16,7 @@ export const API_ENDPOINTS = {
     BASE: '/api/v1/auth',
     LOGIN: '/api/v1/auth/login',
     REGISTER: '/api/v1/auth/register',
+    VERIFY: '/api/v1/auth/verify',
     REFRESH_TOKEN: '/api/v1/auth/refresh-token',
     DELETE_REFRESH_TOKEN: '/api/v1/auth/delete-refresh-token',
     LOGOUT: '/api/v1/auth/logout',
@@ -28,13 +29,12 @@ export const API_ENDPOINTS = {
     BASE: '/api/v1/email',
     SEND: '/api/v1/email/send',
     SEND_OTP: '/api/v1/email/send-otp',
-    VERIFY_OTP: '/api/v1/auth/verify-otp',
   },
 
   // OTP endpoints
   OTP: {
     BASE: '/api/v1/otp',
-    VALIDATE: '/api/v1/otp/validate-otp',
+    VALIDATE: '/api/v1/otp/validate',
   },
 
   // Address endpoints
