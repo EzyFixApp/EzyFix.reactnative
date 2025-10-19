@@ -9,6 +9,7 @@
   [![Expo](https://img.shields.io/badge/Expo-~54.0-black.svg)](https://expo.dev/)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
   [![NativeWind](https://img.shields.io/badge/NativeWind-4.2.1-38BDF8.svg)](https://nativewind.dev/)
+  [![License](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 </div>
 
 ---
@@ -18,13 +19,100 @@
 **EzyFix** là ứng dụng mobile kết nối khách hàng với thợ sửa chữa chuyên nghiệp. Ứng dụng được xây dựng bằng React Native với Expo và TypeScript, mang đến trải nghiệm người dùng mượt mà với animation đẹp mắt.
 
 ### ✨ Tính năng chính
-- 🏠 **Trang chủ động** với animation chuyên nghiệp
-- 👥 **Đăng nhập phân vai trò** (Khách hàng/Thợ sửa chữa)
-- 🔐 **Authentication hoàn chỉnh** với OTP verification và forgot password
-- 🎨 **UI/UX hiện đại** với NativeWind và app color scheme (#609CEF)
-- ⚡ **Loading animation** mượt mà
-- 📱 **Responsive design**
-- 🌍 **Vietnamese localization** cho error messages 
+
+#### 🔐 **Authentication & Authorization**
+- **Đăng nhập phân vai trò** (Khách hàng/Thợ sửa chữa)
+- **JWT-based authentication** với access/refresh tokens
+- **OTP verification** qua email cho đăng ký và quên mật khẩu
+- **Forgot password flow** hoàn chỉnh
+- **Auto-logout** khi token hết hạn
+
+#### 🏠 **Customer Features**
+- **Services browsing** với real-time API integration
+- **Category-based service organization** 
+- **Professional service cards** với rating và pricing
+- **Service booking system** (đang phát triển)
+- **Search functionality** cho services
+
+#### 🔧 **Technician Features**
+- **Technician dashboard** (đang phát triển)
+- **Job management** (đang phát triển)
+- **Profile management** (đang phát triển)
+
+#### 🎨 **UI/UX**
+- **Modern design** với NativeWind và app color scheme (#609CEF)
+- **Smooth animations** và loading states
+- **Responsive design** cho mọi kích thước màn hình
+- **Vietnamese localization** cho error messages
+- **Dark/Light theme support** (đang phát triển)
+
+---
+
+## 🏗️ Kiến trúc dự án
+
+### 📁 Cấu trúc thư mục
+```
+EzyFix.reactnative/
+├── app/                        # Expo Router pages
+│   ├── (tabs)/                # Main tab navigation
+│   ├── customer/              # Customer-specific pages
+│   │   ├── all-services.tsx   # Services listing page
+│   │   └── book-service.tsx   # Service booking page
+│   ├── technician/            # Technician-specific pages
+│   ├── auth/                  # Authentication pages
+│   ├── _layout.tsx            # Root layout
+│   └── index.tsx              # Landing page
+├── lib/                       # Core libraries
+│   ├── api/                   # API services
+│   │   ├── auth.ts           # Authentication service
+│   │   ├── services.ts       # Services API
+│   │   ├── base.ts           # Base HTTP client
+│   │   ├── config.ts         # API configuration
+│   │   └── index.ts          # API exports
+│   ├── logger.ts             # Logging utility
+│   └── utils/                # Utility functions
+├── types/                     # TypeScript definitions
+│   ├── api.ts                # API response types
+│   └── index.ts              # Type exports
+├── components/                # Reusable UI components
+│   ├── ui/                   # Basic UI components
+│   └── forms/                # Form components
+├── assets/                    # Static assets
+├── store/                     # State management
+│   ├── authStore.ts          # Authentication store
+│   └── store.ts              # Main store
+└── theme/                     # Design system
+    ├── colors.ts             # Color palette
+    └── index.ts              # Theme exports
+```
+
+### 🔧 Tech Stack
+
+#### **Frontend**
+- **React Native** 0.81.4 - Cross-platform mobile development
+- **Expo** ~54.0 - Development platform và build tools
+- **TypeScript** 5.x - Type safety và developer experience
+- **Expo Router** - File-based routing system
+- **NativeWind** 4.2.1 - Utility-first CSS framework
+
+#### **State Management**
+- **Zustand** - Lightweight state management
+- **AsyncStorage** - Local data persistence
+
+#### **UI & Styling**
+- **Expo Linear Gradient** - Gradient backgrounds
+- **Expo Vector Icons** - Icon library
+- **React Native Reanimated** - Smooth animations
+
+#### **API & Networking**
+- **Fetch API** - HTTP client
+- **JWT** - Authentication tokens
+- **RESTful API** - Backend communication
+
+#### **Development Tools**
+- **ESLint** - Code linting
+- **Prettier** - Code formatting
+- **TypeScript ESLint** - TypeScript linting
 
 ---
 
@@ -36,6 +124,7 @@
 - **Expo CLI** 
 - **Android Studio** (cho Android)
 - **Xcode** (cho iOS)
+- **Git** - Version control
 
 ### 🔧 Cài đặt
 

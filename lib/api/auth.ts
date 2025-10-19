@@ -5,7 +5,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from './base';
-import { API_ENDPOINTS, STORAGE_KEYS } from './config';
+import { API_ENDPOINTS, STORAGE_KEYS, API_BASE_URL } from './config';
 import { logger } from '../logger';
 import type {
   LoginRequest,
@@ -24,6 +24,7 @@ import type {
   RefreshTokenResponse,
   ChangePasswordRequest,
   UserData,
+  UserType,
   ApiResponse
 } from '../../types/api';
 
@@ -50,8 +51,49 @@ export class AuthService {
       );
 
       if (response.is_success && response.data) {
-        // Store tokens and user data
+        // Store tokens and user data (without userType - use for backward compatibility)
         await this.storeAuthData(response.data);
+        return response.data;
+      } else {
+        throw new Error(response.message || 'Login failed');
+      }
+    } catch (error: any) {
+      // Development logging with useful context
+      if (__DEV__) {
+        console.group('🌐 API Auth Error');
+        console.log('🔗 Endpoint:', API_ENDPOINTS.AUTH.LOGIN);
+        console.log('📧 Email:', loginData.email);
+        console.log('📊 Status:', error.status_code || 'Network Error');
+        
+        if (error.status_code === 401) {
+          console.log('🔐 Auth Failed: Invalid credentials');
+        } else if (error.status_code === 404) {
+          console.log('👤 User Not Found');
+        } else if (error.status_code === 0) {
+          console.log('🌐 Network Error: Cannot reach server');
+        } else {
+          console.log('❌ Unexpected Error:', error.message);
+        }
+        console.groupEnd();
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Login user with email, password and userType
+   */
+  public async loginWithUserType(loginData: LoginRequest, userType: UserType): Promise<LoginResponse> {
+    try {
+      const response = await apiService.post<LoginResponse>(
+        API_ENDPOINTS.AUTH.LOGIN,
+        loginData
+      );
+
+      if (response.is_success && response.data) {
+        // Store tokens and user data with userType
+        await this.storeAuthData(response.data, userType);
         return response.data;
       } else {
         throw new Error(response.message || 'Login failed');
@@ -147,29 +189,11 @@ export class AuthService {
       );
 
       if (response.is_success && response.data) {
-        // Development logging
-        if (__DEV__) {
-          console.group('📧 OTP Sent');
-          console.log('📧 Email:', otpData.email);
-          console.log('🎯 Purpose:', otpData.purpose);
-          console.log('💬 Message:', response.data.message);
-          console.groupEnd();
-        }
-        
         return response.data;
       } else {
         throw new Error(response.message || 'Failed to send OTP');
       }
     } catch (error: any) {
-      // Development logging
-      if (__DEV__) {
-        console.group('❌ OTP Send Failed');
-        console.log('📧 Email:', otpData.email);
-        console.log('📊 Status:', error.status_code || 'Network Error');
-        console.log('💬 Error:', error.message);
-        console.groupEnd();
-      }
-      
       throw error;
     }
   }
@@ -243,7 +267,76 @@ export class AuthService {
   }
 
   /**
-   * Validate OTP (for forgot password flow)
+   * Check OTP (new endpoint for forgot password flow)
+   */
+  public async checkOtp(validateData: ValidateOtpRequest): Promise<ValidateOtpResponse> {
+    try {
+      const response = await apiService.post<ValidateOtpResponse>(
+        API_ENDPOINTS.OTP.CHECK,
+        validateData
+      );
+
+      if (response.is_success && response.data) {
+        // Development logging
+        if (__DEV__) {
+          console.group('✅ OTP Check Successful');
+          console.log('📧 Email:', validateData.email);
+          console.log('🎯 Purpose:', validateData.purpose);
+          console.log('✅ Is Valid:', response.data.isValid);
+          console.groupEnd();
+        }
+        
+        return response.data;
+      } else {
+        throw new Error(response.message || 'OTP check failed');
+      }
+    } catch (error: any) {
+      // Convert errors to Vietnamese
+      let vietnameseError = { ...error };
+      
+      if (error.message) {
+        const message = error.message.toLowerCase();
+        if (message.includes('invalid') || message.includes('incorrect') || message.includes('wrong')) {
+          vietnameseError.reason = 'Mã OTP không chính xác';
+        } else if (message.includes('expired') || message.includes('expire')) {
+          vietnameseError.reason = 'Mã OTP đã hết hạn';
+        } else if (message.includes('check failed') || message.includes('failed')) {
+          vietnameseError.reason = 'Xác thực OTP thất bại';
+        }
+      }
+      
+      if (error.status_code) {
+        switch (error.status_code) {
+          case 400:
+            vietnameseError.reason = 'Mã OTP không hợp lệ';
+            break;
+          case 401:
+            vietnameseError.reason = 'Mã OTP không chính xác';
+            break;
+          case 404:
+            vietnameseError.reason = 'Không tìm thấy thông tin';
+            break;
+          case 500:
+            vietnameseError.reason = 'Lỗi server. Vui lòng thử lại sau';
+            break;
+        }
+      }
+      
+      // Only log in development, never in production
+      if (__DEV__) {
+        console.group('❌ OTP Check Failed');
+        console.log('📧 Email:', validateData.email);
+        console.log('📊 Status:', error.status_code || 'Network Error');
+        console.log('💬 Vietnamese Error:', vietnameseError.reason);
+        console.groupEnd();
+      }
+      
+      throw vietnameseError;
+    }
+  }
+
+  /**
+   * Validate OTP (for registration flow - keeping for backward compatibility)
    */
   public async validateOtp(validateData: ValidateOtpRequest): Promise<ValidateOtpResponse> {
     try {
@@ -351,20 +444,84 @@ export class AuthService {
   /**
    * Store authentication data in AsyncStorage
    */
-  private async storeAuthData(loginResponse: LoginResponse): Promise<void> {
+  /**
+   * Decode JWT token to extract payload
+   */
+  private decodeJWT(token: string): any {
     try {
+      // JWT format: header.payload.signature
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        throw new Error('Invalid JWT format');
+      }
+      
+      // Decode the payload (base64url)
+      const payload = parts[1];
+      // Add padding if needed
+      const paddedPayload = payload + '='.repeat((4 - payload.length % 4) % 4);
+      // Replace URL-safe characters
+      const base64 = paddedPayload.replace(/-/g, '+').replace(/_/g, '/');
+      // Decode base64
+      const decodedPayload = atob(base64);
+      
+      return JSON.parse(decodedPayload);
+    } catch (error) {
+      if (__DEV__) {
+        console.error('JWT decode error:', error);
+      }
+      return null;
+    }
+  }
+
+  private async storeAuthData(loginResponse: LoginResponse, userType?: UserType): Promise<void> {
+    try {
+      // Try to extract isVerify from JWT token if not in response body
+      let isVerifyValue = loginResponse.isVerify;
+      
+      // If isVerify is not in response body, try to decode from JWT
+      if (isVerifyValue === undefined || isVerifyValue === null) {
+        try {
+          // Decode JWT to extract isVerify
+          const tokenPayload = this.decodeJWT(loginResponse.accessToken);
+          if (tokenPayload && tokenPayload.isVerify !== undefined) {
+            // Convert string "True"/"False" to boolean
+            if (typeof tokenPayload.isVerify === 'string') {
+              isVerifyValue = tokenPayload.isVerify.toLowerCase() === 'true';
+            } else {
+              isVerifyValue = Boolean(tokenPayload.isVerify);
+            }
+          }
+        } catch (jwtError) {
+          if (__DEV__) {
+            console.warn('Failed to decode JWT for isVerify:', jwtError);
+          }
+        }
+      }
+
       const userData: UserData = {
         id: loginResponse.id,
         fullName: loginResponse.fullName,
         email: loginResponse.email,
         avatarLink: loginResponse.avatarLink,
-        userType: 'customer' // Default, should be determined based on app flow
+        userType: userType || 'customer', // Use provided userType or default to customer
+        isVerify: isVerifyValue || false // Store verification status, default to false if undefined
       };
+
+      // Debug logging to check isVerify value
+      if (__DEV__) {
+        console.group('💾 Storing Auth Data');
+        console.log('👤 User Data:', userData);
+        console.log('✅ isVerify from backend response:', loginResponse.isVerify);
+        console.log('🔑 JWT payload isVerify:', this.decodeJWT(loginResponse.accessToken)?.isVerify);
+        console.log('📋 Final stored isVerify:', userData.isVerify);
+        console.groupEnd();
+      }
 
       await Promise.all([
         AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, loginResponse.accessToken),
         AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, loginResponse.refreshToken),
-        AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData))
+        AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData)),
+        AsyncStorage.setItem(STORAGE_KEYS.USER_TYPE, userType || 'customer')
       ]);
     } catch (error) {
       logger.error('Error storing auth data:', error);
@@ -382,6 +539,27 @@ export class AuthService {
     } catch (error) {
       logger.error('Error getting user data:', error);
       return null;
+    }
+  }
+
+
+
+  /**
+   * Update user verification status after successful verification
+   */
+  public async updateUserVerificationStatus(isVerify: boolean): Promise<void> {
+    try {
+      const currentUserData = await this.getUserData();
+      if (currentUserData) {
+        const updatedUserData: UserData = {
+          ...currentUserData,
+          isVerify
+        };
+        await AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(updatedUserData));
+      }
+    } catch (error) {
+      logger.error('Error updating user verification status:', error);
+      throw error;
     }
   }
 

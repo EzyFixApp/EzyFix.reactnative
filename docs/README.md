@@ -6,11 +6,13 @@ Tài liệu tổng hợp cho dự án EzyFix React Native App.
 
 ### 🔗 [API Documentation](./api/)
 - [**API Integration Guide**](./api/API_INTEGRATION.md) - Hướng dẫn tích hợp API
+- [**Services API Documentation**](./api/SERVICES_API.md) - 🆕 Chi tiết Services API integration
 - [**API Rules**](./api/API_RULES.md) - Quy tắc viết API cho app
-- [**API Status**](./api/API_STATUS.md) - Tiến độ kết nối API
+- [**API Status**](./api/API_STATUS.md) - Tiến độ kết nối API (53% completed)
 
 ### 📱 [Features Documentation](./features/)
-- [**Authentication System**](./features/AUTHENTICATION.md) - Hệ thống xác thực
+- [**Authentication System**](./features/AUTHENTICATION.md) - Hệ thống xác thực với JWT & OTP
+- [**UI/UX Improvements**](./features/UI_UX_IMPROVEMENTS.md) - 🆕 Design system và cải tiến giao diện
 - [**Screen Documentation**](./features/SCREEN_DOCUMENTATION.md) - Chi tiết tất cả màn hình
 
 ### 📏 [Development Guidelines](./guidelines/)

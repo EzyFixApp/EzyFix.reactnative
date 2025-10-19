@@ -21,7 +21,7 @@ const { width } = Dimensions.get('window');
 
 export default function CustomerResetPasswordScreen() {
   const router = useRouter();
-  const { email } = useLocalSearchParams<{ email: string }>();
+  const { email, otp } = useLocalSearchParams<{ email: string; otp: string }>();
   
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -44,7 +44,8 @@ export default function CustomerResetPasswordScreen() {
     if (__DEV__) {
       console.group('🔍 Reset Password Screen Parameters');
       console.log('📧 Email:', email);
-      console.log('✅ Email present:', !!email);
+      console.log('🔢 OTP:', otp);
+      console.log('✅ Both present:', !!(email && otp));
       console.groupEnd();
     }
   }, []);
@@ -145,22 +146,24 @@ export default function CustomerResetPasswordScreen() {
       return;
     }
 
-    if (!email) {
-      setError('Thông tin email không hợp lệ.');
+    if (!email || !otp) {
+      setError('Thông tin xác thực không hợp lệ. Vui lòng thử lại từ đầu.');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const resetPasswordData = {
+      const resetPasswordData: ForgotPasswordRequest = {
         email: email.trim().toLowerCase(),
         newPassword,
+        otp,
       };
 
       if (__DEV__) {
-        console.group('📤 Sending Reset Password Request (No OTP)');
+        console.group('📤 Sending Reset Password Request (With Validated OTP)');
         console.log('📧 Email:', resetPasswordData.email);
+        console.log('🔢 OTP:', resetPasswordData.otp);
         console.log('🔑 Password set:', !!resetPasswordData.newPassword);
         console.log('🌐 API Endpoint:', '/api/v1/auth/forgot-password');
         console.log('📦 Full payload:', JSON.stringify(resetPasswordData, null, 2));

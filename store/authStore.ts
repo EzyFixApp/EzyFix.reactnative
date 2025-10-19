@@ -65,11 +65,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       setLoading(true);
       setError(null);
 
-      // Perform login
-      const loginResponse = await authService.login(credentials);
-      
-      // Set user type
-      await authService.setUserType(userType);
+      // Perform login with userType
+      const loginResponse = await authService.loginWithUserType(credentials, userType);
 
       // Get user data
       const userData = await authService.getUserData();

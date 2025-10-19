@@ -5,17 +5,23 @@ Theo dõi tiến độ kết nối API cho EzyFix React Native App.
 ## 📊 Tổng quan tiến độ
 
 ```
-🎯 Total APIs: 12
-✅ Completed: 1 (8%)
-🔄 In Progress: 5 (42%) 
-⏳ Pending: 6 (50%)
+🎯 Total APIs: 15
+✅ Completed: 8 (53%)
+🔄 In Progress: 3 (20%) 
+⏳ Pending: 4 (27%)
 ```
+
+**Recent Updates (October 20, 2025):**
+- ✅ Services API fully integrated
+- ✅ Categories API implemented
+- ✅ Authentication flow completed with isVerify handling
+- ✅ OTP verification system enhanced
 
 ---
 
 ## 🔐 Authentication APIs
 
-### ✅ **Completed** (1/3)
+### ✅ **Completed** (6/6)
 
 #### 📍 `POST /api/v1/auth/login`
 - **Status**: ✅ **COMPLETED**
@@ -23,10 +29,86 @@ Theo dõi tiến độ kết nối API cho EzyFix React Native App.
 - **Component**: `components/LoginScreen.tsx`
 - **Features**:
   - ✅ Email/password authentication
+  - ✅ JWT token handling with isVerify extraction
   - ✅ Professional error handling
   - ✅ Token storage (AsyncStorage)
   - ✅ Loading states
   - ✅ TypeScript types
+- **Test Status**: ✅ Working with real API
+
+#### 📍 `POST /api/v1/auth/register`
+- **Status**: ✅ **COMPLETED**
+- **Frontend**: `lib/api/auth.ts -> register()`
+- **Component**: `components/RegisterScreen.tsx`
+- **Features**:
+  - ✅ Complete user registration
+  - ✅ Email validation
+  - ✅ OTP integration
+  - ✅ Professional UI design
+- **Test Status**: ✅ Working with real API
+
+#### 📍 `POST /api/v1/auth/verify`
+- **Status**: ✅ **COMPLETED**
+- **Frontend**: `lib/api/auth.ts -> verifyAccount()`
+- **Features**:
+  - ✅ OTP verification
+  - ✅ Account activation
+  - ✅ Anti-spam protection
+- **Test Status**: ✅ Working with real API
+
+#### 📍 `POST /api/v1/email/send-otp`
+- **Status**: ✅ **COMPLETED**
+- **Frontend**: `lib/api/auth.ts -> sendEmailOtp()`
+- **Features**:
+  - ✅ Email OTP sending
+  - ✅ Purpose-based OTP
+  - ✅ Rate limiting protection
+- **Test Status**: ✅ Working with real API
+
+#### 📍 `POST /api/v1/otp/check`
+- **Status**: ✅ **COMPLETED**
+- **Frontend**: `lib/api/auth.ts -> checkOtp()`
+- **Features**:
+  - ✅ OTP validation for forgot password
+  - ✅ Separate validation endpoint
+- **Test Status**: ✅ Working with real API
+
+#### 📍 `POST /api/v1/auth/forgot-password`
+- **Status**: ✅ **COMPLETED**
+- **Frontend**: `lib/api/auth.ts -> forgotPassword()`
+- **Component**: `components/ForgotPasswordScreen.tsx`
+- **Features**:
+  - ✅ 3-step password reset flow
+  - ✅ OTP validation integration
+  - ✅ Professional UI with success modals
+- **Test Status**: ✅ Working with real API
+
+---
+
+## 🛠️ Services APIs
+
+### ✅ **Completed** (2/2)
+
+#### 📍 `GET /api/v1/services`
+- **Status**: ✅ **COMPLETED**
+- **Frontend**: `lib/api/services.ts -> getAllServices()`
+- **Component**: `app/customer/all-services.tsx`
+- **Features**:
+  - ✅ JWT authentication required
+  - ✅ Professional service cards design
+  - ✅ Category-based organization
+  - ✅ Search functionality
+  - ✅ Loading and error states
+  - ✅ Real-time API data
+- **Test Status**: ✅ Working with real API (16 services loaded)
+
+#### 📍 `GET /api/v1/categories`
+- **Status**: ✅ **COMPLETED**
+- **Frontend**: `lib/api/services.ts -> getAllCategories()`
+- **Features**:
+  - ✅ Dynamic category names
+  - ✅ Category icons and colors
+  - ✅ Service count per category
 - **Test Status**: ✅ Working with real API
 - **Last Updated**: October 2025
 

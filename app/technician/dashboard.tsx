@@ -11,6 +11,7 @@ import {
   StatusBar 
 } from 'react-native';
 import { router, Stack } from 'expo-router';
+import { useAuth } from '../../store/authStore';
 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -240,8 +241,25 @@ interface DashboardContentProps {
 const { width } = Dimensions.get('window');
 
 export default function Dashboard() {
+  const { user, isAuthenticated } = useAuth();
+  
   // State for time
   const [currentTime, setCurrentTime] = useState(new Date());
+  
+  // Check authentication and verification status
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.replace('/technician/login');
+      return;
+    }
+
+    // Check if user has verified their email  
+    // isVerify: false means user never verified their email after registration
+    if (user?.isVerify === false && user?.email) {
+      router.replace(`/technician/verify?email=${encodeURIComponent(user.email)}`);
+      return;
+    }
+  }, [isAuthenticated, user?.isVerify, user?.email]);
   
   // Update time every second  
   useEffect(() => {
@@ -253,6 +271,11 @@ export default function Dashboard() {
       clearInterval(timer);
     };
   }, []);
+
+  // Show loading while checking authentication and verification
+  if (!isAuthenticated || user?.isVerify === false) {
+    return null;
+  }
   
   // Format time function
   const formatTime = () => {

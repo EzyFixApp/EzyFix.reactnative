@@ -48,7 +48,7 @@ export interface RegisterResponse {
 // Email OTP Request (updated)
 export interface SendOtpRequest {
   email: string;
-  purpose: 'registration' | 'password-reset';
+  purpose: 'registration' | 'password-reset' | 'verification';
 }
 
 // Email OTP Response (updated)
@@ -73,7 +73,7 @@ export interface VerifyAccountResponse {
 export interface ValidateOtpRequest {
   email: string;
   otp: string;
-  purpose: 'registration' | 'password-reset';
+  purpose: 'registration' | 'password-reset' | 'verification';
 }
 
 // OTP Validation Response
@@ -82,11 +82,11 @@ export interface ValidateOtpResponse {
   isValid: boolean;
 }
 
-// Forgot Password Request (OTP validation done separately)
+// Forgot Password Request (OTP required to complete reset and remove from DB)
 export interface ForgotPasswordRequest {
   email: string;
   newPassword: string;
-  otp?: string; // Optional - OTP validation is done in separate step
+  otp: string; // Required - OTP needed to finalize reset and clean up DB
 }
 
 // Forgot Password Response
@@ -102,6 +102,7 @@ export interface LoginResponse {
   email: string;
   avatarLink?: string | null;
   isPasswordExpired: boolean;
+  isVerify: boolean; // Added verification status from backend
   refreshToken: string;
 }
 
@@ -112,6 +113,33 @@ export interface UserData {
   email: string;
   avatarLink?: string | null;
   userType: UserType;
+  isVerify: boolean; // Added verification status
+}
+
+// Services API Types
+export interface Service {
+  serviceId: string;
+  categoryId: string;
+  serviceName: string | null;
+  description: string | null;
+  serviceIconUrl: string | null;
+  basePrice: number;
+}
+
+// Categories API Types
+export interface Category {
+  categoryId: string;
+  categoryName: string;
+  description?: string | null;
+  iconUrl?: string | null;
+}
+
+export interface ServicesResponse {
+  services: Service[];
+}
+
+export interface CategoriesResponse {
+  categories: Category[];
 }
 
 // Refresh Token Request

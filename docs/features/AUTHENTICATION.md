@@ -1,16 +1,87 @@
 # 🔐 Authentication System
 
-Hệ thống xác thực của EzyFix React Native App.
+Hệ thống xác thực của EzyFix React Native App với JWT-based authentication và OTP verification.
 
 ## 🏗️ Kiến trúc tổng quan
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Login Screen  │────│  Auth Service    │────│   Backend API   │
-│   Register      │    │  (lib/api/auth)  │    │   (Railway)     │
-│   Forgot Pass   │    │                  │    │                 │
+│   Auth Screens  │────│  Auth Service    │────│   Backend API   │
+│   • Login       │    │  (lib/api/auth)  │    │   (Railway)     │
+│   • Register    │    │  • JWT handling  │    │   • JWT tokens  │
+│   • OTP Verify  │    │  • Token storage │    │   • OTP system  │
+│   • Forgot Pass │    │  • isVerify flow │    │   • Email API   │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
 ```
+
+## 🔧 Core Authentication Service
+
+### AuthService Class (`lib/api/auth.ts`)
+
+**Key Features:**
+- ✅ **Singleton pattern** for consistent state management
+- ✅ **JWT token management** with automatic refresh
+- ✅ **Secure storage** using AsyncStorage
+- ✅ **isVerify field handling** from JWT payload
+- ✅ **Professional error handling** and logging
+- ✅ **OTP anti-spam protection** with React strict mode compatibility
+
+**Main Methods:**
+```typescript
+export class AuthService {
+  // Authentication
+  login(loginData: LoginRequest): Promise<LoginResponse>
+  register(registerData: RegisterRequest): Promise<RegisterResponse>
+  logout(): Promise<void>
+  
+  // Token management
+  getAccessToken(): Promise<string | null>
+  refreshToken(): Promise<string>
+  isAuthenticated(): Promise<boolean>
+  
+  // User data
+  getUserData(): Promise<UserData | null>
+  updateUserVerificationStatus(isVerify: boolean): Promise<void>
+  
+  // OTP verification
+  sendEmailOtp(email: string, purpose: string): Promise<SendOtpResponse>
+  verifyAccount(requestData: VerifyAccountRequest): Promise<VerifyAccountResponse>
+  checkOtp(requestData: ValidateOtpRequest): Promise<ValidateOtpResponse>
+  
+  // Password management
+  forgotPassword(requestData: ForgotPasswordRequest): Promise<ForgotPasswordResponse>
+  changePassword(requestData: ChangePasswordRequest): Promise<void>
+  
+  // User type management
+  setUserType(userType: 'customer' | 'technician'): Promise<void>
+  getUserType(): Promise<'customer' | 'technician' | null>
+}
+```
+
+### JWT Token Handling
+
+**isVerify Field Resolution:**
+```typescript
+private decodeJWTPayload(token: string): any {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64).split('').map(c => 
+        '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+      ).join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (error) {
+    return null;
+  }
+}
+```
+
+**Automatic Token Storage:**
+- Access tokens stored securely in AsyncStorage
+- Refresh tokens managed automatically
+- User verification status extracted from JWT payload
 
 ## 📱 UI Components
 
@@ -41,7 +112,7 @@ const [error, setError] = useState('');
 ### 🔄 ForgotPasswordScreen (`components/ForgotPasswordScreen.tsx`)
 - **3-step process**:
   1. Nhập email → Send OTP via `/api/v1/email/send-otp`
-  2. Nhập OTP → Verify via `/api/v1/otp/validate` 
+  2. Nhập OTP → Check via `/api/v1/otp/check` ✨ **New endpoint**
   3. Đặt mật khẩu mới → Reset via `/api/v1/auth/forgot-password` (no OTP needed)
 - **Email validation**: Chỉ accept email format
 - **Separated OTP validation**: OTP được validate riêng, không gửi kèm reset password
@@ -131,7 +202,7 @@ graph TD
     C -->|Yes| D[OTP sent to email]
     C -->|No| E[Email not found error]
     D --> F[User nhập OTP]
-    F --> G[Validate OTP via /api/v1/otp/validate]
+    F --> G[Check OTP via /api/v1/otp/check]
     G --> H{OTP valid?}
     H -->|Yes| I[Navigate to Reset Password Screen]
     H -->|No| J[Invalid OTP error]
@@ -146,7 +217,8 @@ graph TD
 ```
 
 **Key Changes:**
-- ✅ **Separated OTP validation**: `/api/v1/otp/validate` xử lý riêng
+- ✅ **New OTP check endpoint**: `/api/v1/otp/check` cho forgot password flow ✨
+- ✅ **Separated OTP validation**: OTP check riêng biệt từ password reset  
 - ✅ **No OTP in reset API**: `/api/v1/auth/forgot-password` chỉ cần `{email, newPassword}`
 - ✅ **Professional UI flow**: Consistent design across all screens
 - ✅ **Better UX**: Auto-submit OTP, proper loading states, Vietnamese errors

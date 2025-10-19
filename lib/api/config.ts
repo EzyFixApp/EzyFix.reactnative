@@ -35,6 +35,7 @@ export const API_ENDPOINTS = {
   OTP: {
     BASE: '/api/v1/otp',
     VALIDATE: '/api/v1/otp/validate',
+    CHECK: '/api/v1/otp/check', // New endpoint for forgot password OTP validation
   },
 
   // Address endpoints
@@ -45,6 +46,22 @@ export const API_ENDPOINTS = {
     GET_BY_ID: (id: string) => `/api/v1/addresses/${id}`,
     UPDATE: (id: string) => `/api/v1/addresses/${id}/update`,
     DELETE: (id: string) => `/api/v1/addresses/${id}/delete`,
+  },
+
+  // Services endpoints
+  SERVICES: {
+    BASE: '/api/v1/services',
+    GET_ALL: '/api/v1/services',
+    GET_BY_ID: '/api/v1/services',
+    SEARCH: '/api/v1/services/search',
+    GET_BY_CATEGORY: '/api/v1/services/category',
+  },
+
+  // Categories endpoints
+  CATEGORIES: {
+    BASE: '/api/v1/categories',
+    GET_ALL: '/api/v1/categories',
+    GET_BY_ID: '/api/v1/categories',
   },
 } as const;
 

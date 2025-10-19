@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useAuthActions, useAuth } from '../store/authStore';
+import { useAuthActions, useAuth, useAuthStore } from '../store/authStore';
 import { logger } from '../lib/logger';
 import type { UserType } from '../lib/api/config';
 
@@ -191,6 +191,22 @@ export default function LoginScreen({
       // Call API login
       await login({ email: email.trim(), password }, userType);
       
+      // Get the updated user data to check verification status
+      const currentUser = useAuthStore.getState().user;
+      
+      // Check if user has verified their email
+      // isVerify: false means user never verified their email after registration
+      if (currentUser?.isVerify === false && currentUser?.email) {
+        // User is not verified, redirect to verify page with email
+        if (userType === 'technician') {
+          router.replace(`/technician/verify?email=${encodeURIComponent(currentUser.email)}`);
+        } else {
+          router.replace(`/customer/verify?email=${encodeURIComponent(currentUser.email)}`);
+        }
+        return;
+      }
+      
+      // User is verified or verification status unknown, proceed with normal navigation
       // Success - call onLogin callback if provided
       if (onLogin) {
         onLogin();
@@ -201,15 +217,6 @@ export default function LoginScreen({
         } else {
           router.replace('/(tabs)/' as any);
         }
-      }
-      
-      // Development logging - helpful for debugging
-      if (__DEV__) {
-        console.group('✅ Login Successful');
-        console.log('📧 Email:', email);
-        console.log('👤 User Type:', userType);
-        console.log('🎯 Navigation:', userType === 'technician' ? '/technician/dashboard' : '/(tabs)/');
-        console.groupEnd();
       }
     } catch (error: any) {
       // Extract meaningful error message for user

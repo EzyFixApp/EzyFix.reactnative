@@ -20,7 +20,8 @@ https://ezyfix.up.railway.app
 ├── email/
 │   └── send-otp        # POST - Gửi OTP qua email
 └── otp/
-    └── validate-otp    # POST - Xác thực OTP
+    ├── validate        # POST - Xác thực OTP (registration)
+    └── check          # POST - Check OTP (forgot password)
 ```
 
 ## 🔐 Authentication Flow
@@ -70,8 +71,8 @@ await authService.sendOtp({
   purpose: "password-reset"
 });
 
-// Bước 2: Validate OTP (separated from reset)
-const isValid = await authService.validateOtp({
+// Bước 2: Check OTP (new endpoint for forgot password)
+const isValid = await authService.checkOtp({
   email: "user@example.com",
   otp: "123456", 
   purpose: "password-reset"
@@ -98,7 +99,8 @@ if (isValid) {
 - `login()` - Đăng nhập
 - `register()` - Đăng ký
 - `sendOtp()` - Gửi OTP (for both registration & password reset)
-- `validateOtp()` - Validate OTP (separated validation)
+- `checkOtp()` - Check OTP (new endpoint for forgot password) ✨
+- `validateOtp()` - Validate OTP (for registration)
 - `forgotPassword()` - Reset mật khẩu (no OTP required)
 - `verifyAccount()` - Verify account registration
 

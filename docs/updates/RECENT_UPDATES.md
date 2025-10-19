@@ -2,18 +2,65 @@
 
 Các cập nhật gần đây cho EzyFix React Native App.
 
+## 📅 October 20, 2025 - Major Services Integration & UI Enhancement
+
+### 🚀 **Services API Complete Integration**
+- ✅ **Full Services API**: Successfully integrated `/api/v1/services` endpoint
+- ✅ **Categories API**: Implemented `/api/v1/categories` for dynamic category names
+- ✅ **Professional Service Cards**: Enhanced design with rating badges, pricing, and action buttons
+- ✅ **Category Organization**: Dynamic categorization with real category names from API
+- ✅ **Search Functionality**: Working search across services and descriptions
+
+### 🎨 **Major UI/UX Improvements**
+- ✅ **Enhanced Service Cards**: 
+  - Professional shadows and elevation
+  - Rating badges with star icons
+  - Gradient category icons
+  - "Đặt ngay" action buttons with icons
+  - Proper price formatting
+- ✅ **Category Headers**: 
+  - Gradient backgrounds for icons
+  - Service count display
+  - Professional typography hierarchy
+- ✅ **Responsive Design**: 2-column grid layout optimized for mobile
+
+### 🏗️ **Architecture Improvements**
+- ✅ **Service Separation**: Moved services functionality from `auth.ts` to dedicated `services.ts`
+- ✅ **Type Safety**: Complete TypeScript implementation for Service and Category interfaces
+- ✅ **Error Handling**: Professional error states with retry functionality
+- ✅ **Performance**: Parallel API calls for services and categories
+- ✅ **Clean Code**: Removed debug logs and organized imports
+
+### 📚 **Documentation Updates**
+- ✅ **Services API Documentation**: Comprehensive guide for services integration
+- ✅ **UI/UX Design System**: Complete design system documentation
+- ✅ **Authentication Updates**: Enhanced auth documentation with JWT handling
+- ✅ **API Status**: Updated progress tracking with current implementation status
+
+## 📅 October 19, 2025 - New OTP Check API Integration
+
+### 🆕 **API Endpoint Update**
+- ✅ **New OTP check endpoint**: `/api/v1/otp/check` for forgot password flow
+- ✅ **Improved API separation**: `checkOtp()` vs `validateOtp()` for different purposes
+- ✅ **Better error handling**: Enhanced Vietnamese error messages
+- ✅ **Backward compatibility**: Keeping existing `validateOtp()` for registration
+
+### 🔧 **Technical Changes**
+- ✅ **Config update**: Added `OTP.CHECK` endpoint in `lib/api/config.ts`
+- ✅ **Auth service**: New `checkOtp()` method with comprehensive error handling
+- ✅ **OTP verification**: Updated component to use correct endpoint
+- ✅ **Documentation sync**: Updated all docs to reflect new API flow
+
 ## 📅 October 18, 2025 - Authentication Flow Optimization
 
 ### 🎯 Major Changes
 
 #### 🔐 **Forgot Password Flow Refactoring**
-- ✅ **Separated OTP validation**: OTP validation riêng biệt với password reset
-- ✅ **Cleaner API flow**: `/api/v1/auth/forgot-password` không cần OTP parameter
+- ✅ **Separated OTP validation**: OTP validation separate from password reset
+- ✅ **Cleaner API flow**: `/api/v1/auth/forgot-password` without OTP parameter
 - ✅ **Better error handling**: Comprehensive Vietnamese error messages
 - ✅ **Professional UI**: App color scheme (#609CEF) consistent across all screens
-- ✅ **Auto-submit OTP**: Tự động submit khi nhập đủ 6 số
-
-#### 📱 **UI/UX Improvements** 
+- ✅ **Auto-submit OTP**: Automatically submit when 6 digits entered 
 - ✅ **Reusable OTP screen**: OTPVerificationScreen cho cả registration và password reset
 - ✅ **Modern design**: LoginScreen-inspired design cho reset password screens
 - ✅ **Smooth animations**: Slide, fade, và spring animations

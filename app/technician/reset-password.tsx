@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   StatusBar,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { authService } from '../../lib/api/auth';
@@ -21,7 +22,7 @@ const { width } = Dimensions.get('window');
 
 export default function TechnicianResetPasswordScreen() {
   const router = useRouter();
-  const { email } = useLocalSearchParams<{ email: string }>();
+  const { email, otp } = useLocalSearchParams<{ email: string; otp: string }>();
   
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -40,11 +41,22 @@ export default function TechnicianResetPasswordScreen() {
   useEffect(() => {
     startEnterAnimation();
     
+    // Validation check
+    if (!email || !otp) {
+      Alert.alert(
+        'Lỗi',
+        'Thông tin xác thực không hợp lệ. Vui lòng thử lại qua trình quên mật khẩu.',
+        [{ text: 'OK', onPress: () => router.replace('/technician/login') }]
+      );
+      return;
+    }
+    
     // Debug logging to check parameters
     if (__DEV__) {
       console.group('🔍 Technician Reset Password Screen Parameters');
       console.log('📧 Email:', email);
-      console.log('✅ Email present:', !!email);
+      console.log('🔢 OTP:', otp);
+      console.log('✅ Parameters present:', !!email && !!otp);
       console.groupEnd();
     }
   }, []);
@@ -146,6 +158,7 @@ export default function TechnicianResetPasswordScreen() {
     try {
       const resetPasswordData: ForgotPasswordRequest = {
         email: email.trim().toLowerCase(),
+        otp,
         newPassword,
       };
 

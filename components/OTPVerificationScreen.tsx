@@ -17,10 +17,14 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { authService } from '../lib/api/auth';
+import { useAuthActions } from '../store/authStore';
+
+// Global flag to prevent duplicate OTP sends across component remounts
+let globalOtpSendingFlag: { [key: string]: boolean } = {};
 
 interface OTPVerificationScreenProps {
   email: string;
-  purpose: 'registration' | 'password-reset';
+  purpose: 'registration' | 'password-reset' | 'verification';
   userType?: 'customer' | 'technician';
   onBack?: () => void;
   onSuccess?: () => void;
@@ -33,6 +37,8 @@ export default function OTPVerificationScreen({
   onBack,
   onSuccess,
 }: OTPVerificationScreenProps) {
+  const { checkAuthStatus } = useAuthActions();
+  
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [countdown, setCountdown] = useState(60);
   const [canResend, setCanResend] = useState(false);
@@ -41,6 +47,15 @@ export default function OTPVerificationScreen({
   const [successMessage, setSuccessMessage] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isAutoSubmitting, setIsAutoSubmitting] = useState(false);
+  
+  // Use ref to track auto-send to prevent React strict mode double execution
+  const hasAutoSentRef = useRef(false);
+  const isFirstRender = useRef(true);
+  
+  // OTP attempts tracking
+  const [otpAttempts, setOtpAttempts] = useState(0);
+  const [isOtpInvalid, setIsOtpInvalid] = useState(false);
+  const maxOtpAttempts = 3;
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -61,6 +76,62 @@ export default function OTPVerificationScreen({
       setCanResend(true);
     }
   }, [countdown]);
+
+  // Auto-send OTP when component mounts
+  useEffect(() => {
+    const sendInitialOTP = async () => {
+      // Create unique key for this email+purpose combination
+      const otpKey = `${email}-${purpose}`;
+      
+      // Check global flag to prevent duplicate sends
+      if (globalOtpSendingFlag[otpKey]) {
+        return;
+      }
+
+      // Prevent duplicate auto-send using ref to survive React strict mode
+      if (hasAutoSentRef.current) {
+        return;
+      }
+
+      // Auto-send OTP for both registration and verification
+      // Both cases need to verify email and set isVerify: true via /api/v1/auth/verify
+      try {
+        // Set both local and global flags before API call
+        hasAutoSentRef.current = true;
+        globalOtpSendingFlag[otpKey] = true;
+        isFirstRender.current = false;
+        
+        const otpResponse = await authService.sendEmailOtp({
+          email,
+          purpose
+        });
+        
+        setCountdown(60);
+        setCanResend(false);
+        setSuccessMessage('Mã OTP đã được gửi đến email của bạn');
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          setSuccessMessage('');
+        }, 3000);
+        
+        // Clear global flag after 5 seconds to allow manual resend
+        setTimeout(() => {
+          globalOtpSendingFlag[otpKey] = false;
+        }, 5000);
+        
+      } catch (error: any) {
+        // Reset flags if failed
+        hasAutoSentRef.current = false;
+        globalOtpSendingFlag[otpKey] = false;
+        isFirstRender.current = true;
+        setError('Không thể gửi OTP. Vui lòng thử lại.');
+        setCanResend(true);
+      }
+    };
+
+    sendInitialOTP();
+  }, []); // Remove dependencies to prevent re-runs
 
   // Start enter animation
   useEffect(() => {
@@ -114,27 +185,54 @@ export default function OTPVerificationScreen({
   };
 
   // Hide success modal with animation
-  const hideSuccessModalWithAnimation = () => {
-    Animated.parallel([
-      Animated.timing(successModalAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(successScaleAnim, {
-        toValue: 0.5,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setShowSuccessModal(false);
-      
-      // Navigate to login screen
+  const hideSuccessModalWithAnimation = async () => {
+    // First animate modal away
+    await new Promise<void>((resolve) => {
+      Animated.parallel([
+        Animated.timing(successModalAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(successScaleAnim, {
+          toValue: 0.5,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setShowSuccessModal(false);
+        resolve();
+      });
+    });
+    
+    // For registration, ensure auth store is fully refreshed before navigation
+    if (purpose === 'registration') {
+      try {
+        await checkAuthStatus();
+        if (__DEV__) {
+          console.log('✅ Final auth refresh before navigation completed');
+        }
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('⚠️ Final auth refresh failed, proceeding with navigation:', error);
+        }
+      }
+    }
+    
+    // Navigate to appropriate screen based on purpose
+    if (purpose === 'registration') {
+      // After successful registration verification, go to dashboard
+      const dashboardRoute = userType === 'customer' 
+        ? '/customer/dashboard' 
+        : '/technician/dashboard';
+      router.replace(dashboardRoute);
+    } else {
+      // For password reset, go to login screen
       const loginRoute = userType === 'customer' 
         ? '/customer/login' 
         : '/technician/login';
       router.replace(loginRoute);
-    });
+    }
   };
 
   // Handle OTP input change
@@ -249,6 +347,30 @@ export default function OTPVerificationScreen({
             console.log('✅ Account verified successfully', { email });
           }
           
+          // Update local user verification status
+          try {
+            await authService.updateUserVerificationStatus(true);
+            if (__DEV__) {
+              console.log('✅ Local verification status updated');
+            }
+          } catch (updateError) {
+            if (__DEV__) {
+              console.warn('⚠️ Failed to update local verification status:', updateError);
+            }
+          }
+          
+          // Force refresh auth store to get updated user data
+          try {
+            await checkAuthStatus();
+            if (__DEV__) {
+              console.log('✅ Auth store refreshed with updated verification status');
+            }
+          } catch (refreshError) {
+            if (__DEV__) {
+              console.warn('⚠️ Failed to refresh auth store:', refreshError);
+            }
+          }
+          
           if (onSuccess) {
             onSuccess();
           } else {
@@ -261,18 +383,18 @@ export default function OTPVerificationScreen({
           setError('Mã OTP không chính xác hoặc đã hết hạn');
         }
       } else {
-        // Password reset validation
+        // Password reset validation using new checkOtp endpoint
         if (__DEV__) {
-          console.log('🔄 Validating OTP for password reset...', { email, otp: otpCode });
+          console.log('🔄 Checking OTP for password reset...', { email, otp: otpCode });
         }
-        const response = await authService.validateOtp({
+        const response = await authService.checkOtp({
           email,
           otp: otpCode,
           purpose: 'password-reset'
         });
 
         if (__DEV__) {
-          console.log('📥 Validate OTP response:', response);
+          console.log('📥 Check OTP response:', response);
         }
 
         // Check response more flexibly
@@ -291,11 +413,16 @@ export default function OTPVerificationScreen({
           if (onSuccess) {
             onSuccess();
           } else {
-            // Navigate to reset password screen (no OTP needed in new API)
+            // Navigate to reset password screen with validated OTP
             try {
               const resetRoute = userType === 'customer' 
-                ? `/customer/reset-password?email=${encodeURIComponent(email)}` 
-                : `/technician/reset-password?email=${encodeURIComponent(email)}`;
+                ? `/customer/reset-password?email=${encodeURIComponent(email)}&otp=${otpCode}` 
+                : `/technician/reset-password?email=${encodeURIComponent(email)}&otp=${otpCode}`;
+              
+              if (__DEV__) {
+                console.log('✅ Navigating to reset password with validated OTP');
+              }
+              
               router.push(resetRoute as any);
             } catch (navError) {
               if (__DEV__) {
@@ -309,10 +436,28 @@ export default function OTPVerificationScreen({
             }
           }
         } else {
+          // Handle failed OTP validation
           if (__DEV__) {
             console.log('❌ OTP validation failed:', response);
           }
-          setError('Mã OTP không chính xác hoặc đã hết hạn');
+          
+          // Increment attempts for password reset
+          if (purpose === 'password-reset') {
+            const newAttempts = otpAttempts + 1;
+            setOtpAttempts(newAttempts);
+            
+            if (newAttempts >= maxOtpAttempts) {
+              setIsOtpInvalid(true);
+              setError(`Bạn đã nhập sai OTP ${maxOtpAttempts} lần. OTP này đã bị vô hiệu hóa. Vui lòng yêu cầu mã OTP mới.`);
+              setCanResend(true);
+              setCountdown(0);
+            } else {
+              const remainingAttempts = maxOtpAttempts - newAttempts;
+              setError(`Mã OTP không chính xác. Còn lại ${remainingAttempts} lần thử.`);
+            }
+          } else {
+            setError('Mã OTP không chính xác hoặc đã hết hạn');
+          }
         }
       }
     } catch (error: any) {
@@ -320,60 +465,77 @@ export default function OTPVerificationScreen({
         console.error('❌ OTP verification failed', error);
       }
       
-      // Enhanced Vietnamese error messages
-      let errorMessage = 'Xác thực thất bại. Vui lòng thử lại.';
-      
-      if (error.reason) {
-        // If backend provides Vietnamese reason, use it
-        errorMessage = error.reason;
-      } else if (error.message) {
-        // Convert common error messages to Vietnamese
-        const message = error.message.toLowerCase();
+      // Handle attempts tracking for password reset
+      if (purpose === 'password-reset') {
+        const newAttempts = otpAttempts + 1;
+        setOtpAttempts(newAttempts);
         
-        if (message.includes('invalid') || message.includes('incorrect') || message.includes('wrong')) {
-          errorMessage = 'Mã OTP không chính xác';
-        } else if (message.includes('expired') || message.includes('expire')) {
-          errorMessage = 'Mã OTP đã hết hạn. Vui lòng yêu cầu mã mới';
-        } else if (message.includes('network') || message.includes('connection') || message.includes('fetch')) {
-          errorMessage = 'Lỗi kết nối mạng. Vui lòng kiểm tra và thử lại';
-        } else if (message.includes('timeout')) {
-          errorMessage = 'Yêu cầu quá thời gian. Vui lòng thử lại';
-        } else if (message.includes('server') || message.includes('500')) {
-          errorMessage = 'Lỗi server. Vui lòng thử lại sau';
-        } else if (message.includes('rate limit') || message.includes('too many')) {
-          errorMessage = 'Bạn đã thử quá nhiều lần. Vui lòng đợi một chút';
-        } else if (message.includes('not found') || message.includes('404')) {
-          errorMessage = 'Không tìm thấy thông tin. Vui lòng thử lại';
-        } else if (message.includes('unauthorized') || message.includes('401')) {
-          errorMessage = 'Không có quyền truy cập. Vui lòng thử lại';
+        if (newAttempts >= maxOtpAttempts) {
+          setIsOtpInvalid(true);
+          setError(`Bạn đã nhập sai OTP ${maxOtpAttempts} lần. OTP này đã bị vô hiệu hóa. Vui lòng yêu cầu mã OTP mới.`);
+          setCanResend(true);
+          setCountdown(0);
         } else {
-          // For any other errors, provide generic Vietnamese message
-          errorMessage = 'Đã có lỗi xảy ra. Vui lòng thử lại';
+          const remainingAttempts = maxOtpAttempts - newAttempts;
+          let errorMessage = `Mã OTP không chính xác. Còn lại ${remainingAttempts} lần thử.`;
+          
+          if (error.reason) {
+            errorMessage = `${error.reason} Còn lại ${remainingAttempts} lần thử.`;
+          }
+          
+          setError(errorMessage);
         }
-      } else if (error.status_code) {
-        // Handle by status code
-        switch (error.status_code) {
-          case 400:
-            errorMessage = 'Mã OTP không hợp lệ';
-            break;
-          case 401:
+      } else {
+        // Enhanced Vietnamese error messages for registration
+        let errorMessage = 'Xác thực thất bại. Vui lòng thử lại.';
+        
+        if (error.reason) {
+          errorMessage = error.reason;
+        } else if (error.message) {
+          const message = error.message.toLowerCase();
+          if (message.includes('invalid') || message.includes('incorrect') || message.includes('wrong')) {
             errorMessage = 'Mã OTP không chính xác';
-            break;
-          case 404:
-            errorMessage = 'Không tìm thấy thông tin';
-            break;
-          case 429:
-            errorMessage = 'Quá nhiều lần thử. Vui lòng đợi';
-            break;
-          case 500:
+          } else if (message.includes('expired') || message.includes('expire')) {
+            errorMessage = 'Mã OTP đã hết hạn. Vui lòng yêu cầu mã mới';
+          } else if (message.includes('network') || message.includes('connection') || message.includes('fetch')) {
+            errorMessage = 'Lỗi kết nối mạng. Vui lòng kiểm tra và thử lại';
+          } else if (message.includes('timeout')) {
+            errorMessage = 'Yêu cầu quá thời gian. Vui lòng thử lại';
+          } else if (message.includes('server') || message.includes('500')) {
             errorMessage = 'Lỗi server. Vui lòng thử lại sau';
-            break;
-          default:
+          } else if (message.includes('rate limit') || message.includes('too many')) {
+            errorMessage = 'Bạn đã thử quá nhiều lần. Vui lòng đợi một chút';
+          } else if (message.includes('not found') || message.includes('404')) {
+            errorMessage = 'Không tìm thấy thông tin. Vui lòng thử lại';
+          } else if (message.includes('unauthorized') || message.includes('401')) {
+            errorMessage = 'Không có quyền truy cập. Vui lòng thử lại';
+          } else {
             errorMessage = 'Đã có lỗi xảy ra. Vui lòng thử lại';
+          }
+        } else if (error.status_code) {
+          switch (error.status_code) {
+            case 400:
+              errorMessage = 'Mã OTP không hợp lệ';
+              break;
+            case 401:
+              errorMessage = 'Mã OTP không chính xác';
+              break;
+            case 404:
+              errorMessage = 'Không tìm thấy thông tin';
+              break;
+            case 429:
+              errorMessage = 'Quá nhiều lần thử. Vui lòng đợi';
+              break;
+            case 500:
+              errorMessage = 'Lỗi server. Vui lòng thử lại sau';
+              break;
+            default:
+              errorMessage = 'Đã có lỗi xảy ra. Vui lòng thử lại';
+          }
         }
+        
+        setError(errorMessage);
       }
-      
-      setError(errorMessage);
     } finally {
       setIsLoading(false);
       setIsAutoSubmitting(false); // Reset auto-submit state
@@ -382,12 +544,15 @@ export default function OTPVerificationScreen({
 
   // Handle resend OTP
   const handleResendOtp = async () => {
+    const otpKey = `${email}-${purpose}`;
+    
     setIsLoading(true);
     setError('');
     setSuccessMessage('');
     
     try {
-      console.log('📧 Resending OTP...', { email, purpose });
+      // Allow manual resend by clearing global flag temporarily
+      globalOtpSendingFlag[otpKey] = false;
       
       await authService.sendEmailOtp({
         email,
@@ -398,7 +563,10 @@ export default function OTPVerificationScreen({
       setCanResend(false);
       setOtp(['', '', '', '', '', '']);
       
-      console.log('📧 OTP resent successfully', { email, purpose });
+      // Reset OTP attempts tracking
+      setOtpAttempts(0);
+      setIsOtpInvalid(false);
+      
       setSuccessMessage('Mã OTP mới đã được gửi đến email của bạn');
       
       // Clear success message after 3 seconds
@@ -409,7 +577,6 @@ export default function OTPVerificationScreen({
       // Focus first input
       otpInputRefs.current[0]?.focus();
     } catch (error: any) {
-      console.error('❌ Resend OTP failed', error);
       
       // Provide Vietnamese error messages
       let errorMessage = 'Không thể gửi lại OTP. Vui lòng thử lại.';
@@ -614,7 +781,7 @@ export default function OTPVerificationScreen({
               {/* Success Message */}
               <Text style={styles.successModalMessage}>
                 {purpose === 'registration' 
-                  ? 'Tài khoản của bạn đã được xác thực thành công.\nHãy đăng nhập để bắt đầu sử dụng dịch vụ.'
+                  ? 'Tài khoản của bạn đã được xác thực thành công!\nBạn sẽ được chuyển đến trang chính.'
                   : 'Mã OTP đã được xác thực thành công.\nBạn có thể tiếp tục đặt lại mật khẩu.'
                 }
               </Text>
