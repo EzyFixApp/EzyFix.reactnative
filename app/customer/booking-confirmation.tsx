@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,8 +17,34 @@ const { width } = Dimensions.get('window');
 
 export default function BookingConfirmation() {
   const params = useLocalSearchParams();
+  
+  // Extract booking details from params
   const serviceName = params.serviceName as string || 'Dịch vụ';
   const customerName = params.customerName as string || 'Khách hàng';
+  const requestId = params.requestId as string || '';
+  const imageCount = parseInt(params.imageCount as string || '0');
+  const requestedDate = params.requestedDate as string || '';
+  const expectedStartTime = params.expectedStartTime as string || '';
+  const addressNote = params.addressNote as string || '';
+  const serviceDescription = params.serviceDescription as string || '';
+  
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('vi-VN', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  // Format time for display
+  const formatTime = (timeString: string) => {
+    if (!timeString) return '';
+    return timeString;
+  };
   
   // Animation values
   const scaleAnim = useRef(new Animated.Value(0)).current;
@@ -48,11 +75,11 @@ export default function BookingConfirmation() {
   }, []);
 
   const handleViewHistory = () => {
-    router.push('./booking-history' as any);
+    router.push('/(tabs)/bookings' as any);
   };
 
   const handleBackToHome = () => {
-    router.push('./dashboard' as any);
+    router.push('/customer/dashboard' as any);
   };
 
   return (
@@ -63,7 +90,11 @@ export default function BookingConfirmation() {
         }}
       />
 
-      <View style={styles.content}>
+      <ScrollView 
+        style={styles.flex}
+        contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Success Animation */}
         <View style={styles.animationContainer}>
           <Animated.View
@@ -96,6 +127,11 @@ export default function BookingConfirmation() {
             <Text style={styles.successTitle}>Đặt lịch thành công!</Text>
             <Text style={styles.successSubtitle}>
               Yêu cầu dịch vụ <Text style={styles.serviceName}>{serviceName}</Text> của bạn đã được gửi đi
+              {imageCount > 0 && (
+                <>
+                  {'\n'}cùng với <Text style={styles.serviceName}>{imageCount} ảnh</Text> mô tả vấn đề
+                </>
+              )}
             </Text>
           </Animated.View>
         </View>
@@ -116,6 +152,11 @@ export default function BookingConfirmation() {
           </View>
           
           <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Mã yêu cầu:</Text>
+            <Text style={styles.infoValue}>{requestId.slice(-8).toUpperCase()}</Text>
+          </View>
+          
+          <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Khách hàng:</Text>
             <Text style={styles.infoValue}>{customerName}</Text>
           </View>
@@ -124,6 +165,34 @@ export default function BookingConfirmation() {
             <Text style={styles.infoLabel}>Dịch vụ:</Text>
             <Text style={styles.infoValue}>{serviceName}</Text>
           </View>
+
+          {requestedDate && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Ngày:</Text>
+              <Text style={styles.infoValue}>{formatDate(requestedDate)}</Text>
+            </View>
+          )}
+
+          {expectedStartTime && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Giờ bắt đầu:</Text>
+              <Text style={styles.infoValue}>{formatTime(expectedStartTime)}</Text>
+            </View>
+          )}
+
+          {addressNote && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Ghi chú địa chỉ:</Text>
+              <Text style={styles.infoValue}>{addressNote}</Text>
+            </View>
+          )}
+
+          {imageCount > 0 && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Ảnh đính kèm:</Text>
+              <Text style={styles.infoValue}>{imageCount} ảnh</Text>
+            </View>
+          )}
           
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Trạng thái:</Text>
@@ -167,39 +236,39 @@ export default function BookingConfirmation() {
             <Text style={styles.stepText}>Xác nhận báo giá và lên lịch thực hiện</Text>
           </View>
         </Animated.View>
-      </View>
 
-      {/* Action Buttons */}
-      <Animated.View
-        style={[
-          styles.actionContainer,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
-      >
-        <TouchableOpacity
-          style={styles.historyButton}
-          onPress={handleViewHistory}
-          activeOpacity={0.8}
+        {/* Action Buttons */}
+        <Animated.View
+          style={[
+            styles.actionContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
         >
-          <Text style={styles.historyButtonText}>Xem lịch sử đặt</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.homeButton}
-          onPress={handleBackToHome}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={['#609CEF', '#4F8BE8']}
-            style={styles.homeGradient}
+          <TouchableOpacity
+            style={styles.historyButton}
+            onPress={handleViewHistory}
+            activeOpacity={0.8}
           >
-            <Text style={styles.homeButtonText}>Về trang chủ</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </Animated.View>
+            <Text style={styles.historyButtonText}>Xem lịch sử đặt</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.homeButton}
+            onPress={handleBackToHome}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={['#609CEF', '#4F8BE8']}
+              style={styles.homeGradient}
+            >
+              <Text style={styles.homeButtonText}>Về trang chủ</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </Animated.View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -208,6 +277,15 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
+  },
+  flex: {
+    flex: 1,
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    paddingHorizontal: 16,
+    paddingTop: 40,
+    paddingBottom: 20,
   },
   content: {
     flex: 1,
@@ -288,13 +366,14 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
   infoLabel: {
     fontSize: 14,
     color: '#64748B',
     fontWeight: '500',
+    width: '40%',
   },
   infoValue: {
     fontSize: 14,
@@ -370,8 +449,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   actionContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 20,
+    marginTop: 24,
     gap: 12,
   },
   historyButton: {

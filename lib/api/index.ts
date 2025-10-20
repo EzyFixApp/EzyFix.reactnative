@@ -6,5 +6,12 @@
 export { apiService } from './base';
 export { authService } from './auth';
 export { servicesService } from './services';
+export { serviceRequestService } from './serviceRequests';
+export { addressService } from './addresses';
+export { locationService } from './location';
+export { mediaService } from './media';
 export * from './config';
 export type * from '../../types/api';
+export type * from './addresses';
+export type * from './location';
+export type * from './media';

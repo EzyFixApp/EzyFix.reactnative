@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   Alert,
   Platform,
@@ -13,7 +12,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import CustomerHeader from '../../components/CustomerHeader';
+import { serviceRequestService } from '../../lib/api/serviceRequests';
+import { servicesService } from '../../lib/api/services';
+import { ServiceRequestResponse } from '../../types/api';
+import { useAuth } from '../../store/authStore';
+import AuthModal from '../../components/AuthModal';
 
 interface BookingDetail {
   id: string;
@@ -44,8 +49,122 @@ const mockBookingDetail: BookingDetail = {
 };
 
 export default function BookingDetail() {
-  const [booking] = useState<BookingDetail>(mockBookingDetail);
+  const { orderId } = useLocalSearchParams<{ orderId: string }>();
+  const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  const { isAuthenticated } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Check authentication when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isAuthenticated) {
+        setShowAuthModal(true);
+      }
+    }, [isAuthenticated])
+  );
+
+  // Map API status to UI status
+  const mapApiStatus = (apiStatus: string): BookingDetail['status'] => {
+    switch (apiStatus.toLowerCase()) {
+      case 'pending':
+      case 'waiting':
+        return 'searching';
+      case 'quoted':
+        return 'quoted';
+      case 'accepted':
+        return 'accepted';
+      case 'in_progress':
+      case 'in-progress':
+        return 'in-progress';
+      case 'completed':
+        return 'completed';
+      case 'cancelled':
+        return 'cancelled';
+      default:
+        return 'searching';
+    }
+  };
+
+  // Load booking details from API
+  const loadBookingDetail = async () => {
+    if (!orderId) {
+      Alert.alert('Lỗi', 'Không tìm thấy ID đơn hàng');
+      router.back();
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      // Get service request details
+      const serviceRequest = await serviceRequestService.getServiceRequestById(orderId);
+      
+      let serviceName = 'Dịch vụ';
+      
+      try {
+        // Get service details for name
+        const service = await servicesService.getServiceById(serviceRequest.serviceId);
+        serviceName = service.serviceName || service.description || 'Dịch vụ';
+      } catch (error) {
+        // Fallback to description
+        serviceName = serviceRequest.serviceDescription || 'Dịch vụ';
+        if (__DEV__) {
+          console.warn(`Failed to get service name for ${serviceRequest.serviceId}:`, error);
+        }
+      }
+      
+      // Transform API data to BookingDetail format
+      const transformedBooking: BookingDetail = {
+        id: serviceRequest.id,
+        serviceName: serviceName,
+        servicePrice: 'Đang cập nhật',
+        customerName: '', // Will be filled from user data if needed
+        phoneNumber: '',
+        address: serviceRequest.addressNote || 'Địa chỉ chưa cập nhật',
+        status: mapApiStatus(serviceRequest.status),
+        createdAt: serviceRequest.createdAt,
+        notes: serviceRequest.serviceDescription,
+        // TODO: Add these when technician and quote APIs are available
+        technicianName: undefined,
+        quotePrice: undefined,
+      };
+      
+      setBooking(transformedBooking);
+      
+    } catch (error: any) {
+      if (__DEV__) console.error('Error loading booking detail:', error);
+      
+      // Handle common errors
+      if (error.status_code === 404) {
+        Alert.alert(
+          'Không tìm thấy',
+          'Không tìm thấy chi tiết đơn hàng này.',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      } else if (error.status_code === 403) {
+        Alert.alert(
+          'Lỗi truy cập',
+          'Không có quyền truy cập chi tiết đơn hàng này.',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      } else {
+        Alert.alert(
+          'Lỗi',
+          'Không thể tải chi tiết đơn hàng. Vui lòng thử lại sau.',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBookingDetail();
+  }, [orderId]);
+
+  const [loadingAction, setLoadingAction] = useState(false);
 
   const getStatusInfo = (status: BookingDetail['status']) => {
     switch (status) {
@@ -81,20 +200,24 @@ export default function BookingDetail() {
   };
 
   const handleAcceptQuote = async () => {
-    setLoading(true);
+    if (!booking) return;
+    
+    setLoadingAction(true);
     try {
-      // Simulate API call
+      // TODO: Implement accept quote API when available
       await new Promise(resolve => setTimeout(resolve, 2000));
       Alert.alert('Thành công', 'Đã chấp nhận báo giá!');
       router.back();
     } catch (error) {
       Alert.alert('Lỗi', 'Có lỗi xảy ra, vui lòng thử lại!');
     } finally {
-      setLoading(false);
+      setLoadingAction(false);
     }
   };
 
   const handleRejectQuote = () => {
+    if (!booking) return;
+    
     Alert.alert(
       'Từ chối báo giá',
       'Bạn có chắc chắn muốn từ chối báo giá này?',
@@ -104,6 +227,7 @@ export default function BookingDetail() {
           text: 'Từ chối', 
           style: 'destructive',
           onPress: () => {
+            // TODO: Implement reject quote API when available
             Alert.alert('Đã từ chối', 'Báo giá đã được từ chối!');
             router.back();
           }
@@ -111,6 +235,88 @@ export default function BookingDetail() {
       ]
     );
   };
+
+  // Show loading state
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#609CEF" translucent={false} />
+        <Stack.Screen options={{ headerShown: false }} />
+        
+        <View style={styles.safeAreaContainer}>
+          <View style={styles.customHeaderWrapper}>
+            <LinearGradient
+              colors={['#609CEF', '#3B82F6']}
+              style={styles.customHeaderGradient}
+            >
+              <View style={styles.customHeaderContent}>
+                <TouchableOpacity 
+                  onPress={() => router.back()}
+                  style={styles.customBackButton}
+                >
+                  <Ionicons name="arrow-back" size={24} color="white" />
+                </TouchableOpacity>
+                
+                <View style={styles.customHeaderTitleContainer}>
+                  <Text style={styles.customHeaderTitle}>Chi tiết đặt lịch</Text>
+                  <Text style={styles.customHeaderSubtitle}>Đang tải...</Text>
+                </View>
+
+                <TouchableOpacity style={styles.customShareButton}>
+                  <Ionicons name="share-outline" size={24} color="white" />
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+          </View>
+
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Đang tải chi tiết đơn hàng...</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // Show error state if booking is null
+  if (!booking) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#609CEF" translucent={false} />
+        <Stack.Screen options={{ headerShown: false }} />
+        
+        <View style={styles.safeAreaContainer}>
+          <View style={styles.customHeaderWrapper}>
+            <LinearGradient
+              colors={['#609CEF', '#3B82F6']}
+              style={styles.customHeaderGradient}
+            >
+              <View style={styles.customHeaderContent}>
+                <TouchableOpacity 
+                  onPress={() => router.back()}
+                  style={styles.customBackButton}
+                >
+                  <Ionicons name="arrow-back" size={24} color="white" />
+                </TouchableOpacity>
+                
+                <View style={styles.customHeaderTitleContainer}>
+                  <Text style={styles.customHeaderTitle}>Chi tiết đặt lịch</Text>
+                  <Text style={styles.customHeaderSubtitle}>Lỗi tải dữ liệu</Text>
+                </View>
+
+                <TouchableOpacity style={styles.customShareButton}>
+                  <Ionicons name="share-outline" size={24} color="white" />
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+          </View>
+
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Không thể tải chi tiết đơn hàng</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   const statusInfo = getStatusInfo(booking.status);
 
@@ -120,7 +326,7 @@ export default function BookingDetail() {
       <Stack.Screen options={{ headerShown: false }} />
       
       {/* Safe area với padding cho status bar */}
-      <SafeAreaView style={styles.safeAreaContainer}>
+      <View style={styles.safeAreaContainer}>
         {/* Header giống BookingHistory */}
         <View style={styles.customHeaderWrapper}>
         <LinearGradient
@@ -263,7 +469,7 @@ export default function BookingDetail() {
           <TouchableOpacity
             style={styles.rejectButton}
             onPress={handleRejectQuote}
-            disabled={loading}
+            disabled={loadingAction}
           >
             <Text style={styles.rejectButtonText}>Từ chối</Text>
           </TouchableOpacity>
@@ -271,20 +477,25 @@ export default function BookingDetail() {
           <TouchableOpacity
             style={styles.acceptButton}
             onPress={handleAcceptQuote}
-            disabled={loading}
+            disabled={loadingAction}
           >
             <LinearGradient
               colors={['#10B981', '#059669']}
               style={styles.acceptGradient}
             >
               <Text style={styles.acceptButtonText}>
-                {loading ? 'Đang xử lý...' : 'Chấp nhận báo giá'}
+                {loadingAction ? 'Đang xử lý...' : 'Chấp nhận báo giá'}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
       )}
-      </SafeAreaView>
+      </View>
+      
+      <AuthModal
+        visible={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+      />
     </View>
   );
 }
@@ -293,7 +504,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#609CEF',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
   },
   safeAreaContainer: {
     flex: 1,
@@ -303,7 +513,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   customHeaderGradient: {
-    paddingTop: 8,
+    paddingTop: Platform.OS === 'ios' ? 50 : (StatusBar.currentHeight || 0) + 8,
     paddingBottom: 8,
   },
   customHeaderContent: {
@@ -545,5 +755,16 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+    fontWeight: '500',
   },
 });

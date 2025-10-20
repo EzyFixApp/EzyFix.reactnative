@@ -5,15 +5,23 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   Animated,
   StatusBar,
+  Alert,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import CustomerHeader from '../../components/CustomerHeader';
 import BottomNavigation from '../../components/BottomNavigation';
+import { serviceRequestService } from '../../lib/api/serviceRequests';
+import { servicesService } from '../../lib/api/services';
+import { addressService } from '../../lib/api/addresses';
+import { ServiceRequestResponse } from '../../types/api';
+import { useAuth } from '../../store/authStore';
+import AuthModal from '../../components/AuthModal';
 
 interface BookingItem {
   id: string;
@@ -27,6 +35,9 @@ interface BookingItem {
   technicianName?: string;
   quotePrice?: string;
   notes?: string;
+  addressNote?: string;
+  requestedDate?: string;
+  expectedStartTime?: string;
 }
 
 // Check if booking is trackable (active order)
@@ -34,50 +45,162 @@ const isTrackableStatus = (status: BookingItem['status']): boolean => {
   return status !== 'completed' && status !== 'cancelled';
 };
 
-const mockBookings: BookingItem[] = [
-  {
-    id: '1',
-    serviceName: 'Sửa điều hòa',
-    servicePrice: '200,000đ - 500,000đ',
-    customerName: 'Nguyễn Văn A',
-    phoneNumber: '0901234567',
-    address: '123 Lê Lợi, Q1, TP.HCM',
-    status: 'quoted',
-    createdAt: '2025-09-29T10:30:00Z',
-    technicianName: 'Thợ Minh',
-    quotePrice: '350,000đ',
-    notes: 'Thay gas và vệ sinh máy'
-  },
-  {
-    id: '2',
-    serviceName: 'Sửa ống nước',
-    servicePrice: '150,000đ - 300,000đ',
-    customerName: 'Trần Thị B',
-    phoneNumber: '0912345678',
-    address: '456 Nguyễn Huệ, Q1, TP.HCM',
-    status: 'searching',
-    createdAt: '2025-09-29T14:15:00Z',
-  },
-  {
-    id: '3',
-    serviceName: 'Sửa tủ lạnh',
-    servicePrice: '300,000đ - 600,000đ',
-    customerName: 'Lê Văn C',
-    phoneNumber: '0923456789',
-    address: '789 Lý Tự Trọng, Q1, TP.HCM',
-    status: 'completed',
-    createdAt: '2025-09-28T09:00:00Z',
-    technicianName: 'Thợ An',
-    quotePrice: '450,000đ',
-  }
-];
-
 export default function BookingHistory() {
   const [activeTab, setActiveTab] = useState('activity');
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'searching' | 'quoted' | 'completed'>('all');
+  const [bookings, setBookings] = useState<BookingItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const fadeAnim = new Animated.Value(0);
   const slideAnim = new Animated.Value(30);
   const scaleAnim = new Animated.Value(0.95);
+  
+  const { isAuthenticated } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Check authentication when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isAuthenticated) {
+        setShowAuthModal(true);
+      }
+    }, [isAuthenticated])
+  );
+
+  // Map API status to UI status
+  const mapApiStatus = (apiStatus: string): BookingItem['status'] => {
+    switch (apiStatus.toLowerCase()) {
+      case 'pending':
+      case 'waiting':
+        return 'searching';
+      case 'quoted':
+        return 'quoted';
+      case 'accepted':
+        return 'accepted';
+      case 'in_progress':
+      case 'in-progress':
+        return 'in-progress';
+      case 'completed':
+        return 'completed';
+      case 'cancelled':
+        return 'cancelled';
+      default:
+        return 'searching';
+    }
+  };
+
+  // Load bookings from API
+  const loadBookings = async (showRefresh = false) => {
+    try {
+      if (showRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      
+      // Get service requests
+      const serviceRequests = await serviceRequestService.getUserServiceRequests();
+      
+      // Transform API data to BookingItem format
+      const transformedBookings: BookingItem[] = await Promise.all(
+        serviceRequests.map(async (request) => {
+          
+          let serviceName = 'Dịch vụ';
+          let addressText = 'Địa chỉ chưa cập nhật';
+
+          // Debug log để check addressID
+          if (__DEV__) {
+            console.log(`Service request:`, {
+              id: request.id,
+              addressID: request.addressID,
+              addressNote: request.addressNote,
+              serviceId: request.serviceId
+            });
+          }
+          
+          try {
+            // Get service details for name
+            const service = await servicesService.getServiceById(request.serviceId);
+            serviceName = service.serviceName || service.description || 'Dịch vụ';
+          } catch (error) {
+            // Fallback to description
+            serviceName = request.serviceDescription || 'Dịch vụ';
+            if (__DEV__) {
+              console.warn(`Failed to get service name for ${request.serviceId}:`, error);
+            }
+          }
+
+          // Get address details from addressID
+          if (request.addressID) {
+            try {
+              const addressResponse = await addressService.getAddressById(request.addressID);
+              // Cast to Address since getAddressById actually returns Address object despite typing
+              const address = addressResponse as any;
+              addressText = address.street || 'Địa chỉ chưa cập nhật';
+              if (__DEV__) {
+                console.log(`Address loaded for ${request.addressID}:`, address.street);
+              }
+            } catch (error) {
+              // Fallback to addressNote if addressID fails
+              addressText = request.addressNote || 'Địa chỉ chưa cập nhật';
+              if (__DEV__) {
+                console.warn(`Failed to get address for ${request.addressID}:`, error);
+                console.log(`Fallback to addressNote: ${request.addressNote}`);
+              }
+            }
+          } else {
+            // Fallback to addressNote if no addressID
+            addressText = request.addressNote || 'Địa chỉ chưa cập nhật';
+            if (__DEV__) {
+              console.log(`No addressID, using addressNote: ${request.addressNote}`);
+            }
+          }
+          
+          const transformedItem = {
+            id: request.id || `booking-${Date.now()}-${Math.random()}`,
+            serviceName: serviceName,
+            servicePrice: 'Đang cập nhật',
+            customerName: '', // Will be filled from user data if needed
+            phoneNumber: '',
+            address: addressText,
+            status: mapApiStatus(request.status),
+            createdAt: request.createdAt || new Date().toISOString(),
+            notes: request.serviceDescription,
+            addressNote: request.addressNote,
+            requestedDate: request.requestedDate,
+            expectedStartTime: request.expectedStartTime,
+          };
+          
+          return transformedItem;
+        })
+      );
+      
+      setBookings(transformedBookings);
+      
+    } catch (error: any) {
+      if (__DEV__) console.error('Error loading bookings:', error);
+      
+      // Handle common errors
+      if (error.status_code === 403) {
+        Alert.alert(
+          'Lỗi truy cập',
+          'Không có quyền truy cập lịch sử đặt lịch. Vui lòng đăng nhập lại.',
+          [{ text: 'OK', onPress: () => router.push('./login' as any) }]
+        );
+      } else {
+        Alert.alert(
+          'Lỗi',
+          'Không thể tải lịch sử đặt lịch. Vui lòng thử lại sau.',
+          [{ text: 'OK' }]
+        );
+      }
+      
+      // Set empty array on error
+      setBookings([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     Animated.stagger(100, [
@@ -99,6 +222,20 @@ export default function BookingHistory() {
       }),
     ]).start();
   }, []);
+
+  // Load data when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      if (isAuthenticated) {
+        loadBookings();
+      }
+    }, [isAuthenticated])
+  );
+
+  // Refresh function
+  const onRefresh = () => {
+    loadBookings(true);
+  };
 
   const handleTabPress = (tabId: string) => {
     if (tabId === 'home') {
@@ -174,27 +311,11 @@ export default function BookingHistory() {
   };
 
   const getFilteredBookings = () => {
-    if (selectedFilter === 'all') return mockBookings;
-    return mockBookings.filter(booking => booking.status === selectedFilter);
+    return bookings;
   };
 
-  const handleFilterPress = (filter: 'all' | 'searching' | 'quoted' | 'completed') => {
-    if (filter !== selectedFilter) {
-      setSelectedFilter(filter);
-      // Smooth filter animation
-      Animated.sequence([
-        Animated.timing(scaleAnim, {
-          toValue: 0.95,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
+  const handleFilterPress = (filter: string) => {
+    // Removed filter functionality for now
   };
 
   const renderBookingCard = (booking: BookingItem) => {
@@ -202,7 +323,6 @@ export default function BookingHistory() {
     
     return (
       <TouchableOpacity
-        key={booking.id}
         style={styles.bookingCard}
         onPress={() => router.push({
           pathname: './order-tracking',
@@ -281,7 +401,7 @@ export default function BookingHistory() {
   const filteredBookings = getFilteredBookings();
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
       <Stack.Screen options={{ headerShown: false }} />
       
@@ -293,87 +413,21 @@ export default function BookingHistory() {
         notificationCount={3}
       />
 
-      {/* Filter Section */}
-      <View style={styles.filterSection}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterScrollContent}
-        >
-          <TouchableOpacity
-            style={[
-              styles.filterButton,
-              selectedFilter === 'all' && styles.filterButtonActive
-            ]}
-            onPress={() => handleFilterPress('all')}
-            activeOpacity={0.7}
-          >
-            <Text style={[
-              styles.filterButtonText,
-              selectedFilter === 'all' && styles.filterButtonTextActive
-            ]}>Tất cả</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.filterButton,
-              selectedFilter === 'searching' && styles.filterButtonActive
-            ]}
-            onPress={() => handleFilterPress('searching')}
-            activeOpacity={0.7}
-          >
-            <Text style={[
-              styles.filterButtonText,
-              selectedFilter === 'searching' && styles.filterButtonTextActive
-            ]}>Đang tìm thợ</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.filterButton,
-              selectedFilter === 'quoted' && styles.filterButtonActive
-            ]}
-            onPress={() => handleFilterPress('quoted')}
-            activeOpacity={0.7}
-          >
-            <Text style={[
-              styles.filterButtonText,
-              selectedFilter === 'quoted' && styles.filterButtonTextActive
-            ]}>Có báo giá</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.filterButton,
-              selectedFilter === 'completed' && styles.filterButtonActive
-            ]}
-            onPress={() => handleFilterPress('completed')}
-            activeOpacity={0.7}
-          >
-            <Text style={[
-              styles.filterButtonText,
-              selectedFilter === 'completed' && styles.filterButtonTextActive
-            ]}>Hoàn thành</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
-
-      {/* Content Section với Animation mượt */}
-      <Animated.View style={[
-        styles.contentSection, 
-        { 
-          opacity: fadeAnim,
-          transform: [
-            { translateY: slideAnim },
-            { scale: scaleAnim }
-          ]
-        }
-      ]}>
+      {/* Content Section */}
+      <View style={styles.contentSection}>
         <ScrollView
           style={styles.scrollContainer}
           showsVerticalScrollIndicator={false}
           bounces={false}
           scrollEventThrottle={16}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#609CEF']}
+              tintColor="#609CEF"
+            />
+          }
         >
           {/* Modern Content Header */}
           <View style={styles.simpleHeader}>
@@ -381,26 +435,17 @@ export default function BookingHistory() {
           </View>
 
           <View style={styles.bookingsList}>
-            {filteredBookings.length > 0 ? (
-              filteredBookings.map((booking, index) => (
-                <Animated.View
-                  key={booking.id}
-                  style={[
-                    {
-                      opacity: fadeAnim,
-                      transform: [
-                        {
-                          translateY: Animated.add(
-                            slideAnim,
-                            new Animated.Value(index * 5)
-                          )
-                        }
-                      ],
-                    },
-                  ]}
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <Text style={styles.loadingText}>Đang tải lịch sử đặt lịch...</Text>
+              </View>
+            ) : filteredBookings.length > 0 ? (
+              filteredBookings.map((booking: BookingItem, index: number) => (
+                <View
+                  key={booking.id || `booking-${index}`}
                 >
                   {renderBookingCard(booking)}
-                </Animated.View>
+                </View>
               ))
             ) : (
               <View style={styles.emptyState}>
@@ -413,31 +458,24 @@ export default function BookingHistory() {
                   </LinearGradient>
                 </View>
                 <Text style={styles.emptyTitle}>
-                  {selectedFilter === 'all' ? 'Chưa có lịch sử đặt' :
-                   `Không có dịch vụ ${selectedFilter === 'searching' ? 'đang tìm thợ' :
-                   selectedFilter === 'quoted' ? 'có báo giá' : 'đã hoàn thành'}`}
+                  Chưa có lịch sử đặt lịch
                 </Text>
                 <Text style={styles.emptySubtitle}>
-                  {selectedFilter === 'all'
-                    ? 'Các yêu cầu dịch vụ của bạn sẽ hiển thị ở đây'
-                    : 'Thử chọn bộ lọc khác để xem các dịch vụ'
-                  }
+                  Các yêu cầu dịch vụ của bạn sẽ hiển thị ở đây
                 </Text>
-                {selectedFilter === 'all' && (
-                  <TouchableOpacity
-                    style={styles.createButton}
-                    onPress={() => router.push('./all-services' as any)}
-                    activeOpacity={0.8}
+                <TouchableOpacity
+                  style={styles.createButton}
+                  onPress={() => router.push('./all-services' as any)}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={['#609CEF', '#4F8BE8']}
+                    style={styles.createGradient}
                   >
-                    <LinearGradient
-                      colors={['#609CEF', '#4F8BE8']}
-                      style={styles.createGradient}
-                    >
-                      <Ionicons name="add" size={20} color="white" style={styles.createIcon} />
-                      <Text style={styles.createButtonText}>Đặt dịch vụ ngay</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                )}
+                    <Ionicons name="add" size={20} color="white" style={styles.createIcon} />
+                    <Text style={styles.createButtonText}>Đặt dịch vụ ngay</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -445,7 +483,7 @@ export default function BookingHistory() {
           {/* Bottom Spacing */}
           <View style={styles.bottomSpacing} />
         </ScrollView>
-      </Animated.View>
+      </View>
 
       {/* Bottom Navigation */}
       <BottomNavigation
@@ -454,7 +492,13 @@ export default function BookingHistory() {
         onLogoPress={handleCenterButtonPress}
         theme="light"
       />
-    </SafeAreaView>
+      
+      {/* Auth Modal */}
+      <AuthModal
+        visible={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+      />
+    </View>
   );
 }
 
@@ -859,5 +903,14 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#1E293B',
+  },
+  loadingContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+    fontWeight: '500',
   },
 });

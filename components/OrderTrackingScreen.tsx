@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   Alert,
   Platform,
@@ -13,8 +12,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { BookingStatus } from '../types/BookingTypes';
+import { useAuth } from '../store/authStore';
+import AuthModal from '../components/AuthModal';
 
 interface OrderTrackingScreenProps {
   orderId?: string;
@@ -158,6 +159,17 @@ export default function OrderTrackingScreen({
   const [booking] = useState<BookingDetail>(mockBookingDetail);
   const [loading, setLoading] = useState(false);
   const pulseAnim = new Animated.Value(1);
+  const { isAuthenticated } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Check authentication when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isAuthenticated) {
+        setShowAuthModal(true);
+      }
+    }, [isAuthenticated])
+  );
 
   useEffect(() => {
     // Pulse animation for current step
@@ -752,7 +764,7 @@ export default function OrderTrackingScreen({
       <Stack.Screen options={{ headerShown: false }} />
 
       {/* Safe area với padding cho status bar */}
-      <SafeAreaView style={styles.safeAreaContainer}>
+      <View style={styles.safeAreaContainer}>
         {/* Header giống BookingHistory */}
         <View style={styles.customHeaderWrapper}>
           <LinearGradient colors={['#609CEF', '#3B82F6']} style={styles.customHeaderGradient}>
@@ -1030,7 +1042,11 @@ export default function OrderTrackingScreen({
 
         {/* Action Buttons based on status */}
         {renderActionButtons()}
-      </SafeAreaView>
+      </View>
+      <AuthModal
+        visible={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+      />
     </View>
   );
 }
@@ -1039,7 +1055,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#609CEF',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
   },
   safeAreaContainer: {
     flex: 1,
@@ -1049,7 +1064,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   customHeaderGradient: {
-    paddingTop: 8,
+    paddingTop: Platform.OS === 'ios' ? 50 : (StatusBar.currentHeight || 0) + 8,
     paddingBottom: 8,
   },
   customHeaderContent: {

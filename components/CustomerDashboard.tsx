@@ -1,15 +1,28 @@
-import React, { useState } from 'react';
-import { View, ScrollView, StyleSheet, SafeAreaView } from 'react-native';
-import { router } from 'expo-router';
+import React, { useState, useEffect } from 'react';
+import { View, ScrollView, StyleSheet } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import CustomerHeader from './CustomerHeader';
 import HeroBanner from './HeroBanner';
 import ServiceCategories from './ServiceCategories';
 import { PromotionSection } from './PromotionSection';
 import BottomNavigation from './BottomNavigation';
 import ActiveOrdersSection from './ActiveOrdersSection';
+import { useAuth } from '../store/authStore';
+import AuthModal from '../components/AuthModal';
 
 export default function CustomerDashboard() {
   const [activeTab, setActiveTab] = useState('home');
+  const { isAuthenticated } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Check authentication when component mounts and when focus returns
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isAuthenticated) {
+        setShowAuthModal(true);
+      }
+    }, [isAuthenticated])
+  );
 
   // Sample hero image - using a placeholder for now
   // You can replace this with the actual service technician image
@@ -62,7 +75,7 @@ export default function CustomerDashboard() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* Header */}
       <CustomerHeader
         title="Trang chủ"
@@ -112,7 +125,13 @@ export default function CustomerDashboard() {
         onLogoPress={handleCenterButtonPress}
         theme="light"
       />
-    </SafeAreaView>
+      
+      {/* Auth Modal */}
+      <AuthModal
+        visible={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+      />
+    </View>
   );
 }
 

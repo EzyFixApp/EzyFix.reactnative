@@ -62,6 +62,15 @@ export class BaseApiService {
    */
   private async createAuthHeaders(): Promise<Record<string, string>> {
     const token = await this.getAccessToken();
+    
+    if (__DEV__ && token) {
+      // Only log first and last 10 characters for security
+      const maskedToken = `${token.substring(0, 10)}...${token.substring(token.length - 10)}`;
+      console.log('Auth token available:', maskedToken);
+    } else if (__DEV__) {
+      console.warn('No auth token available for request');
+    }
+    
     return token 
       ? { 'Authorization': `Bearer ${token}` }
       : {};

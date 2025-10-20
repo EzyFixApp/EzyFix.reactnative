@@ -186,6 +186,7 @@ export default function RegisterScreen({
         console.log('📋 Register Data Debug:', {
           firstName: registerData.firstName,
           lastName: registerData.lastName,
+          fullNameCombined: `${registerData.firstName} ${registerData.lastName}`.trim(),
           email: registerData.email,
           rawPhoneInput: rawPhone,
           formattedPhone: formattedPhone,

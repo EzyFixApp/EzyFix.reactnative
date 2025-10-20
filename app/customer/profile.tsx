@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
+import { useAuth } from '../../store/authStore';
+import { serviceRequestService } from '../../lib/api/serviceRequests';
 
 interface ProfileItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -65,6 +67,72 @@ function ProfileItem({ icon, title, subtitle, onPress, showArrow = true, isLogou
 }
 
 export default function CustomerProfile() {
+  const { user, isAuthenticated, logout } = useAuth();
+  const [orderCount, setOrderCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  // Load user service requests count
+  const loadOrderCount = async () => {
+    if (!user || !isAuthenticated) return;
+    
+    try {
+      setLoading(true);
+      const serviceRequests = await serviceRequestService.getUserServiceRequests();
+      setOrderCount(serviceRequests.length);
+    } catch (error: any) {
+      console.error('Error loading order count:', error);
+      // Don't show error alert for order count as it's not critical
+      setOrderCount(0);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load data when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isAuthenticated) {
+        // Redirect to login if not authenticated
+        router.replace('./login' as any);
+        return;
+      }
+      loadOrderCount();
+    }, [isAuthenticated, user])
+  );
+
+  // Get user display name
+  const getDisplayName = () => {
+    if (!user) return 'Người dùng';
+    
+    // Debug: log user data để kiểm tra
+    console.log('User data in profile:', {
+      fullName: user.fullName,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email
+    });
+    
+    // Ưu tiên firstName + lastName nếu có
+    const firstName = user.firstName || '';
+    const lastName = user.lastName || '';
+    
+    if (firstName && lastName) {
+      return `${firstName} ${lastName}`;
+    } else if (firstName) {
+      return firstName;
+    } else if (lastName) {
+      return lastName;
+    }
+    
+    // Fallback về fullName từ API
+    if (user.fullName && user.fullName.trim()) {
+      return user.fullName.trim();
+    }
+    
+    // Cuối cùng mới hiển thị email
+    return user.email || 'Người dùng';
+  };
+
   const handleBackPress = () => {
     router.back();
   };
@@ -81,9 +149,17 @@ export default function CustomerProfile() {
         {
           text: 'Đăng xuất',
           style: 'destructive',
-          onPress: () => {
-            // Navigate to login screen and reset navigation stack
-            router.replace('./login' as any);
+          onPress: async () => {
+            try {
+              // Clear auth state
+              await logout();
+              // Navigate to login screen and reset navigation stack
+              router.replace('./login' as any);
+            } catch (error) {
+              console.error('Logout error:', error);
+              // Still navigate to login even if logout API fails
+              router.replace('./login' as any);
+            }
           }
         }
       ],
@@ -148,15 +224,17 @@ export default function CustomerProfile() {
         {/* Profile Avatar & Info */}
         <View style={styles.profileSection}>
           <View style={styles.avatarContainer}>
-            <Text style={styles.avatarText}>Z</Text>
+            <Text style={styles.avatarText}>
+              {getDisplayName().charAt(0).toUpperCase()}
+            </Text>
           </View>
-          <Text style={styles.profileName}>Zun Zun</Text>
+          <Text style={styles.profileName}>{getDisplayName()}</Text>
           <Text style={styles.profileSubtitle}>Khách hàng thân thiết</Text>
           
           {/* Stats Row */}
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>12</Text>
+              <Text style={styles.statNumber}>{loading ? '...' : orderCount}</Text>
               <Text style={styles.statLabel}>Đơn hàng</Text>
             </View>
             <View style={styles.statItem}>

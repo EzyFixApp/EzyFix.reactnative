@@ -344,3 +344,18 @@ const handleLogin = async () => {
   }
 };
 ```
+
+---
+
+## 👤 Profile Name Logic (2025-10-21)
+
+- **Ưu tiên hiển thị:** `firstName` + `lastName` nếu có, nếu không thì dùng `fullName`, cuối cùng mới fallback về `email`.
+- **Lý do:** Backend hiện tại chỉ trả về `fullName` trong LoginResponse, không trả về riêng `firstName`/`lastName` dù database có lưu.
+- **Giải pháp frontend:** Tách `firstName`/`lastName` từ `fullName` nếu có thể, nếu chỉ có 1 từ thì coi là `firstName`, `lastName` để trống.
+- **Khuyến nghị:** Nên yêu cầu backend trả về đủ `firstName` và `lastName` để đảm bảo hiển thị đúng họ tên người dùng.
+- **Ảnh hưởng:** Nếu user chỉ nhập 1 tên khi đăng ký, profile sẽ chỉ hiển thị tên đó. Nếu nhập đủ họ tên, sẽ hiển thị đầy đủ.
+
+**Ví dụ:**
+- User đăng ký: `firstName: "zunz"`, `lastName: "zun"` → Nếu backend trả về `fullName: "zunz zun"`, frontend sẽ split đúng.
+- User đăng ký: `firstName: "zunz"`, `lastName: ""` → Hiển thị "zunz".
+- Nếu không có tên nào, fallback về email.

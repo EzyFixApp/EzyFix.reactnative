@@ -419,3 +419,22 @@ const styles = StyleSheet.create({
 
 **Last Updated:** October 20, 2025  
 **Author:** EzyFix Development Team
+
+---
+
+## 🆕 Header & Auth Modal Improvements (2025-10-21)
+
+- **Header Consistency:**
+  - Đã loại bỏ SafeAreaView khỏi các màn customer, thay bằng padding thủ công để tránh khoảng trắng không mong muốn.
+  - Sử dụng LinearGradient với màu #609CEF → #3B82F6 cho header và modal, đảm bảo nhận diện thương hiệu EzyFix.
+  - StatusBar được cấu hình đồng bộ trên mọi màn hình.
+
+- **AuthModal (Branded Authentication Modal):**
+  - Khi user chưa đăng nhập mà truy cập trang cần bảo vệ, sẽ hiện modal xác thực với logo EzyFix, gradient header, icon cảnh báo, và nút chuyển hướng về login.
+  - Modal này dùng trên toàn bộ customer pages, đảm bảo trải nghiệm nhất quán và chuyên nghiệp.
+
+- **Logout:**
+  - Đã chuẩn hóa logic logout: clear toàn bộ auth state, reset navigation stack về login.
+
+- **TypeScript Fix:**
+  - Đã loại bỏ custom useAuthGuard hook do gây lỗi biên dịch, chuyển sang dùng trực tiếp useAuth() + useState cho modal xác thực.

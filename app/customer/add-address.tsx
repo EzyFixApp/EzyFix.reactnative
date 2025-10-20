@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
+import * as Location from 'expo-location';
+import { addressService } from '../../lib/api';
+import { locationService } from '../../lib/api/location';
+import AddressSearchModal from '../../components/AddressSearchModal';
+import type { AddressData, Address } from '../../types/api';
 
 interface InputFieldProps {
   label: string;
@@ -12,9 +17,11 @@ interface InputFieldProps {
   multiline?: boolean;
   numberOfLines?: number;
   required?: boolean;
+  error?: string;
+  readonly?: boolean;
 }
 
-function InputField({ label, value, onChangeText, placeholder, multiline = false, numberOfLines = 1, required = false }: InputFieldProps) {
+function InputField({ label, value, onChangeText, placeholder, multiline = false, numberOfLines = 1, required = false, error, readonly = false }: InputFieldProps) {
   return (
     <View style={styles.inputContainer}>
       <View style={styles.labelContainer}>
@@ -22,15 +29,23 @@ function InputField({ label, value, onChangeText, placeholder, multiline = false
         {required && <Text style={styles.requiredMark}>*</Text>}
       </View>
       <TextInput
-        style={[styles.textInput, multiline && styles.multilineInput]}
+        style={[
+          styles.textInput, 
+          multiline && styles.multilineInput,
+          error && styles.inputError,
+          readonly && styles.readonlyInput
+        ]}
         value={value}
-        onChangeText={onChangeText}
+        onChangeText={readonly ? undefined : onChangeText}
         placeholder={placeholder}
         multiline={multiline}
         numberOfLines={numberOfLines}
         placeholderTextColor="#9CA3AF"
         textAlignVertical={multiline ? 'top' : 'center'}
+        editable={!readonly}
+        selectTextOnFocus={!readonly}
       />
+      {error && <Text style={styles.errorText}>{error}</Text>}
     </View>
   );
 }
@@ -62,14 +77,20 @@ function AddressTypeButton({ type, icon, isSelected, onPress }: AddressTypeButto
 }
 
 export default function AddAddress() {
-  const [formData, setFormData] = useState({
-    title: '',
-    selectedType: 'Nhà riêng',
-    detailAddress: '',
-    district: 'Quận 1, TP Hồ Chí Minh',
-    phoneNumber: '0901234567',
-    note: ''
+  // Simplified - only support adding new addresses
+  const [formData, setFormData] = useState<AddressData>({
+    street: '',
+    city: 'Thành phố Hồ Chí Minh',
+    province: 'TP. Hồ Chí Minh',
+    postalCode: '700000',
+    latitude: undefined,
+    longitude: undefined
   });
+
+  // Remove loading address state and edit logic
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [showAddressModal, setShowAddressModal] = useState(false);
 
   const addressTypes = [
     { type: 'Nhà riêng', icon: 'home' as keyof typeof Ionicons.glyphMap },
@@ -81,43 +102,73 @@ export default function AddAddress() {
     router.back();
   };
 
-  const handleSave = () => {
-    // Validate form
-    if (!formData.title.trim() || !formData.detailAddress.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng điền đầy đủ thông tin bắt buộc');
+  const validateForm = () => {
+    const newErrors: { [key: string]: string } = {};
+
+    if (!(formData.street || '').trim()) {
+      newErrors.street = 'Vui lòng nhập địa chỉ đường';
+    }
+
+    // City, province, postalCode sẽ tự động được điền từ search
+    // Chỉ validate nếu chúng vẫn trống sau khi search
+    if (!(formData.city || '').trim()) {
+      newErrors.city = 'Vui lòng chọn địa chỉ từ danh sách gợi ý';
+    }
+
+    if (!(formData.province || '').trim()) {
+      newErrors.province = 'Vui lòng chọn địa chỉ từ danh sách gợi ý';
+    }
+
+    if (!(formData.postalCode || '').trim()) {
+      newErrors.postalCode = 'Vui lòng chọn địa chỉ từ danh sách gợi ý';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSave = async () => {
+    if (!validateForm()) {
       return;
     }
 
-    // Create new address object
-    const newAddress = {
-      id: Date.now().toString(),
-      type: formData.selectedType,
-      name: formData.title,
-      address: formData.detailAddress,
-      phone: formData.phoneNumber,
-      details: formData.note || 'Không có ghi chú',
-      isDefault: false
-    };
+    try {
+      setLoading(true);
 
-    console.log('Saving address:', newAddress);
-    
-    // Show success message
-    Alert.alert(
-      'Thành công', 
-      'Địa chỉ đã được lưu thành công!',
-      [
-        {
-          text: 'OK',
-          onPress: () => {
-            // Navigate back with the new address data
-            router.back();
-          }
-        }
-      ]
-    );
+      const addressData = {
+        street: formData.street || '',
+        city: formData.city || '',
+        province: formData.province || '',
+        postalCode: formData.postalCode || '',
+        latitude: formData.latitude,
+        longitude: formData.longitude
+      };
+
+      // Only support creating new addresses
+      const response = await addressService.createAddress(addressData);
+
+      if (response && response.addressId) {
+        Alert.alert(
+          'Thành công',
+          'Địa chỉ đã được thêm mới!',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.back()
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Lỗi', 'Có lỗi xảy ra. Vui lòng thử lại.');
+      }
+    } catch (error: any) {
+      Alert.alert('Lỗi', error.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const updateFormData = (field: string, value: string) => {
+  const updateFormData = (field: string, value: string | number | undefined) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -137,84 +188,123 @@ export default function AddAddress() {
           </TouchableOpacity>
           
           <View style={styles.headerContent}>
-            <Text style={styles.headerTitle}>Thêm địa chỉ mới</Text>
+            <Text style={styles.headerTitle}>
+              Thêm địa chỉ mới
+            </Text>
             <Text style={styles.headerSubtitle}>Điền thông tin địa chỉ để được hỗ trợ dịch vụ</Text>
           </View>
         </LinearGradient>
 
-        {/* Form Content */}
-        <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
+        {/* Content */}
+        <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {/* Thông tin cơ bản */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Thông tin cơ bản</Text>
+            <Text style={styles.sectionTitle}>Thông tin địa chỉ</Text>
             
-            <InputField
-              label="Tiêu đề địa chỉ"
-              value={formData.title}
-              onChangeText={(text) => updateFormData('title', text)}
-              placeholder="VD: Nhà riêng, Cơ quan, Nhà bạn..."
-              required
-            />
-
-            <View style={styles.typeSelectionContainer}>
+            <View style={styles.inputContainer}>
               <View style={styles.labelContainer}>
-                <Text style={styles.inputLabel}>Loại địa chỉ</Text>
+                <Text style={styles.inputLabel}>Địa chỉ đường</Text>
                 <Text style={styles.requiredMark}>*</Text>
               </View>
-              <View style={styles.typeButtonsContainer}>
-                {addressTypes.map((item) => (
-                  <AddressTypeButton
-                    key={item.type}
-                    type={item.type}
-                    icon={item.icon}
-                    isSelected={formData.selectedType === item.type}
-                    onPress={() => updateFormData('selectedType', item.type)}
-                  />
-                ))}
+              <TouchableOpacity 
+                style={[styles.addressSearchButton, errors.street && styles.inputError]} 
+                onPress={() => setShowAddressModal(true)}
+              >
+                <Ionicons name="location" size={20} color="#609CEF" />
+                <Text style={[styles.addressSearchText, !formData.street && styles.addressSearchPlaceholder]}>
+                  {formData.street || 'Tìm kiếm địa chỉ...'}
+                </Text>
+                <Ionicons name="search" size={20} color="#6B7280" />
+              </TouchableOpacity>
+              {errors.street && <Text style={styles.errorText}>{errors.street}</Text>}
+            </View>
+
+            <InputField
+              label="Thành phố"
+              value={formData.city || ''}
+              onChangeText={(text) => updateFormData('city', text)}
+              placeholder="VD: Thành phố Hồ Chí Minh"
+              required
+              error={errors.city}
+              readonly={true}
+            />
+
+            <InputField
+              label="Phường/Quận"
+              value={formData.province || ''}
+              onChangeText={(text) => updateFormData('province', text)}
+              placeholder="VD: Phường Tân Phú, Quận 7"
+              required
+              error={errors.province}
+              readonly={true}
+            />
+
+            <InputField
+              label="Mã bưu điện"
+              value={formData.postalCode || ''}
+              onChangeText={(text) => updateFormData('postalCode', text)}
+              placeholder="VD: 700000"
+              required
+              error={errors.postalCode}
+              readonly={true}
+            />
+          </View>
+
+          {/* Tọa độ (tùy chọn) */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Tọa độ GPS (Tùy chọn)</Text>
+            
+            <View style={styles.coordinatesRow}>
+              <View style={styles.coordinateField}>
+                <InputField
+                  label="Vĩ độ (Latitude)"
+                  value={formData.latitude?.toString() || ''}
+                  onChangeText={(text) => {
+                    const value = text ? parseFloat(text) : undefined;
+                    updateFormData('latitude', value);
+                  }}
+                  placeholder="VD: 10.737015"
+                />
+              </View>
+              
+              <View style={styles.coordinateField}>
+                <InputField
+                  label="Kinh độ (Longitude)"
+                  value={formData.longitude?.toString() || ''}
+                  onChangeText={(text) => {
+                    const value = text ? parseFloat(text) : undefined;
+                    updateFormData('longitude', value);
+                  }}
+                  placeholder="VD: 106.721548"
+                />
               </View>
             </View>
-          </View>
-
-          {/* Chi tiết địa chỉ */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Chi tiết địa chỉ</Text>
             
-            <InputField
-              label="Địa chỉ cụ thể"
-              value={formData.detailAddress}
-              onChangeText={(text) => updateFormData('detailAddress', text)}
-              placeholder="Nhập số nhà, tên đường, phường/xã, quận/huyện"
-              multiline
-              numberOfLines={3}
-              required
-            />
-          </View>
+            <TouchableOpacity 
+              style={styles.getCurrentLocationButton}
+              onPress={async () => {
+                try {
+                  // Request location permission
+                  const { status } = await Location.requestForegroundPermissionsAsync();
+                  if (status !== 'granted') {
+                    Alert.alert('Lỗi', 'Vui lòng cấp quyền truy cập vị trí để sử dụng tính năng này');
+                    return;
+                  }
 
-          {/* Số điện thoại liên lạc */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Số điện thoại liên lạc</Text>
-            
-            <InputField
-              label="Số điện thoại liên hệ"
-              value={formData.phoneNumber}
-              onChangeText={(text) => updateFormData('phoneNumber', text)}
-              placeholder="Nhập số điện thoại"
-              required
-            />
-          </View>
-
-          {/* Thông tin liên hệ */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Thông tin liên hệ</Text>
-            
-            <InputField
-              label="Ghi chú thêm"
-              value={formData.note}
-              onChangeText={(text) => updateFormData('note', text)}
-              placeholder="Mô tả thêm về vị trí, cách thức tiếp cận nhà. (Tùy chọn)"
-              multiline
-              numberOfLines={3}
-            />
+                  // Get current location
+                  const location = await Location.getCurrentPositionAsync({});
+                  updateFormData('latitude', location.coords.latitude);
+                  updateFormData('longitude', location.coords.longitude);
+                  
+                  Alert.alert('Thành công', 'Đã lấy vị trí hiện tại thành công!');
+                } catch (error) {
+                  Alert.alert('Lỗi', 'Không thể lấy vị trí hiện tại');
+                }
+              }}
+            >
+              <Ionicons name="location" size={16} color="#609CEF" />
+              <Text style={styles.getCurrentLocationText}>Lấy vị trí hiện tại</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.bottomSpacing} />
@@ -226,11 +316,51 @@ export default function AddAddress() {
             <Text style={styles.cancelButtonText}>Hủy</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
-            <Text style={styles.saveButtonText}>Lưu địa chỉ</Text>
+          <TouchableOpacity onPress={handleSave} style={styles.saveButton} disabled={loading}>
+            {loading ? (
+              <View style={styles.buttonLoadingContainer}>
+                <ActivityIndicator size="small" color="white" />
+                <Text style={styles.saveButtonText}>Đang lưu...</Text>
+              </View>
+            ) : (
+              <Text style={styles.saveButtonText}>
+                Lưu địa chỉ
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Address Search Modal */}
+      <AddressSearchModal
+        visible={showAddressModal}
+        onClose={() => setShowAddressModal(false)}
+        onAddressSelect={(address, lat, lng, components) => {
+          updateFormData('street', address);
+          updateFormData('latitude', lat);
+          updateFormData('longitude', lng);
+          
+          // Auto-parse and fill other fields using locationService
+          if (components) {
+            // Create the proper structure for parseAddressComponents
+            const itemForParsing = {
+              display_name: components.display_name || address,
+              address: components.addressComponents || components
+            };
+            
+            const parsed = locationService.parseAddressComponents(itemForParsing);
+            
+            updateFormData('city', parsed.city);
+            updateFormData('province', parsed.province);
+            updateFormData('postalCode', parsed.postalCode);
+          } else {
+            updateFormData('city', 'Thành phố Hồ Chí Minh');
+            updateFormData('province', 'Quận 1');
+            updateFormData('postalCode', '700000');
+          }
+        }}
+        initialValue={formData.street}
+      />
     </>
   );
 }
@@ -254,6 +384,11 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  scrollContent: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
   headerContent: {
     alignItems: 'center',
@@ -325,6 +460,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1f2937',
     backgroundColor: '#F9FAFB',
+  },
+  inputError: {
+    borderColor: '#EF4444',
+    borderWidth: 2,
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#EF4444',
+    marginTop: 4,
+    fontWeight: '500',
   },
   multilineInput: {
     minHeight: 80,
@@ -404,5 +549,72 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginTop: 12,
+  },
+  buttonLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  coordinatesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  coordinateField: {
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  getCurrentLocationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#609CEF',
+    borderRadius: 12,
+    backgroundColor: 'transparent',
+  },
+  getCurrentLocationText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#609CEF',
+    marginLeft: 6,
+  },
+  readonlyInput: {
+    backgroundColor: '#F3F4F6',
+    color: '#6B7280',
+  },
+  addressSearchButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  addressSearchText: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1F2937',
+    fontWeight: '500',
+  },
+  addressSearchPlaceholder: {
+    color: '#9CA3AF',
+    fontWeight: '400',
   },
 });

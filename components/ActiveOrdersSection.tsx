@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import { serviceRequestService } from '../lib/api/serviceRequests';
+import { servicesService } from '../lib/api/services';
+import { useFocusEffect } from '@react-navigation/native';
 
 interface ActiveOrder {
   id: string;
@@ -11,29 +14,138 @@ interface ActiveOrder {
   technicianName?: string;
   estimatedTime?: string;
   currentStep?: string;
+  requestedDate?: string;
+  expectedStartTime?: string;
 }
 
-// Mock data - replace with real data from API
-const mockActiveOrders: ActiveOrder[] = [
-  {
-    id: '1',
-    serviceName: 'Sửa điều hòa',
-    status: 'quoted',
-    technicianName: 'Thợ Minh',
-    estimatedTime: '2 giờ',
-    currentStep: 'Đang chờ xác nhận báo giá',
-  },
-  {
-    id: '2',
-    serviceName: 'Sửa ống nước',
-    status: 'searching',
-    estimatedTime: '30 phút',
-    currentStep: 'Đang tìm thợ phù hợp',
-  },
-];
-
 export default function ActiveOrdersSection() {
-  if (mockActiveOrders.length === 0) {
+  const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Helper function to map API status to local status
+  const getStatusFromApiStatus = (apiStatus: string): ActiveOrder['status'] => {
+    switch (apiStatus?.toUpperCase()) {
+      case 'PENDING':
+        return 'searching';
+      case 'QUOTED':
+        return 'quoted';
+      case 'ACCEPTED':
+        return 'accepted';
+      case 'IN_PROGRESS':
+      case 'INPROGRESS':
+        return 'in-progress';
+      default:
+        return 'searching';
+    }
+  };
+
+  // Helper function to get current step description
+  const getStepFromStatus = (apiStatus: string): string => {
+    switch (apiStatus?.toUpperCase()) {
+      case 'PENDING':
+        return 'Đang tìm thợ phù hợp';
+      case 'QUOTED':
+        return 'Đang chờ xác nhận báo giá';
+      case 'ACCEPTED':
+        return 'Đã xác nhận, chuẩn bị thực hiện';
+      case 'IN_PROGRESS':
+      case 'INPROGRESS':
+        return 'Đang thực hiện dịch vụ';
+      default:
+        return 'Đang tìm thợ phù hợp';
+    }
+  };
+
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadActiveOrders();
+    }, [])
+  );
+
+  useEffect(() => {
+    loadActiveOrders();
+  }, []);
+
+  const loadActiveOrders = async () => {
+    try {
+      setLoading(true);
+      
+      // Get service requests using the endpoint with customer access support
+      const serviceRequests = await serviceRequestService.getUserServiceRequests();
+      
+      if (__DEV__) {
+        console.log('Service requests loaded:', serviceRequests.length, 'items');
+      }
+      
+      // Convert service requests to active orders format with service names
+      const orders: ActiveOrder[] = await Promise.all(
+        serviceRequests.map(async (request) => {
+          let serviceName = 'Dịch vụ'; // Default fallback
+          
+          try {
+            // Try to get service details from API
+            const service = await servicesService.getServiceById(request.serviceId);
+            serviceName = service.serviceName || service.description || 'Dịch vụ';
+            
+            // Truncate if too long
+            if (serviceName.length > 30) {
+              serviceName = serviceName.substring(0, 30) + '...';
+            }
+          } catch (error) {
+            // Fallback to truncated description if service API fails
+            if (request.serviceDescription) {
+              serviceName = request.serviceDescription.length > 30 
+                ? request.serviceDescription.substring(0, 30) + '...' 
+                : request.serviceDescription;
+            }
+            if (__DEV__) {
+              console.warn(`Failed to get service name for ${request.serviceId}:`, error);
+            }
+          }
+          
+          return {
+            id: request.id,
+            serviceName,
+            status: getStatusFromApiStatus(request.status),
+            currentStep: getStepFromStatus(request.status),
+            requestedDate: request.requestedDate,
+            expectedStartTime: request.expectedStartTime,
+          };
+        })
+      );
+      
+      setActiveOrders(orders);
+    } catch (error: any) {
+      if (__DEV__) console.error('Error loading active orders:', error);
+      
+      // Handle 403 Forbidden - might be permission issue or API not ready
+      if (error.status_code === 403) {
+        console.warn('Access denied to service requests - using fallback to hide section');
+      }
+      
+      // For now, set empty array to hide the section when API has issues
+      // TODO: Remove this when API is properly configured
+      setActiveOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Đơn đang xử lý</Text>
+        </View>
+        <View style={styles.orderCard}>
+          <Text style={styles.stepText}>Đang tải...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (activeOrders.length === 0) {
     return null; // Don't show section if no active orders
   }
 
@@ -53,81 +165,8 @@ export default function ActiveOrdersSection() {
   };
 
   const getStatusColor = (status: ActiveOrder['status']) => {
-    switch (status) {
-      case 'searching':
-        return '#F59E0B';
-      case 'quoted':
-        return '#3B82F6';
-      case 'accepted':
-        return '#10B981';
-      case 'in-progress':
-        return '#8B5CF6';
-      default:
-        return '#6B7280';
-    }
-  };
-
-  const renderOrderCard = (order: ActiveOrder) => {
-    const statusColor = getStatusColor(order.status);
-    const statusIcon = getStatusIcon(order.status);
-
-    return (
-      <TouchableOpacity
-        key={order.id}
-        style={styles.orderCard}
-        onPress={() => {
-          router.push({
-            pathname: './order-tracking',
-            params: { orderId: order.id }
-          } as any);
-        }}
-        activeOpacity={0.7}
-      >
-        <LinearGradient
-          colors={['#FFFFFF', '#F8FAFC']}
-          style={styles.cardGradient}
-        >
-          {/* Status indicator */}
-          <View style={[styles.statusIndicator, { backgroundColor: statusColor }]} />
-
-          {/* Card Content */}
-          <View style={styles.cardContent}>
-            <View style={styles.cardHeader}>
-              <View style={[styles.iconContainer, { backgroundColor: `${statusColor}20` }]}>
-                <Ionicons name={statusIcon as any} size={20} color={statusColor} />
-              </View>
-              <View style={styles.cardTitleContainer}>
-                <Text style={styles.serviceName}>{order.serviceName}</Text>
-                {order.technicianName && (
-                  <View style={styles.technicianRow}>
-                    <Ionicons name="person-outline" size={12} color="#6B7280" />
-                    <Text style={styles.technicianText}>{order.technicianName}</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-
-            {/* Current Step */}
-            <View style={styles.stepContainer}>
-              <Ionicons name="information-circle-outline" size={14} color="#6B7280" />
-              <Text style={styles.stepText}>{order.currentStep}</Text>
-            </View>
-
-            {/* Footer with Track Button */}
-            <View style={styles.cardFooter}>
-              <View style={styles.timeContainer}>
-                <Ionicons name="time-outline" size={14} color="#6B7280" />
-                <Text style={styles.timeText}>~{order.estimatedTime}</Text>
-              </View>
-              <View style={styles.trackButtonSmall}>
-                <Text style={[styles.trackButtonSmallText, { color: statusColor }]}>Theo dõi</Text>
-                <Ionicons name="chevron-forward" size={14} color={statusColor} />
-              </View>
-            </View>
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
-    );
+    // Use primary app color for all status
+    return '#609CEF';
   };
 
   return (
@@ -145,7 +184,7 @@ export default function ActiveOrdersSection() {
           </LinearGradient>
           <Text style={styles.sectionTitle}>Đơn đang xử lý</Text>
           <View style={styles.countBadge}>
-            <Text style={styles.countText}>{mockActiveOrders.length}</Text>
+            <Text style={styles.countText}>{activeOrders.length}</Text>
           </View>
         </View>
         <TouchableOpacity
@@ -162,7 +201,94 @@ export default function ActiveOrdersSection() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContainer}
       >
-        {mockActiveOrders.map(renderOrderCard)}
+        {activeOrders.map((order, index) => (
+          <TouchableOpacity
+            key={order.id || index}
+            style={styles.orderCard}
+            onPress={() => {
+              router.push({
+                pathname: './order-tracking',
+                params: { orderId: order.id }
+              } as any);
+            }}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['#FFFFFF', '#F8FAFC']}
+              style={styles.cardGradient}
+            >
+              {/* Status indicator at top */}
+              <LinearGradient
+                colors={['#609CEF', '#609CEF80']}
+                style={styles.statusIndicator}
+              />
+              
+              <View style={styles.cardContent}>
+                {/* Header with service name and status */}
+                <View style={styles.cardHeader}>
+                  <View style={styles.serviceNameRow}>
+                    <Text style={styles.serviceName} numberOfLines={2}>{order.serviceName}</Text>
+                    <View style={styles.statusBadge}>
+                      <Ionicons 
+                        name={getStatusIcon(order.status)} 
+                        size={12} 
+                        color="#FFFFFF" 
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                {/* Current step with better spacing */}
+                <View style={styles.stepContainer}>
+                  <View style={styles.stepRow}>
+                    <Ionicons name="radio-button-on" size={8} color="#609CEF" />
+                    <Text style={styles.stepText}>{order.currentStep}</Text>
+                  </View>
+                </View>
+
+                {/* Date and time info */}
+                <View style={styles.dateTimeContainer}>
+                  {order.requestedDate && (
+                    <View style={styles.dateTimeRow}>
+                      <Ionicons name="calendar-outline" size={12} color="#6B7280" />
+                      <Text style={styles.dateTimeText}>
+                        {new Date(order.requestedDate).toLocaleDateString('vi-VN')}
+                      </Text>
+                    </View>
+                  )}
+                  {order.expectedStartTime && (
+                    <View style={styles.dateTimeRow}>
+                      <Ionicons name="time-outline" size={12} color="#6B7280" />
+                      <Text style={styles.dateTimeText}>
+                        {new Date(order.expectedStartTime).toLocaleTimeString('vi-VN', { 
+                          hour: '2-digit', 
+                          minute: '2-digit' 
+                        })}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Action button */}
+                <TouchableOpacity 
+                  style={styles.actionButton}
+                  onPress={() => {
+                    router.push({
+                      pathname: './order-tracking',
+                      params: { orderId: order.id }
+                    } as any);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.actionButtonText}>
+                    Xem chi tiết
+                  </Text>
+                  <Ionicons name="arrow-forward" size={14} color="#609CEF" />
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
     </View>
   );
@@ -243,8 +369,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
     marginBottom: 12,
   },
   iconContainer: {
@@ -262,7 +386,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#1F2937',
-    marginBottom: 4,
+    flex: 1,
+    marginRight: 8,
+    lineHeight: 20,
   },
   technicianRow: {
     flexDirection: 'row',
@@ -275,17 +401,10 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   stepContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
     marginBottom: 12,
-    gap: 6,
   },
   stepText: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#4B5563',
     fontWeight: '500',
     flex: 1,
@@ -313,5 +432,56 @@ const styles = StyleSheet.create({
   trackButtonSmallText: {
     fontSize: 13,
     fontWeight: '600',
+    color: '#609CEF',
+  },
+  // New styles for improved layout
+  serviceNameRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  statusBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+    backgroundColor: '#609CEF',
+  },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dateTimeContainer: {
+    gap: 6,
+    marginBottom: 16,
+  },
+  dateTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dateTimeText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#609CEF',
+    gap: 6,
+  },
+  actionButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#609CEF',
   },
 });

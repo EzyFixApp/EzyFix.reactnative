@@ -16,7 +16,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuthActions, useAuth, useAuthStore } from '../store/authStore';
-import { logger } from '../lib/logger';
 import type { UserType } from '../lib/api/config';
 
 const { width } = Dimensions.get('window');
@@ -238,16 +237,6 @@ export default function LoginScreen({
       setErrorMessage(userErrorMessage);
       setShowError(true);
       
-      // Development logging - helpful for debugging
-      if (__DEV__) {
-        console.group('🔐 Login Failed');
-        console.log('📧 Email:', email);
-        console.log('📊 Status Code:', error.status_code);
-        console.log('💬 User Message:', userErrorMessage);
-        console.log('🔍 Original Error:', error.message || error);
-        console.groupEnd();
-      }
-      
       // Auto-hide error after 5 seconds
       setTimeout(() => {
         setShowError(false);
@@ -257,9 +246,6 @@ export default function LoginScreen({
   };
 
   const handleSocialLogin = (provider: string) => {
-    if (__DEV__) {
-      logger.info('Social login with:', provider);
-    }
     // TODO: Implement social login
   };
 
@@ -287,11 +273,6 @@ export default function LoginScreen({
     // Clear any existing errors
     setShowError(false);
     setErrorMessage('');
-    
-    // Development logging
-    if (__DEV__) {
-      console.log('📧➡️📱 Email step completed, moving to password step');
-    }
     
     // Professional slide transition to password step
     Animated.parallel([

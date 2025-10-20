@@ -5,7 +5,6 @@
 
 import { create } from 'zustand';
 import { authService } from '../lib/api/auth';
-import { logger } from '../lib/logger';
 import type { 
   AuthState, 
   UserData, 
@@ -85,7 +84,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     } catch (error: any) {
       // Don't log expected authentication failures  
       if (error.status_code !== 401) {
-        logger.error('Unexpected login error:', error);
+        if (__DEV__) console.error('Unexpected login error:', error);
       }
       set({
         isAuthenticated: false,
@@ -122,7 +121,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       });
 
     } catch (error: any) {
-      logger.error('Logout failed:', error);
+      if (__DEV__) console.error('Logout failed:', error);
       // Even if logout fails, reset local state
       set({
         isAuthenticated: false,
@@ -150,7 +149,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       });
 
     } catch (error: any) {
-      logger.error('Token refresh failed:', error);
+      if (__DEV__) console.error('Token refresh failed:', error);
       // If refresh fails, logout user
       await get().logout();
       throw error;
@@ -188,7 +187,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       }
 
     } catch (error: any) {
-      logger.error('Auth status check failed:', error);
+      if (__DEV__) console.error('Auth status check failed:', error);
       set({
         isAuthenticated: false,
         user: null,
@@ -209,7 +208,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       set({ user: userData });
       
     } catch (error: any) {
-      logger.error('Failed to set user type:', error);
+      if (__DEV__) console.error('Failed to set user type:', error);
       set({ error: error.message || 'Failed to set user type' });
       throw error;
     }
@@ -222,14 +221,16 @@ export const useAuth = () => {
     isAuthenticated, 
     isLoading, 
     user, 
-    error 
+    error,
+    logout 
   } = useAuthStore();
   
   return {
     isAuthenticated,
     isLoading,
     user,
-    error
+    error,
+    logout
   };
 };
 

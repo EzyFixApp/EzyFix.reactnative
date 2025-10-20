@@ -1,75 +1,77 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
+import { addressService } from '../../lib/api';
+import { useAuth } from '../../store/authStore';
+import type { Address } from '../../types/api';
 
 interface AddressItemProps {
-  id: string;
-  type: string;
-  name: string;
-  address: string;
-  phone: string;
-  details: string;
-  isDefault?: boolean;
-  onEdit: (id: string) => void;
+  addressId: string;
+  street: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  latitude?: number;
+  longitude?: number;
   onDelete: (id: string) => void;
-  onSetDefault: (id: string) => void;
+  isDeleting?: boolean;
+  index: number; // Add index for numbering
 }
 
-function AddressCard({ id, type, name, address, phone, details, isDefault, onEdit, onDelete, onSetDefault }: AddressItemProps) {
-  const getTypeColor = (type: string) => {
-    switch (type.toLowerCase()) {
-      case 'nhà riêng':
-        return '#10B981';
-      case 'văn phòng':
-        return '#609CEF';
-      case 'khác':
-        return '#6B7280';
-      default:
-        return '#609CEF';
-    }
-  };
-
+function AddressCard({ 
+  addressId, 
+  street, 
+  city, 
+  province, 
+  postalCode, 
+  latitude, 
+  longitude, 
+  onDelete,
+  isDeleting = false,
+  index
+}: AddressItemProps) {
   const handleDelete = () => {
     Alert.alert(
       "Xóa địa chỉ",
       "Bạn có chắc chắn muốn xóa địa chỉ này?",
       [
         { text: "Hủy", style: "cancel" },
-        { text: "Xóa", style: "destructive", onPress: () => onDelete(id) }
+        { text: "Xóa", style: "destructive", onPress: () => onDelete(addressId) }
       ]
     );
   };
 
+  // Format address display - avoid duplication
+  const displayAddress = street.includes(city) 
+    ? street  // If street already contains full address, use as is
+    : `${street}, ${city}, ${province} ${postalCode}`; // Otherwise build full address
+
   return (
     <View style={styles.addressCard}>
       <View style={styles.cardHeader}>
-        <Text style={styles.addressType}>{type}</Text>
-        {isDefault && (
-          <View style={styles.defaultBadge}>
-            <Text style={styles.defaultText}>MẶC ĐỊNH</Text>
-          </View>
-        )}
+        <Text style={styles.addressType}>Địa chỉ {index + 1}</Text>
       </View>
 
-      <Text style={styles.addressText}>{address}</Text>
-      <Text style={styles.phoneText}>SĐT: {phone}</Text>
-      <Text style={styles.detailsText}>Ghi chú: {details}</Text>
+      <Text style={styles.addressText}>{displayAddress}</Text>
+      {(latitude && longitude) && (
+        <Text style={styles.coordinatesText}>
+          Tọa độ: {latitude.toFixed(6)}, {longitude.toFixed(6)}
+        </Text>
+      )}
 
       <View style={styles.cardActions}>
         <TouchableOpacity 
-          onPress={() => onEdit(id)}
-          style={styles.editButton}
-        >
-          <Text style={styles.editButtonText}>Chỉnh sửa</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
           onPress={handleDelete}
-          style={styles.deleteButton}
+          style={[styles.deleteButton, isDeleting && styles.deleteButtonDisabled]}
+          disabled={isDeleting}
         >
-          <Text style={styles.deleteButtonText}>Xóa</Text>
+          {isDeleting ? (
+            <ActivityIndicator size="small" color="#F44336" />
+          ) : (
+            <Text style={styles.deleteButtonText}>Xóa</Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -91,17 +93,57 @@ function StatCard({ number, label }: StatCardProps) {
 }
 
 export default function SavedAddresses() {
-  const [addresses, setAddresses] = useState([
-    {
-      id: '1',
-      type: 'Nhà riêng',
-      name: 'Nhà riêng',
-      address: '123 Nguyễn Lê Lợi, Phường Tân Nghĩa, Quận 1, TPHCM',
-      phone: '0901234567',
-      details: 'Ghi chú: Cửa hàng xanh, có bảng tên trước cửa',
-      isDefault: true
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  
+  // Get auth state
+  const { isAuthenticated, user } = useAuth();
+
+  // Load addresses when component mounts or when focus returns
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isAuthenticated) {
+        Alert.alert(
+          'Chưa đăng nhập',
+          'Vui lòng đăng nhập để xem danh sách địa chỉ.',
+          [
+            { text: 'Đăng nhập', onPress: () => router.push('/(auth)/login' as any) },
+            { text: 'Hủy', onPress: () => router.back() }
+          ]
+        );
+        return;
+      }
+      
+      loadAddresses();
+    }, [isAuthenticated, user])
+  );
+
+  const loadAddresses = async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
+      const allAddresses = await addressService.getAllAddresses();
+      
+      // Filter addresses by current user
+      const userAddresses = allAddresses.filter(addr => addr.userId === user?.id);
+      setAddresses(userAddresses);
+    } catch (error: any) {
+      Alert.alert('Lỗi', error.message || 'Không thể tải danh sách địa chỉ');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  ]);
+  };
+
+  const handleRefresh = () => {
+    loadAddresses(true);
+  };
 
   const handleBackPress = () => {
     router.back();
@@ -111,25 +153,45 @@ export default function SavedAddresses() {
     router.push('./add-address' as any);
   };
 
-  const handleEditAddress = (id: string) => {
-    router.push(`./add-address?id=${id}` as any);
+  const handleDeleteAddress = async (addressId: string) => {
+    // Store original addresses for potential revert
+    const originalAddresses = addresses;
+    
+    try {
+      // Add to deleting set for loading state
+      setDeletingIds(prev => new Set([...prev, addressId]));
+      
+      // Optimistic update - remove from UI immediately
+      setAddresses(prev => prev.filter(addr => addr.addressId !== addressId));
+
+      // Call API
+      const response = await addressService.deleteAddress(addressId);
+      
+      if (response.success || response.message?.includes('successfully')) {
+        // Success - keep the optimistic update
+        Alert.alert('Thành công', 'Địa chỉ đã được xóa');
+      } else {
+        // API failed but no error thrown - revert optimistic update
+        setAddresses(originalAddresses);
+        Alert.alert('Lỗi', response.message || 'Không thể xóa địa chỉ');
+      }
+    } catch (error: any) {
+      // Network/API error - revert optimistic update
+      setAddresses(originalAddresses);
+      Alert.alert('Lỗi', error.message || 'Không thể xóa địa chỉ');
+    } finally {
+      // Remove from deleting set
+      setDeletingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(addressId);
+        return newSet;
+      });
+    }
   };
 
-  const handleDeleteAddress = (id: string) => {
-    setAddresses(prev => prev.filter(addr => addr.id !== id));
-  };
-
-  const handleSetDefault = (id: string) => {
-    setAddresses(prev => 
-      prev.map(addr => ({
-        ...addr,
-        isDefault: addr.id === id
-      }))
-    );
-  };
-
-  const totalAddresses = addresses.length;
-  const defaultAddresses = addresses.filter(addr => addr.isDefault).length;
+  const totalAddresses = useMemo(() => {
+    return addresses.length;
+  }, [addresses]);
 
   return (
     <>
@@ -153,14 +215,25 @@ export default function SavedAddresses() {
             {/* Stats Row */}
             <View style={styles.statsContainer}>
               <StatCard number={totalAddresses.toString()} label="TỔNG ĐỊA CHỈ" />
-              <StatCard number={defaultAddresses.toString()} label="MẶC ĐỊNH" />
-              <StatCard number="0" label="CỦA QUAN" />
+              <StatCard number="0" label="KHÁC" />
+              <StatCard number="0" label="ĐÃ DÙNG" />
             </View>
           </View>
         </LinearGradient>
 
         {/* Content */}
-        <ScrollView style={styles.contentContainer} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          style={styles.contentContainer} 
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={['#609CEF']}
+              tintColor="#609CEF"
+            />
+          }
+        >
           {/* Quick Actions */}
           <View style={styles.quickActions}>
             <TouchableOpacity 
@@ -176,7 +249,12 @@ export default function SavedAddresses() {
           <View style={styles.addressesSection}>
             <Text style={styles.sectionTitle}>Danh sách địa chỉ</Text>
             
-            {addresses.length === 0 ? (
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#609CEF" />
+                <Text style={styles.loadingText}>Đang tải danh sách địa chỉ...</Text>
+              </View>
+            ) : addresses.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="location-outline" size={64} color="#9CA3AF" />
                 <Text style={styles.emptyTitle}>Chưa có địa chỉ nào</Text>
@@ -185,13 +263,19 @@ export default function SavedAddresses() {
                 </Text>
               </View>
             ) : (
-              addresses.map((address) => (
+              addresses.map((address, index) => (
                 <AddressCard
-                  key={address.id}
-                  {...address}
-                  onEdit={handleEditAddress}
+                  key={address.addressId}
+                  addressId={address.addressId}
+                  street={address.street}
+                  city={address.city}
+                  province={address.province}
+                  postalCode={address.postalCode}
+                  latitude={address.latitude}
+                  longitude={address.longitude}
                   onDelete={handleDeleteAddress}
-                  onSetDefault={handleSetDefault}
+                  isDeleting={deletingIds.has(address.addressId)}
+                  index={index}
                 />
               ))
             )}
@@ -351,7 +435,13 @@ const styles = StyleSheet.create({
   phoneText: {
     fontSize: 14,
     color: '#6B7280',
-    marginBottom: 4,
+    marginTop: 4,
+  },
+  coordinatesText: {
+    fontSize: 13,
+    color: '#8B5CF6',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   detailsText: {
     fontSize: 14,
@@ -361,21 +451,7 @@ const styles = StyleSheet.create({
   cardActions: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 12,
     marginTop: 4,
-  },
-  editButton: {
-    flex: 1,
-    backgroundColor: '#E3F2FD',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  editButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#609CEF',
   },
   deleteButton: {
     flex: 1,
@@ -389,6 +465,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#F44336',
+  },
+  deleteButtonDisabled: {
+    opacity: 0.6,
   },
   emptyState: {
     alignItems: 'center',
@@ -410,5 +489,16 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 80,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    paddingTop: 40,
+    paddingHorizontal: 40,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginTop: 12,
+    textAlign: 'center',
   },
 });

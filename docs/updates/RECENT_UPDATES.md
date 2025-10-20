@@ -2,6 +2,29 @@
 
 Các cập nhật gần đây cho EzyFix React Native App.
 
+## 📅 October 21, 2025 - Authentication & Profile Display Update
+
+### 👤 **Profile Name Display Logic**
+- Ưu tiên hiển thị firstName + lastName nếu có, fallback fullName, cuối cùng là email.
+- Nếu backend chỉ trả về fullName, frontend sẽ split tên (nếu chỉ 1 từ thì coi là firstName).
+- Khuyến nghị backend trả về đủ firstName/lastName.
+
+### 🎨 **UI/UX Consistency**
+- Loại bỏ SafeAreaView khỏi các màn customer, padding thủ công cho header.
+- Header và modal xác thực dùng LinearGradient màu #609CEF → #3B82F6.
+- StatusBar đồng bộ trên mọi màn hình.
+
+### 🔐 **Branded Auth Modal**
+- Khi chưa đăng nhập, truy cập trang cần bảo vệ sẽ hiện modal xác thực thương hiệu EzyFix.
+- Modal có logo, gradient header, icon cảnh báo, nút chuyển hướng login.
+
+### 🛠️ **Technical Fixes**
+- Đã loại bỏ useAuthGuard custom hook do lỗi TypeScript, chuyển sang dùng trực tiếp useAuth() + useState.
+- Đã thêm debug log kiểm tra user data khi hiển thị profile.
+
+### 📚 **Documentation**
+- Đã cập nhật docs về logic hiển thị tên, UI/UX header, modal xác thực, và các technical note liên quan auth.
+
 ## 📅 October 20, 2025 - Major Services Integration & UI Enhancement
 
 ### 🚀 **Services API Complete Integration**

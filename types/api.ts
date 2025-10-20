@@ -17,6 +17,43 @@ export interface ApiResponse<T> {
   data: T;
 }
 
+// ============= Address Types =============
+
+// Address data for creating/updating (theo API thực tế)
+export interface AddressData {
+  street: string;           // Địa chỉ đường (bắt buộc)
+  city: string;             // Thành phố (bắt buộc)
+  province: string;         // Tỉnh/Thành phố (bắt buộc)
+  postalCode: string;       // Mã bưu điện (bắt buộc)
+  latitude?: number;        // Tọa độ vĩ độ (tùy chọn)
+  longitude?: number;       // Tọa độ kinh độ (tùy chọn)
+}
+
+// Address response from API (theo API thực tế)
+export interface Address {
+  addressId: string;        // ID địa chỉ (thay vì 'id')
+  userId: string;           // ID người dùng
+  street: string;           // Địa chỉ đường
+  city: string;             // Thành phố
+  province: string;         // Tỉnh/Thành phố
+  postalCode: string;       // Mã bưu điện
+  latitude?: number;        // Tọa độ vĩ độ
+  longitude?: number;       // Tọa độ kinh độ
+  serviceRequests?: any[];  // Danh sách service requests liên quan
+}
+
+export interface AddressResponse {
+  success: boolean;
+  message: string;
+  data: Address;
+}
+
+export interface AddressListResponse {
+  success: boolean;
+  message: string;
+  data: Address[];
+}
+
 // ============= Authentication Types =============
 
 // Login Request (email + password based on backend API)
@@ -100,6 +137,7 @@ export interface LoginResponse {
   id: string;
   fullName: string;
   email: string;
+  phoneNumber?: string;
   avatarLink?: string | null;
   isPasswordExpired: boolean;
   isVerify: boolean; // Added verification status from backend
@@ -110,7 +148,10 @@ export interface LoginResponse {
 export interface UserData {
   id: string;
   fullName: string;
+  firstName?: string;
+  lastName?: string;
   email: string;
+  phoneNumber?: string;
   avatarLink?: string | null;
   userType: UserType;
   isVerify: boolean; // Added verification status
@@ -206,27 +247,6 @@ export interface ApiError {
   data?: any;
 }
 
-// ============= Address Types =============
-export interface Address {
-  addressId: string;
-  userId: string;
-  street?: string | null;
-  city?: string | null;
-  province?: string | null;
-  postalCode?: string | null;
-  latitude: number;
-  longitude: number;
-}
-
-export interface CreateAddressRequest {
-  street: string;
-  city: string;
-  province?: string | null;
-  postalCode?: string | null;
-  latitude: number;
-  longitude: number;
-}
-
 // ============= Email/OTP Types =============
 export interface SendOtpRequest {
   email: string;
@@ -277,4 +297,46 @@ export interface FormErrors {
   email?: string;
   password?: string;
   general?: string;
+}
+
+// ============= Service Request Types =============
+export interface ServiceRequestData {
+  request: string; // Required field based on server validation
+  addressID: string;
+  serviceId: string;
+  serviceDescription: string;
+  addressNote: string;
+  requestedDate: string; // ISO string format
+  expectedStartTime: string; // ISO string format 
+  mediaUrls: string[];
+}
+
+export interface ServiceRequestResponse {
+  id: string;
+  addressID: string;
+  serviceId: string;
+  serviceDescription: string;
+  addressNote: string;
+  requestedDate: string;
+  expectedStartTime: string;
+  mediaUrls: string[];
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Booking form data for UI
+export interface BookingFormData {
+  customerName: string;
+  phoneNumber: string;
+  serviceName: string;
+  serviceId: string;
+  servicePrice: string;
+  serviceDescription: string;
+  address: string;
+  addressId: string; // ID of selected address (GUID)
+  addressNote: string;
+  requestedDate: string;
+  expectedStartTime: string;
+  images: string[];
 }

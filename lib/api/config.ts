@@ -48,6 +48,17 @@ export const API_ENDPOINTS = {
     DELETE: (id: string) => `/api/v1/addresses/${id}/delete`,
   },
 
+  // Service Request endpoints
+  SERVICE_REQUESTS: {
+    BASE: '/api/v1/serviceRequests',
+    CREATE: '/api/v1/serviceRequests',
+    GET_ALL: '/api/v1/serviceRequests', // List all service requests (with query params)
+    GET_USER_REQUESTS: '/api/v1/serviceRequests', // Same endpoint, filtered by customer
+    GET_BY_ID: (id: string) => `/api/v1/serviceRequests/${id}`,
+    UPDATE: (id: string) => `/api/v1/serviceRequests/${id}`,
+    DELETE: (id: string) => `/api/v1/serviceRequests/${id}`,
+  },
+
   // Services endpoints
   SERVICES: {
     BASE: '/api/v1/services',
@@ -62,6 +73,12 @@ export const API_ENDPOINTS = {
     BASE: '/api/v1/categories',
     GET_ALL: '/api/v1/categories',
     GET_BY_ID: '/api/v1/categories',
+  },
+
+  // Media endpoints
+  MEDIA: {
+    BASE: '/api/v1/media',
+    UPLOAD: '/api/v1/media',
   },
 } as const;
 

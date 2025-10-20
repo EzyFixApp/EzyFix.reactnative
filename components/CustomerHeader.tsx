@@ -21,7 +21,7 @@ export default function CustomerHeader({
       colors={['#609CEF', '#4F8BE8', '#3D7CE0']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={styles.container}
+      style={styles.header}
     >
       <View style={styles.content}>
         {/* Avatar Button */}
@@ -59,39 +59,51 @@ export default function CustomerHeader({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingTop: 60, // Status bar height + padding
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+  header: {
+    paddingBottom: 24,
   },
   content: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingTop: 70,
+    paddingHorizontal: 20,
   },
   avatarButton: {
-    width: 44,
-    height: 44,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'white',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
   title: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: '700',
     color: 'white',
     flex: 1,
     textAlign: 'center',
     marginHorizontal: 16,
   },
   notificationButton: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -102,12 +114,12 @@ const styles = StyleSheet.create({
   },
   notificationBadge: {
     position: 'absolute',
-    top: -6,
-    right: -6,
+    top: -4,
+    right: -4,
     backgroundColor: '#FF4757',
-    borderRadius: 9,
-    minWidth: 18,
-    height: 18,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
@@ -116,8 +128,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     color: 'white',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
-    lineHeight: 14,
   },
 });
