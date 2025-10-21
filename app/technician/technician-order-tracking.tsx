@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -199,7 +200,7 @@ const SwipeButton: React.FC<{
   );
 };
 
-export default function TechnicianOrderTracking() {
+function TechnicianOrderTracking() {
   const { orderId, quoteType, quoteAmount } = useLocalSearchParams();
   const [order, setOrder] = useState<OrderItem | null>(null);
   const [currentStatus, setCurrentStatus] = useState('quote_sent');
@@ -2073,4 +2074,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     letterSpacing: 0.3,
   },
+});
+
+// Export protected component
+export default withTechnicianAuth(TechnicianOrderTracking, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

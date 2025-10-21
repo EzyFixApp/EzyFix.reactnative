@@ -1,8 +1,9 @@
 import React from 'react';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import OrderTrackingScreen from '../../components/OrderTrackingScreen';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
-export default function CustomerOrderTracking() {
+function CustomerOrderTracking() {
   // Get orderId from route params
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const finalOrderId = orderId || 'order_123';
@@ -22,3 +23,8 @@ export default function CustomerOrderTracking() {
     </>
   );
 }
+
+export default withCustomerAuth(CustomerOrderTracking, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
+});

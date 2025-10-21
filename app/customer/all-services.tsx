@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
 import { servicesService } from '../../lib/api/services';
 import type { Service, Category } from '../../types/api';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
 interface ServiceItemProps {
   service: Service;
@@ -171,7 +172,7 @@ function ServiceCategory({ title, services }: ServiceCategoryProps) {
   );
 }
 
-export default function AllServices() {
+function AllServices() {
   const [searchQuery, setSearchQuery] = useState('');
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -655,4 +656,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+});
+
+export default withCustomerAuth(AllServices, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface QuoteDetails {
@@ -100,7 +101,7 @@ const formatDate = (dateString: string) => {
   });
 };
 
-export default function QuoteReview() {
+function QuoteReview() {
   const params = useLocalSearchParams();
   const bookingId = params.bookingId as string || '1';
   
@@ -753,4 +754,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'white',
   },
+});
+
+export default withCustomerAuth(QuoteReview, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
 import BottomNavigation from '../../components/BottomNavigation';
 import TechnicianHeader from '../../components/TechnicianHeader';
+import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 
 interface OrderItem {
   id: string;
@@ -328,7 +329,7 @@ function HistoryOrderCard({ order }: { order: OrderItem }) {
   );
 }
 
-export default function TechnicianActivity() {
+function TechnicianActivity() {
   console.log('Activity component rendering...');
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -769,4 +770,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+});
+
+// Export protected component
+export default withTechnicianAuth(TechnicianActivity, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

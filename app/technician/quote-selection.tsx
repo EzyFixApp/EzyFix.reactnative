@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 
 interface OrderItem {
   id: string;
@@ -44,7 +45,7 @@ const mockOrders: OrderItem[] = [
   }
 ];
 
-export default function QuoteSelection() {
+function QuoteSelection() {
   const { orderId } = useLocalSearchParams();
   const [order, setOrder] = useState<OrderItem | null>(null);
   const [selectedType, setSelectedType] = useState<'estimated' | 'final' | null>(null);
@@ -974,4 +975,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
+});
+
+// Export protected component
+export default withTechnicianAuth(QuoteSelection, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

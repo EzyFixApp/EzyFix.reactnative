@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 
 interface OrderHistoryDetail {
   id: string;
@@ -202,7 +203,7 @@ const getStatusIcon = (status: string) => {
   }
 };
 
-export default function OrderHistoryDetail() {
+function OrderHistoryDetail() {
   const { orderId } = useLocalSearchParams();
   const [order, setOrder] = useState<OrderHistoryDetail | null>(null);
   const [showFullTimeline, setShowFullTimeline] = useState(false);
@@ -806,4 +807,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
+});
+
+// Export protected component
+export default withTechnicianAuth(OrderHistoryDetail, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

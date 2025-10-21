@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
+import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 
 interface OrderItem {
   id: string;
@@ -157,7 +158,7 @@ const acceptedOrders: OrderItem[] = [
   }
 ];
 
-export default function TechnicianOrders() {
+function TechnicianOrders() {
   const [selectedTab, setSelectedTab] = useState<'available' | 'accepted'>('available');
   const [fadeAnim] = useState(new Animated.Value(1));
   
@@ -1173,4 +1174,10 @@ const styles = StyleSheet.create({
   appointmentTimeBadgeUrgent: {
     backgroundColor: '#EF4444',
   },
+});
+
+// Export protected component
+export default withTechnicianAuth(TechnicianOrders, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

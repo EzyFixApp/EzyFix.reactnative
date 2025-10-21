@@ -12,10 +12,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
 const { width } = Dimensions.get('window');
 
-export default function BookingConfirmation() {
+function BookingConfirmation() {
   const params = useLocalSearchParams();
   
   // Extract booking details from params
@@ -478,4 +479,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'white',
   },
+});
+
+export default withCustomerAuth(BookingConfirmation, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

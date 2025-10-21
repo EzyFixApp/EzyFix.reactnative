@@ -2,8 +2,9 @@ import React, { useEffect } from 'react';
 import { router } from 'expo-router';
 import { useAuth } from '../../store/authStore';
 import CustomerDashboard from '../../components/CustomerDashboard';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
-export default function CustomerDashboardPage() {
+function CustomerDashboardPage() {
   const { user, isAuthenticated } = useAuth();
 
   useEffect(() => {
@@ -28,3 +29,8 @@ export default function CustomerDashboardPage() {
 
   return <CustomerDashboard />;
 }
+
+export default withCustomerAuth(CustomerDashboardPage, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
+});

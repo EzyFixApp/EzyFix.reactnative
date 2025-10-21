@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
 type TabType = 'notifications' | 'messages';
 
@@ -120,7 +121,7 @@ function MessageItem({ technicianName, lastMessage, time, isRead, onPress }: Mes
   );
 }
 
-export default function NotificationsPage() {
+function NotificationsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('notifications');
 
   const handleBackPress = () => {
@@ -555,4 +556,9 @@ const styles = StyleSheet.create({
   bottomSpacing: {
     height: 80,
   },
+});
+
+export default withCustomerAuth(NotificationsPage, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

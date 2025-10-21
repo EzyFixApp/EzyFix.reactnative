@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
 interface PaymentMethodProps {
   id: string;
@@ -68,7 +69,7 @@ function StatCard({ number, label }: StatCardProps) {
   );
 }
 
-export default function PaymentMethods() {
+function PaymentMethods() {
   const [paymentMethods, setPaymentMethods] = useState([
     {
       id: '1',
@@ -405,4 +406,9 @@ const styles = StyleSheet.create({
   bottomSpacing: {
     height: 80,
   },
+});
+
+export default withCustomerAuth(PaymentMethods, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

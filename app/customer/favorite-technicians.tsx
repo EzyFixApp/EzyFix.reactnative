@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
 interface TechnicianCardProps {
   id: string;
@@ -73,7 +74,7 @@ function StatCard({ number, label }: StatCardProps) {
   );
 }
 
-export default function FavoriteTechnicians() {
+function FavoriteTechnicians() {
   const [technicians, setTechnicians] = useState([
     {
       id: '1',
@@ -353,4 +354,9 @@ const styles = StyleSheet.create({
   bottomSpacing: {
     height: 80,
   },
+});
+
+export default withCustomerAuth(FavoriteTechnicians, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import { serviceRequestService } from '../lib/api/serviceRequests';
 import { servicesService } from '../lib/api/services';
 import { useFocusEffect } from '@react-navigation/native';
+import { useAuth } from '../store/authStore';
 
 interface ActiveOrder {
   id: string;
@@ -21,6 +22,7 @@ interface ActiveOrder {
 export default function ActiveOrdersSection() {
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
   // Helper function to map API status to local status
   const getStatusFromApiStatus = (apiStatus: string): ActiveOrder['status'] => {
@@ -71,6 +73,16 @@ export default function ActiveOrdersSection() {
     try {
       setLoading(true);
       
+      // Only load orders for customers - skip for technicians until API is ready
+      if (user?.userType !== 'customer') {
+        if (__DEV__) {
+          console.log('ActiveOrdersSection: Skipping load for non-customer role:', user?.userType);
+        }
+        setActiveOrders([]);
+        setLoading(false);
+        return;
+      }
+      
       // Get service requests using the endpoint with customer access support
       const serviceRequests = await serviceRequestService.getUserServiceRequests();
       
@@ -117,15 +129,17 @@ export default function ActiveOrdersSection() {
       
       setActiveOrders(orders);
     } catch (error: any) {
-      if (__DEV__) console.error('Error loading active orders:', error);
-      
-      // Handle 403 Forbidden - might be permission issue or API not ready
-      if (error.status_code === 403) {
-        console.warn('Access denied to service requests - using fallback to hide section');
+      // Silent handling for expected errors (403, 404) - these are OK when API is not ready
+      if (error.status_code === 403 || error.status_code === 404) {
+        if (__DEV__) {
+          console.log('ActiveOrdersSection: Service requests API not available (expected)');
+        }
+      } else {
+        // Only log unexpected errors
+        if (__DEV__) console.error('Error loading active orders:', error);
       }
       
-      // For now, set empty array to hide the section when API has issues
-      // TODO: Remove this when API is properly configured
+      // Set empty array to hide the section when API has issues or no orders
       setActiveOrders([]);
     } finally {
       setLoading(false);

@@ -13,6 +13,7 @@ import { router, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import TechnicianHeader from '../../components/TechnicianHeader';
+import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 
 const { width } = Dimensions.get('window');
 
@@ -146,7 +147,7 @@ const PeriodCard: React.FC<{ data: PeriodData; isActive: boolean; onPress: () =>
   </TouchableOpacity>
 );
 
-export default function StatisticsScreen() {
+function StatisticsScreen() {
   const [selectedPeriod, setSelectedPeriod] = useState(0);
   
   const periodsData: PeriodData[] = [
@@ -889,4 +890,10 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.8)',
     textAlign: 'center',
   },
+});
+
+// Export protected component
+export default withTechnicianAuth(StatisticsScreen, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

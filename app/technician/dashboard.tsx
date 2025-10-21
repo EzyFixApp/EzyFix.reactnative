@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { router, Stack } from 'expo-router';
 import { useAuth } from '../../store/authStore';
+import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -240,7 +241,7 @@ interface DashboardContentProps {
 
 const { width } = Dimensions.get('window');
 
-export default function Dashboard() {
+function Dashboard() {
   const { user, isAuthenticated } = useAuth();
   
   // State for time
@@ -1450,4 +1451,10 @@ const styles = StyleSheet.create({
   bottomSpacing: {
     height: 100,
   },
+});
+
+// Export protected component
+export default withTechnicianAuth(Dashboard, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

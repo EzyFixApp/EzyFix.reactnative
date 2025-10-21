@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput } from 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
+import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 
 interface SectionProps {
   title: string;
@@ -147,7 +148,7 @@ function SocialLink({ platform, email, isConnected, onPress }: SocialLinkProps) 
   );
 }
 
-export default function TechnicianPersonalInfo() {
+function TechnicianPersonalInfo() {
   const [formData, setFormData] = useState({
     cccd: '0123456789',
     fullName: 'Zun Zun',
@@ -636,4 +637,10 @@ const styles = StyleSheet.create({
     height: 16,
     justifyContent: 'center',
   },
+});
+
+// Export protected component
+export default withTechnicianAuth(TechnicianPersonalInfo, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

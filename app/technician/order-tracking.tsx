@@ -1,8 +1,9 @@
 import React from 'react';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import OrderTrackingScreen from '../../components/OrderTrackingScreen';
+import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 
-export default function TechnicianOrderTracking() {
+function TechnicianOrderTracking() {
   // Get params from route
   const { orderId, quoteType, quoteAmount } = useLocalSearchParams<{ 
     orderId: string;
@@ -28,3 +29,9 @@ export default function TechnicianOrderTracking() {
     </>
   );
 }
+
+// Export protected component
+export default withTechnicianAuth(TechnicianOrderTracking, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
+});

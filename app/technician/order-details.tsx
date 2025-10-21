@@ -17,6 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 
 interface OrderDetailItem {
   id: string;
@@ -94,7 +95,7 @@ const mockOrders: OrderDetailItem[] = [
   }
 ];
 
-export default function OrderDetails() {
+function OrderDetails() {
   const { orderId, canAccept } = useLocalSearchParams();
   const [order, setOrder] = useState<OrderDetailItem | null>(null);
   const [loading, setLoading] = useState(false);
@@ -643,4 +644,10 @@ const styles = StyleSheet.create({
     width: Dimensions.get('window').width,
     height: Dimensions.get('window').height * 0.8,
   },
+});
+
+// Export protected component
+export default withTechnicianAuth(OrderDetails, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

@@ -6,6 +6,7 @@ import { router, Stack, useFocusEffect } from 'expo-router';
 import { addressService } from '../../lib/api';
 import { useAuth } from '../../store/authStore';
 import type { Address } from '../../types/api';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
 interface AddressItemProps {
   addressId: string;
@@ -15,6 +16,7 @@ interface AddressItemProps {
   postalCode: string;
   latitude?: number;
   longitude?: number;
+  onEdit: (address: Address) => void;
   onDelete: (id: string) => void;
   isDeleting?: boolean;
   index: number; // Add index for numbering
@@ -28,6 +30,7 @@ function AddressCard({
   postalCode, 
   latitude, 
   longitude, 
+  onEdit,
   onDelete,
   isDeleting = false,
   index
@@ -43,15 +46,41 @@ function AddressCard({
     );
   };
 
+  const handleEdit = () => {
+    onEdit({
+      addressId,
+      street,
+      city,
+      province,
+      postalCode,
+      latitude,
+      longitude,
+      userId: '' // Will be filled by the system
+    });
+  };
+
+  // Check if address has required data
+  const hasRequiredData = street && city && province && postalCode &&
+                          street.trim() !== '' && 
+                          city.trim() !== '' && 
+                          province.trim() !== '' && 
+                          postalCode.trim() !== '';
+
   // Format address display - avoid duplication
   const displayAddress = street.includes(city) 
     ? street  // If street already contains full address, use as is
     : `${street}, ${city}, ${province} ${postalCode}`; // Otherwise build full address
 
   return (
-    <View style={styles.addressCard}>
+    <View style={[styles.addressCard, !hasRequiredData && styles.addressCardIncomplete]}>
       <View style={styles.cardHeader}>
         <Text style={styles.addressType}>Địa chỉ {index + 1}</Text>
+        {!hasRequiredData && (
+          <View style={styles.incompleteBadge}>
+            <Ionicons name="warning" size={12} color="#F59E0B" />
+            <Text style={styles.incompleteText}>Thiếu dữ liệu</Text>
+          </View>
+        )}
       </View>
 
       <Text style={styles.addressText}>{displayAddress}</Text>
@@ -63,6 +92,15 @@ function AddressCard({
 
       <View style={styles.cardActions}>
         <TouchableOpacity 
+          onPress={handleEdit}
+          style={styles.editButton}
+          disabled={isDeleting}
+        >
+          <Ionicons name="create-outline" size={16} color="#609CEF" />
+          <Text style={styles.editButtonText}>Sửa</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
           onPress={handleDelete}
           style={[styles.deleteButton, isDeleting && styles.deleteButtonDisabled]}
           disabled={isDeleting}
@@ -70,7 +108,10 @@ function AddressCard({
           {isDeleting ? (
             <ActivityIndicator size="small" color="#F44336" />
           ) : (
-            <Text style={styles.deleteButtonText}>Xóa</Text>
+            <>
+              <Ionicons name="trash-outline" size={16} color="#F44336" />
+              <Text style={styles.deleteButtonText}>Xóa</Text>
+            </>
           )}
         </TouchableOpacity>
       </View>
@@ -92,7 +133,7 @@ function StatCard({ number, label }: StatCardProps) {
   );
 }
 
-export default function SavedAddresses() {
+function SavedAddresses() {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -151,6 +192,72 @@ export default function SavedAddresses() {
 
   const handleAddAddress = () => {
     router.push('./add-address' as any);
+  };
+
+  const handleEditAddress = (address: Address) => {
+    // Debug logging
+    if (__DEV__) {
+      console.log('🔄 Editing address:', address);
+    }
+
+    // Validate required fields before allowing edit
+    if (!address.street || address.street.trim() === '') {
+      Alert.alert(
+        'Lỗi dữ liệu',
+        'Địa chỉ này thiếu thông tin đường. Vui lòng xóa và tạo lại địa chỉ mới.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    if (!address.city || address.city.trim() === '') {
+      Alert.alert(
+        'Lỗi dữ liệu',
+        'Địa chỉ này thiếu thông tin thành phố. Vui lòng xóa và tạo lại địa chỉ mới.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    if (!address.province || address.province.trim() === '') {
+      Alert.alert(
+        'Lỗi dữ liệu',
+        'Địa chỉ này thiếu thông tin tỉnh/quận. Vui lòng xóa và tạo lại địa chỉ mới.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    if (!address.postalCode || address.postalCode.trim() === '') {
+      Alert.alert(
+        'Lỗi dữ liệu',
+        'Địa chỉ này thiếu thông tin mã bưu điện. Vui lòng xóa và tạo lại địa chỉ mới.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Ensure all required fields have values
+    const editParams = {
+      mode: 'edit',
+      addressId: address.addressId,
+      street: address.street.trim(),
+      city: address.city.trim(),
+      province: address.province.trim(),
+      postalCode: address.postalCode.trim(),
+      latitude: address.latitude?.toString() || '',
+      longitude: address.longitude?.toString() || ''
+    };
+
+    if (__DEV__) {
+      console.log('📤 Navigation params:', editParams);
+    }
+
+    // Navigate to add-address screen with edit mode
+    router.push({
+      pathname: './add-address',
+      params: editParams
+    } as any);
   };
 
   const handleDeleteAddress = async (addressId: string) => {
@@ -273,6 +380,7 @@ export default function SavedAddresses() {
                   postalCode={address.postalCode}
                   latitude={address.latitude}
                   longitude={address.longitude}
+                  onEdit={handleEditAddress}
                   onDelete={handleDeleteAddress}
                   isDeleting={deletingIds.has(address.addressId)}
                   index={index}
@@ -403,11 +511,31 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  addressCardIncomplete: {
+    borderWidth: 1,
+    borderColor: '#FEF3C7',
+    backgroundColor: '#FFFBEB',
+  },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  incompleteBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  incompleteText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#F59E0B',
+    letterSpacing: 0.5,
   },
   addressType: {
     fontSize: 18,
@@ -450,16 +578,36 @@ const styles = StyleSheet.create({
   },
   cardActions: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    gap: 8,
+  },
+  editButton: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: '#E3F2FD',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 4,
+    gap: 6,
+  },
+  editButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#609CEF',
   },
   deleteButton: {
     flex: 1,
+    flexDirection: 'row',
     backgroundColor: '#FFEBEE',
     paddingVertical: 10,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
   deleteButtonText: {
     fontSize: 14,
@@ -501,4 +649,9 @@ const styles = StyleSheet.create({
     marginTop: 12,
     textAlign: 'center',
   },
+});
+
+export default withCustomerAuth(SavedAddresses, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

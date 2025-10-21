@@ -18,6 +18,7 @@ import { serviceRequestService } from '../../lib/api/serviceRequests';
 import { servicesService } from '../../lib/api/services';
 import { ServiceRequestResponse } from '../../types/api';
 import { useAuth } from '../../store/authStore';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 import AuthModal from '../../components/AuthModal';
 
 interface BookingDetail {
@@ -48,7 +49,7 @@ const mockBookingDetail: BookingDetail = {
   notes: 'Điều hòa không lạnh, có tiếng ồn khi chạy'
 };
 
-export default function BookingDetail() {
+function BookingDetail() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -767,4 +768,9 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontWeight: '500',
   },
+});
+
+export default withCustomerAuth(BookingDetail, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

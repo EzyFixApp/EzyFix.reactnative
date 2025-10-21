@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../store/authStore';
 import { serviceRequestService } from '../../lib/api/serviceRequests';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
 interface ProfileItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -66,7 +67,7 @@ function ProfileItem({ icon, title, subtitle, onPress, showArrow = true, isLogou
   );
 }
 
-export default function CustomerProfile() {
+function CustomerProfile() {
   const { user, isAuthenticated, logout } = useAuth();
   const [orderCount, setOrderCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -584,4 +585,9 @@ const styles = StyleSheet.create({
   bottomSpacing: {
     height: 80,
   },
+});
+
+export default withCustomerAuth(CustomerProfile, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

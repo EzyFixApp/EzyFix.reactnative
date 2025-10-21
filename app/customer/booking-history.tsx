@@ -22,6 +22,7 @@ import { addressService } from '../../lib/api/addresses';
 import { ServiceRequestResponse } from '../../types/api';
 import { useAuth } from '../../store/authStore';
 import AuthModal from '../../components/AuthModal';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
 interface BookingItem {
   id: string;
@@ -45,7 +46,7 @@ const isTrackableStatus = (status: BookingItem['status']): boolean => {
   return status !== 'completed' && status !== 'cancelled';
 };
 
-export default function BookingHistory() {
+function BookingHistory() {
   const [activeTab, setActiveTab] = useState('activity');
   const [bookings, setBookings] = useState<BookingItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -913,4 +914,9 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontWeight: '500',
   },
+});
+
+export default withCustomerAuth(BookingHistory, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

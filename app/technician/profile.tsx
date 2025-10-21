@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
+import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 
 interface ProfileItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -64,7 +65,7 @@ function ProfileItem({ icon, title, subtitle, onPress, showArrow = true, isLogou
   );
 }
 
-export default function TechnicianProfile() {
+function TechnicianProfile() {
   const handleBackPress = () => {
     router.back();
   };
@@ -738,4 +739,10 @@ const styles = StyleSheet.create({
     color: '#64748b',
     lineHeight: 16,
   },
+});
+
+// Export protected component
+export default withTechnicianAuth(TechnicianProfile, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

@@ -23,8 +23,9 @@ import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AddressSearchInput from '../../components/AddressSearchInput';
 import type { BookingFormData, ServiceRequestData, Address } from '../../types/api';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
-export default function BookService() {
+function BookService() {
   const params = useLocalSearchParams();
   const serviceName = params.serviceName as string || 'Dịch vụ';
   const servicePrice = params.servicePrice as string || 'Liên hệ';
@@ -606,8 +607,8 @@ export default function BookService() {
               <Ionicons name="construct" size={24} color="#609CEF" />
             </View>
             <View style={styles.serviceDetails}>
-              <Text style={styles.serviceName}>{serviceName}</Text>
-              <Text style={styles.servicePrice}>Giá: {servicePrice}</Text>
+              <Text style={styles.serviceName}>Dịch vụ: {serviceName}</Text>
+              <Text style={styles.servicePrice}>Giá chỉ từ: {servicePrice}</Text>
             </View>
           </View>
         </View>
@@ -1358,6 +1359,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     alignItems: 'center',
+    marginTop: 16,
   },
   modalButtonText: {
     fontSize: 16,
@@ -1858,4 +1860,9 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     fontWeight: '600',
   },
+});
+
+export default withCustomerAuth(BookService, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

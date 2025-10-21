@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput } from 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
 interface SectionProps {
   title: string;
@@ -117,7 +118,7 @@ function SocialLink({ platform, email, isConnected, onPress }: SocialLinkProps) 
   );
 }
 
-export default function PersonalProfile() {
+function PersonalProfile() {
   const [formData, setFormData] = useState({
     fullName: 'Zun Zun',
     birthDate: '08/15/1990',
@@ -566,4 +567,9 @@ const styles = StyleSheet.create({
   bottomSpacing: {
     height: 20,
   },
+});
+
+export default withCustomerAuth(PersonalProfile, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

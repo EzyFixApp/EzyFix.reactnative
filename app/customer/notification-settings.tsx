@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Switch } from 're
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
 interface NotificationSettingProps {
   id: string;
@@ -44,7 +45,7 @@ function StatCard({ number, label }: StatCardProps) {
   );
 }
 
-export default function NotificationSettings() {
+function NotificationSettings() {
   const [settings, setSettings] = useState([
     {
       id: 'push_notifications',
@@ -389,4 +390,9 @@ const styles = StyleSheet.create({
   bottomSpacing: {
     height: 80,
   },
+});
+
+export default withCustomerAuth(NotificationSettings, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

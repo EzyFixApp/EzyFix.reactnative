@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Switch } from 're
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
+import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 
 interface NotificationSettingProps {
   id: string;
@@ -44,7 +45,7 @@ function StatCard({ number, label }: StatCardProps) {
   );
 }
 
-export default function TechnicianNotificationSettings() {
+function TechnicianNotificationSettings() {
   const [settings, setSettings] = useState([
     {
       id: 'push_notifications',
@@ -389,4 +390,10 @@ const styles = StyleSheet.create({
   bottomSpacing: {
     height: 80,
   },
+});
+
+// Export protected component
+export default withTechnicianAuth(TechnicianNotificationSettings, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

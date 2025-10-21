@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
 import { addressService } from '../../lib/api';
 import { locationService } from '../../lib/api/location';
 import AddressSearchModal from '../../components/AddressSearchModal';
 import type { AddressData, Address } from '../../types/api';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
 interface InputFieldProps {
   label: string;
@@ -76,21 +77,67 @@ function AddressTypeButton({ type, icon, isSelected, onPress }: AddressTypeButto
   );
 }
 
-export default function AddAddress() {
-  // Simplified - only support adding new addresses
+function AddAddress() {
+  // Get params from navigation (for edit mode)
+  const params = useLocalSearchParams<{
+    mode?: string;
+    addressId?: string;
+    street?: string;
+    city?: string;
+    province?: string;
+    postalCode?: string;
+    latitude?: string;
+    longitude?: string;
+  }>();
+
+  // Determine if we're in edit mode
+  const isEditMode = params.mode === 'edit' && params.addressId;
+  const addressId = params.addressId;
+
+  // Initialize form data from params or defaults
   const [formData, setFormData] = useState<AddressData>({
-    street: '',
-    city: 'Thành phố Hồ Chí Minh',
-    province: 'TP. Hồ Chí Minh',
-    postalCode: '700000',
-    latitude: undefined,
-    longitude: undefined
+    street: params.street || '',
+    city: params.city || 'Thành phố Hồ Chí Minh',
+    province: params.province || 'TP. Hồ Chí Minh',
+    postalCode: params.postalCode || '700000',
+    latitude: params.latitude ? parseFloat(params.latitude) : undefined,
+    longitude: params.longitude ? parseFloat(params.longitude) : undefined
   });
 
-  // Remove loading address state and edit logic
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [showAddressModal, setShowAddressModal] = useState(false);
+
+  // Debug: Log params and form data on mount
+  useEffect(() => {
+    if (__DEV__) {
+      console.log('📥 Navigation params:', params);
+      console.log('🔧 Edit mode:', isEditMode);
+      console.log('📋 Initial form data:', formData);
+    }
+
+    // Validate edit mode data
+    if (isEditMode) {
+      if (!params.street || params.street.trim() === '') {
+        console.warn('⚠️ Street is empty in edit mode!');
+        Alert.alert(
+          'Lỗi dữ liệu',
+          'Địa chỉ này thiếu thông tin đường. Vui lòng xóa và tạo lại địa chỉ mới.',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+        return;
+      }
+      if (!params.city || params.city.trim() === '') {
+        console.warn('⚠️ City is empty in edit mode!');
+        Alert.alert(
+          'Lỗi dữ liệu',
+          'Địa chỉ này thiếu thông tin thành phố. Vui lòng xóa và tạo lại địa chỉ mới.',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+        return;
+      }
+    }
+  }, []);
 
   const addressTypes = [
     { type: 'Nhà riêng', icon: 'home' as keyof typeof Ionicons.glyphMap },
@@ -135,33 +182,82 @@ export default function AddAddress() {
     try {
       setLoading(true);
 
-      const addressData = {
-        street: formData.street || '',
-        city: formData.city || '',
-        province: formData.province || '',
-        postalCode: formData.postalCode || '',
+      // Build address data with proper validation
+      const addressData: AddressData = {
+        street: formData.street?.trim() || '',
+        city: formData.city?.trim() || '',
+        province: formData.province?.trim() || '',
+        postalCode: formData.postalCode?.trim() || '',
         latitude: formData.latitude,
         longitude: formData.longitude
       };
 
-      // Only support creating new addresses
-      const response = await addressService.createAddress(addressData);
+      // Additional validation to ensure no empty strings are sent
+      if (!addressData.street) {
+        Alert.alert('Lỗi', 'Vui lòng nhập địa chỉ đường');
+        return;
+      }
+      if (!addressData.city) {
+        Alert.alert('Lỗi', 'Vui lòng nhập thành phố');
+        return;
+      }
+      if (!addressData.province) {
+        Alert.alert('Lỗi', 'Vui lòng nhập tỉnh/quận');
+        return;
+      }
+      if (!addressData.postalCode) {
+        Alert.alert('Lỗi', 'Vui lòng nhập mã bưu điện');
+        return;
+      }
 
-      if (response && response.addressId) {
-        Alert.alert(
-          'Thành công',
-          'Địa chỉ đã được thêm mới!',
-          [
-            {
-              text: 'OK',
-              onPress: () => router.back()
-            }
-          ]
-        );
+      // Log data for debugging
+      if (__DEV__) {
+        console.log('💾 Saving address data:', addressData);
+        console.log('🔧 Edit mode:', isEditMode);
+        console.log('🆔 Address ID:', addressId);
+      }
+
+      let response;
+      
+      if (isEditMode && addressId) {
+        // Update existing address
+        response = await addressService.updateAddress(addressId, addressData);
+        
+        if (response && response.addressId) {
+          Alert.alert(
+            'Thành công',
+            'Địa chỉ đã được cập nhật!',
+            [
+              {
+                text: 'OK',
+                onPress: () => router.back()
+              }
+            ]
+          );
+        } else {
+          Alert.alert('Lỗi', 'Có lỗi xảy ra. Vui lòng thử lại.');
+        }
       } else {
-        Alert.alert('Lỗi', 'Có lỗi xảy ra. Vui lòng thử lại.');
+        // Create new address
+        response = await addressService.createAddress(addressData);
+
+        if (response && response.addressId) {
+          Alert.alert(
+            'Thành công',
+            'Địa chỉ đã được thêm mới!',
+            [
+              {
+                text: 'OK',
+                onPress: () => router.back()
+              }
+            ]
+          );
+        } else {
+          Alert.alert('Lỗi', 'Có lỗi xảy ra. Vui lòng thử lại.');
+        }
       }
     } catch (error: any) {
+      console.error('❌ Save address error:', error);
       Alert.alert('Lỗi', error.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
     } finally {
       setLoading(false);
@@ -189,9 +285,11 @@ export default function AddAddress() {
           
           <View style={styles.headerContent}>
             <Text style={styles.headerTitle}>
-              Thêm địa chỉ mới
+              {isEditMode ? 'Chỉnh sửa địa chỉ' : 'Thêm địa chỉ mới'}
             </Text>
-            <Text style={styles.headerSubtitle}>Điền thông tin địa chỉ để được hỗ trợ dịch vụ</Text>
+            <Text style={styles.headerSubtitle}>
+              {isEditMode ? 'Cập nhật thông tin địa chỉ của bạn' : 'Điền thông tin địa chỉ để được hỗ trợ dịch vụ'}
+            </Text>
           </View>
         </LinearGradient>
 
@@ -226,7 +324,7 @@ export default function AddAddress() {
               placeholder="VD: Thành phố Hồ Chí Minh"
               required
               error={errors.city}
-              readonly={true}
+              readonly={false}
             />
 
             <InputField
@@ -236,7 +334,7 @@ export default function AddAddress() {
               placeholder="VD: Phường Tân Phú, Quận 7"
               required
               error={errors.province}
-              readonly={true}
+              readonly={false}
             />
 
             <InputField
@@ -246,7 +344,7 @@ export default function AddAddress() {
               placeholder="VD: 700000"
               required
               error={errors.postalCode}
-              readonly={true}
+              readonly={false}
             />
           </View>
 
@@ -320,11 +418,13 @@ export default function AddAddress() {
             {loading ? (
               <View style={styles.buttonLoadingContainer}>
                 <ActivityIndicator size="small" color="white" />
-                <Text style={styles.saveButtonText}>Đang lưu...</Text>
+                <Text style={styles.saveButtonText}>
+                  {isEditMode ? 'Đang cập nhật...' : 'Đang lưu...'}
+                </Text>
               </View>
             ) : (
               <Text style={styles.saveButtonText}>
-                Lưu địa chỉ
+                {isEditMode ? 'Cập nhật địa chỉ' : 'Lưu địa chỉ'}
               </Text>
             )}
           </TouchableOpacity>
@@ -617,4 +717,9 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontWeight: '400',
   },
+});
+
+export default withCustomerAuth(AddAddress, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });

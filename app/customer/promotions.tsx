@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
 interface StatCardProps {
   number: string;
@@ -99,7 +100,7 @@ function VoucherCard({ discount, title, description, code, expiryDate, status, o
   );
 }
 
-export default function Promotions() {
+function Promotions() {
   const [activeTab, setActiveTab] = useState<'available' | 'used' | 'expired'>('available');
 
   const vouchers = [
@@ -446,4 +447,9 @@ const styles = StyleSheet.create({
   bottomSpacing: {
     height: 80,
   },
+});
+
+export default withCustomerAuth(Promotions, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
 });
