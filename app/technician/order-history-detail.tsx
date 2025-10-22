@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   TouchableOpacity,
   Platform,
@@ -16,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
+import { STANDARD_HEADER_STYLE, STANDARD_BACK_BUTTON_STYLE } from '../../constants/HeaderConstants';
 
 interface OrderHistoryDetail {
   id: string;
@@ -240,7 +240,7 @@ function OrderHistoryDetail() {
 
   if (!order) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
         <Stack.Screen options={{ headerShown: false }} />
 
@@ -250,7 +250,7 @@ function OrderHistoryDetail() {
             <Text style={styles.backButtonText}>Quay lại</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -258,7 +258,7 @@ function OrderHistoryDetail() {
   const displayTimeline = showFullTimeline ? order.timeline : order.timeline.slice(-3);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
       <Stack.Screen options={{ headerShown: false }} />
 
@@ -479,7 +479,7 @@ function OrderHistoryDetail() {
           </View>
         </View>
       </Animated.ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -489,19 +489,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight! + 16 : 16,
+    ...STANDARD_HEADER_STYLE,
   },
   headerBackButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    ...STANDARD_BACK_BUTTON_STYLE,
   },
   headerTitle: {
     flex: 1,

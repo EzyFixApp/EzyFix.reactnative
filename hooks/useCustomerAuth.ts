@@ -4,7 +4,7 @@
  * Optimized: Cache result, instant validation on subsequent calls
  */
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth, useAuthActions } from '../store/authStore';
 import { isTokenExpired } from '../lib/auth/tokenUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -28,17 +28,22 @@ let cachedAuthResult: {
 const CACHE_DURATION = 5000; // Cache for 5 seconds
 
 export function useCustomerAuth(): UseCustomerAuthReturn {
+  if (__DEV__) console.log('[useCustomerAuth] 🟢 HOOK 1: useAuth');
   const { isAuthenticated, user, isLoading: authLoading } = useAuth();
+  
+  if (__DEV__) console.log('[useCustomerAuth] 🟢 HOOK 2: useAuthActions');
   const { logout } = useAuthActions();
   
+  if (__DEV__) console.log('[useCustomerAuth] 🟢 HOOK 3-5: useState x3');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<AuthErrorType | null>(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
   
+  if (__DEV__) console.log('[useCustomerAuth] 🟢 HOOK 6-7: useRef x2');
   const checkIntervalRef = useRef<number | null>(null);
   const hasInitialCheck = useRef(false);
 
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
       // OPTIMIZATION: Use cached result if still valid
       const now = Date.now();
@@ -147,9 +152,10 @@ export function useCustomerAuth(): UseCustomerAuthReturn {
       setIsLoading(false);
       hasInitialCheck.current = true;
     }
-  };
+  }, [isAuthenticated, user, logout]);
 
   // Initial check on mount
+  if (__DEV__) console.log('[useCustomerAuth] 🟢 HOOK 8: useEffect (initial check)');
   useEffect(() => {
     // Use cached result for instant validation
     if (cachedAuthResult && (Date.now() - cachedAuthResult.timestamp) < CACHE_DURATION) {
@@ -160,9 +166,10 @@ export function useCustomerAuth(): UseCustomerAuthReturn {
     } else {
       checkAuth();
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, checkAuth]);
 
   // Periodic token validation (every 60 seconds)
+  if (__DEV__) console.log('[useCustomerAuth] 🟢 HOOK 9: useEffect (periodic check)');
   useEffect(() => {
     // Clear any existing interval
     if (checkIntervalRef.current) {
@@ -186,7 +193,9 @@ export function useCustomerAuth(): UseCustomerAuthReturn {
         checkIntervalRef.current = null;
       }
     };
-  }, [isAuthorized]);
+  }, [isAuthorized, checkAuth]);
+
+  if (__DEV__) console.log('[useCustomerAuth] ✅ All 9 hooks called successfully');
 
   return {
     isAuthorized,

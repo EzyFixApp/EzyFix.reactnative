@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../store/authStore';
 import { serviceRequestService } from '../../lib/api/serviceRequests';
-import withCustomerAuth from '../../lib/auth/withCustomerAuth';
+// import withCustomerAuth from '../../lib/auth/withCustomerAuth'; // REMOVED - causes hooks mismatch
 
 interface ProfileItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -81,7 +81,6 @@ function CustomerProfile() {
       const serviceRequests = await serviceRequestService.getUserServiceRequests();
       setOrderCount(serviceRequests.length);
     } catch (error: any) {
-      console.error('Error loading order count:', error);
       // Don't show error alert for order count as it's not critical
       setOrderCount(0);
     } finally {
@@ -92,26 +91,16 @@ function CustomerProfile() {
   // Load data when screen is focused
   useFocusEffect(
     React.useCallback(() => {
-      if (!isAuthenticated) {
-        // Redirect to login if not authenticated
-        router.replace('./login' as any);
-        return;
+      if (user && isAuthenticated) {
+        loadOrderCount();
       }
-      loadOrderCount();
-    }, [isAuthenticated, user])
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user, isAuthenticated])
   );
 
   // Get user display name
   const getDisplayName = () => {
     if (!user) return 'Người dùng';
-    
-    // Debug: log user data để kiểm tra
-    console.log('User data in profile:', {
-      fullName: user.fullName,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email
-    });
     
     // Ưu tiên firstName + lastName nếu có
     const firstName = user.firstName || '';
@@ -152,14 +141,22 @@ function CustomerProfile() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Clear auth state
-              await logout();
-              // Navigate to login screen and reset navigation stack
-              router.replace('./login' as any);
+              // Logout first, then navigate
+              try {
+                await logout();
+              } catch (err) {
+                // Handle logout error silently
+              }
+              
+              // Navigate to login using absolute path
+              // Using setTimeout to ensure logout state is fully propagated
+              setTimeout(() => {
+                router.replace('/customer/login');
+              }, 50);
+              
             } catch (error) {
-              console.error('Logout error:', error);
-              // Still navigate to login even if logout API fails
-              router.replace('./login' as any);
+              // Fallback: navigate anyway
+              router.replace('/customer/login');
             }
           }
         }
@@ -169,7 +166,6 @@ function CustomerProfile() {
   };
 
   const handleItemPress = (item: string) => {
-    console.log(`Pressed: ${item}`);
     // Navigate to specific screens based on item
     switch (item) {
       case 'profile':
@@ -587,7 +583,6 @@ const styles = StyleSheet.create({
   },
 });
 
-export default withCustomerAuth(CustomerProfile, {
-  redirectOnError: true,
-  autoCloseSeconds: 3,
-});
+// Export directly without HOC - HOC causes hooks mismatch during unmount
+// Auth check is handled internally via useEffect
+export default CustomerProfile;

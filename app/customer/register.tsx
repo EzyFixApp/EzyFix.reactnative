@@ -8,7 +8,7 @@ export default function CustomerRegister() {
   };
 
   const handleSuccess = () => {
-    router.replace('./login');
+    router.replace('/customer/login');
   };
 
   return (

@@ -8,7 +8,7 @@ export default function CustomerForgotPassword() {
   };
 
   const handleSuccess = () => {
-    router.replace('./login');
+    router.replace('/customer/login');
   };
 
   return (

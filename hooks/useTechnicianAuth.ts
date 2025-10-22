@@ -4,7 +4,7 @@
  * Optimized: Cache result, instant validation on subsequent calls
  */
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth, useAuthActions } from '../store/authStore';
 import { isTokenExpired } from '../lib/auth/tokenUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -38,7 +38,7 @@ export function useTechnicianAuth(): UseTechnicianAuthReturn {
   const checkIntervalRef = useRef<number | null>(null);
   const hasInitialCheck = useRef(false);
 
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
       // OPTIMIZATION: Use cached result if still valid
       const now = Date.now();
@@ -119,7 +119,7 @@ export function useTechnicianAuth(): UseTechnicianAuthReturn {
       setIsLoading(false);
       hasInitialCheck.current = true;
     }
-  };
+  }, [isAuthenticated, user, logout]);
 
   // Initial check on mount
   useEffect(() => {
@@ -132,7 +132,7 @@ export function useTechnicianAuth(): UseTechnicianAuthReturn {
     } else {
       checkAuth();
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, checkAuth]);
 
   // Periodic token validation (every 60 seconds)
   useEffect(() => {
@@ -158,7 +158,7 @@ export function useTechnicianAuth(): UseTechnicianAuthReturn {
         checkIntervalRef.current = null;
       }
     };
-  }, [isAuthorized]);
+  }, [isAuthorized, checkAuth]);
 
   return {
     isAuthorized,

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { 
   View, 
   ScrollView, 
@@ -7,10 +7,9 @@ import {
   TouchableOpacity, 
   Animated, 
   Dimensions, 
-  SafeAreaView, 
   StatusBar 
 } from 'react-native';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../store/authStore';
 import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 
@@ -241,8 +240,20 @@ interface DashboardContentProps {
 
 const { width } = Dimensions.get('window');
 
+type TabType = 'dashboard' | 'activity';
+
 function Dashboard() {
   const { user, isAuthenticated } = useAuth();
+  const params = useLocalSearchParams();
+  
+  // Tab state - support URL params
+  const [activeTab, setActiveTab] = useState<TabType>(
+    (params.tab as TabType) || 'dashboard'
+  );
+  
+  // Separate opacity animations for each tab (parallel rendering)
+  const dashboardOpacity = useRef(new Animated.Value(1)).current;
+  const activityOpacity = useRef(new Animated.Value(0)).current;
   
   // State for time
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -296,13 +307,47 @@ function Dashboard() {
     });
   };
   
-  // Handle tab press for navigation
-  const handleTabPress = (tabId: string) => {
-    if (tabId === 'activity') {
-      router.replace('/technician/activity');
+  // Handle tab press with FAST parallel animation
+  const handleTabPress = useCallback((tabId: string) => {
+    const newTab: TabType = tabId === 'home' ? 'dashboard' : 'activity';
+    
+    // Don't animate if already on this tab
+    if (newTab === activeTab) return;
+
+    // Update state immediately for instant response
+    setActiveTab(newTab);
+
+    // Parallel fade animation (both tabs animate at the same time)
+    if (newTab === 'dashboard') {
+      // Show dashboard, hide activity
+      Animated.parallel([
+        Animated.timing(dashboardOpacity, {
+          toValue: 1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(activityOpacity, {
+          toValue: 0,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      // Show activity, hide dashboard
+      Animated.parallel([
+        Animated.timing(dashboardOpacity, {
+          toValue: 0,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(activityOpacity, {
+          toValue: 1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]).start();
     }
-    // If tabId is 'home', we're already on this page, so do nothing
-  };
+  }, [activeTab, dashboardOpacity, activityOpacity]);
   
   // Handle center button press
   const handleCenterButtonPress = () => {
@@ -429,21 +474,38 @@ const toggleOnlineStatus = () => {
   setIsOnline(!isOnline);
 };
 
+  // Memoize header title to prevent unnecessary re-renders
+  const headerTitle = useMemo(() => 
+    activeTab === 'dashboard' ? 'Trang chủ' : 'Hoạt động',
+    [activeTab]
+  );
+
+  // Memoize bottom nav active tab
+  const bottomNavActiveTab = useMemo(() => 
+    activeTab === 'dashboard' ? 'home' : 'activity',
+    [activeTab]
+  );
+
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Header - Giống hệt Activity */}
+      {/* Header */}
       <TechnicianHeader
-        title="Trang chủ"
+        title={headerTitle}
         onSearchPress={handleSearchPress}
         onAvatarPress={handleNotificationPress}
         notificationCount={2}
       />
 
-      <ScrollView 
-        style={styles.scrollContainer}
+      {/* Dashboard Content - Pre-rendered */}
+      <Animated.ScrollView 
+        style={[
+          styles.scrollContainer,
+          { opacity: dashboardOpacity }
+        ]}
+        pointerEvents={activeTab === 'dashboard' ? 'auto' : 'none'}
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
@@ -744,15 +806,44 @@ const toggleOnlineStatus = () => {
 
       {/* Bottom Spacing for Navigation */}
       <View style={styles.bottomSpacing} />
-    </ScrollView>
+    </Animated.ScrollView>
+
+    {/* Activity Content - Pre-rendered but hidden */}
+    <Animated.ScrollView
+      style={[
+        styles.scrollContainer,
+        {
+          opacity: activityOpacity,
+          position: 'absolute',
+          top: 70, // Height of header
+          left: 0,
+          right: 0,
+          bottom: 70, // Height of bottom navigation
+        }
+      ]}
+      pointerEvents={activeTab === 'activity' ? 'auto' : 'none'}
+      showsVerticalScrollIndicator={false}
+      bounces={false}
+    >
+      <View style={styles.activityPlaceholder}>
+        <View style={styles.emptyOrdersContainer}>
+          <Ionicons name="time-outline" size={64} color="#CBD5E1" />
+          <Text style={styles.emptyOrdersTitle}>Lịch sử hoạt động</Text>
+          <Text style={styles.emptyOrdersSubtitle}>
+            Các đơn hàng và hoạt động của bạn sẽ hiển thị ở đây
+          </Text>
+        </View>
+      </View>
+      <View style={styles.bottomSpacing} />
+    </Animated.ScrollView>
 
     {/* Bottom Navigation */}
     <BottomNavigation 
-      activeTab="home"
+      activeTab={bottomNavActiveTab}
       onTabPress={handleTabPress}
       onLogoPress={handleCenterButtonPress}
     />
-  </SafeAreaView>
+  </View>
   );
 }
 
@@ -1450,6 +1541,9 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 100,
+  },
+  activityPlaceholder: {
+    padding: 16,
   },
 });
 

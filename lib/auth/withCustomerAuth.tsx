@@ -2,12 +2,95 @@
  * Customer Authentication HOC
  * Wraps customer screens with authentication validation
  * Optimized: Cache first check to avoid loading flash
+ * CRITICAL FIX: Always render component to prevent hooks mismatch during logout
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, Component as ReactComponent } from 'react';
+import { View, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useCustomerAuth } from '../../hooks/useCustomerAuth';
 import AuthErrorModal from '../../components/AuthErrorModal';
+
+// Error Boundary to catch hooks errors during logout transitions
+class HooksErrorBoundary extends ReactComponent<
+  { children: React.ReactNode; onError?: () => void },
+  { hasError: boolean; errorCount: number }
+> {
+  private errorTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, errorCount: 0 };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    // Check if it's a hooks error
+    if (error?.message?.includes('Rendered fewer hooks') || 
+        error?.message?.includes('hooks') ||
+        error?.message?.includes('early return')) {
+      if (__DEV__) {
+        console.warn('[HooksErrorBoundary] Caught hooks error during transition:', error.message);
+      }
+      return { hasError: true };
+    }
+    // Re-throw other errors
+    throw error;
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    if (__DEV__) {
+      console.warn('[HooksErrorBoundary] Error caught:', error, errorInfo);
+    }
+    
+    // Increment error count
+    this.setState(prev => ({ errorCount: prev.errorCount + 1 }));
+    
+    // If too many errors, force redirect
+    if (this.state.errorCount > 2) {
+      if (__DEV__) {
+        console.error('[HooksErrorBoundary] Too many hooks errors, forcing redirect...');
+      }
+      this.props.onError?.();
+    }
+    
+    // Auto-recover after a short delay
+    if (this.errorTimer) {
+      clearTimeout(this.errorTimer);
+    }
+    this.errorTimer = setTimeout(() => {
+      if (this.state.hasError) {
+        if (__DEV__) {
+          console.log('[HooksErrorBoundary] Auto-recovering from hooks error...');
+        }
+        this.setState({ hasError: false });
+      }
+    }, 100); // 100ms recovery delay
+  }
+
+  componentDidUpdate(prevProps: any) {
+    // Reset error state when children change
+    if (this.state.hasError && prevProps.children !== this.props.children) {
+      this.setState({ hasError: false, errorCount: 0 });
+    }
+  }
+
+  componentWillUnmount() {
+    if (this.errorTimer) {
+      clearTimeout(this.errorTimer);
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      // Render minimal loading view during hooks error (transitioning state)
+      return (
+        <View style={{ flex: 1, backgroundColor: '#F8FAFC' }} />
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 interface WithCustomerAuthOptions {
   /**
@@ -47,17 +130,40 @@ export default function withCustomerAuth<P extends object>(
     autoCloseSeconds = 3,
   } = options;
 
-  return function CustomerAuthWrapper(props: P) {
+  // Return a proper React component (capital letter name)
+  function CustomerAuthWrapper(props: P) {
+    if (__DEV__) console.log('[CustomerAuthWrapper] ============ START RENDER ============');
+    
+    // All hooks must be called unconditionally at the top
+    if (__DEV__) console.log('[CustomerAuthWrapper] 🔵 HOOK 1: useRouter');
     const router = useRouter();
+    
+    if (__DEV__) console.log('[CustomerAuthWrapper] 🔵 HOOK 2: useCustomerAuth');
     const { isAuthorized, isLoading, error } = useCustomerAuth();
+    
+    if (__DEV__) console.log('[CustomerAuthWrapper] 🔵 HOOK 3: useRef');
     const hasCheckedOnce = useRef(false);
+    
+    if (__DEV__) {
+      console.log('[CustomerAuthWrapper] ✅ All 3 hooks called. State:', { isAuthorized, isLoading, error, hasChecked: hasCheckedOnce.current });
+    }
 
     // Mark that we've done first check
+    if (__DEV__) console.log('[CustomerAuthWrapper] 🔵 HOOK 4: useEffect (mark hasCheckedOnce)');
     useEffect(() => {
       if (!isLoading) {
         hasCheckedOnce.current = true;
       }
     }, [isLoading]);
+
+    // Only show loading on first mount (before first check completes)
+    // After first check, render immediately to avoid flash
+    const shouldShowLoading = isLoading && !hasCheckedOnce.current;
+
+    // Determine what to render
+    // CRITICAL: Always render after first check to prevent hooks mismatch
+    // Let the component handle logout redirect internally
+    const shouldRenderComponent = hasCheckedOnce.current;
 
     // Handle error modal close + redirect
     const handleErrorClose = () => {
@@ -71,38 +177,47 @@ export default function withCustomerAuth<P extends object>(
       router.replace('/customer/login');
     };
 
-    // Only show loading on first mount (before first check completes)
-    // After first check, render immediately to avoid flash
-    const shouldShowLoading = isLoading && !hasCheckedOnce.current;
+    // Handle hooks error during logout transition
+    const handleHooksError = () => {
+      if (__DEV__) {
+        console.warn('[CustomerAuthWrapper] Hooks error detected, redirecting to login...');
+      }
+      // Redirect on hooks error (likely during logout)
+      router.replace('/customer/login');
+    };
 
-    // Render the component if authorized OR we've already done first check
-    // This prevents loading flash on navigation
-    if (isAuthorized || hasCheckedOnce.current) {
-      return (
-        <>
+    // CRITICAL: Always return same JSX structure, never use conditional returns
+    // This prevents "Rendered fewer hooks than expected" error
+    if (__DEV__) {
+      console.log('[CustomerAuthWrapper] 🔵 Rendering JSX. shouldShowLoading:', shouldShowLoading, 'shouldRenderComponent:', shouldRenderComponent);
+      console.log('[CustomerAuthWrapper] ============ END RENDER ============');
+    }
+    
+    return (
+      <>
+        {/* CRITICAL FIX: Wrap component in error boundary to catch hooks errors */}
+        <HooksErrorBoundary onError={handleHooksError}>
+          {/* ALWAYS render component to prevent hooks mismatch */}
+          {/* Never conditionally mount/unmount the component */}
           <Component {...props} />
-          
-          {/* Show error modal if there's an authentication error */}
-          {error && (
-            <AuthErrorModal
-              visible={!!error}
-              errorType={error}
-              onClose={handleErrorClose}
-              onLoginPress={handleLoginPress}
-              autoCloseSeconds={autoCloseSeconds}
-            />
-          )}
-        </>
-      );
-    }
+        </HooksErrorBoundary>
+        
+        {/* Show error modal if there's an authentication error */}
+        {error && (
+          <AuthErrorModal
+            visible={!!error}
+            errorType={error}
+            onClose={handleErrorClose}
+            onLoginPress={handleLoginPress}
+            autoCloseSeconds={autoCloseSeconds}
+          />
+        )}
+      </>
+    );
+  }
 
-    // Only show loading on very first mount
-    if (shouldShowLoading) {
-      // We don't render anything here - the cache will make this instant after first auth
-      return null;
-    }
+  // Set display name for debugging
+  CustomerAuthWrapper.displayName = `withCustomerAuth(${Component.displayName || Component.name || 'Component'})`;
 
-    // Fallback (should rarely reach here)
-    return null;
-  };
+  return CustomerAuthWrapper;
 }

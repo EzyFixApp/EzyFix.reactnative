@@ -39,7 +39,9 @@ export function withTechnicianAuth<P extends object>(
     customLoadingComponent,
   } = options;
 
-  return function TechnicianProtectedComponent(props: P) {
+  // Return a proper React component
+  function TechnicianProtectedComponent(props: P) {
+    // All hooks must be called unconditionally at the top
     const { isAuthorized, isLoading, error } = useTechnicianAuth();
     const [showErrorModal, setShowErrorModal] = useState(false);
     const [hasRedirected, setHasRedirected] = useState(false);
@@ -58,6 +60,13 @@ export function withTechnicianAuth<P extends object>(
         setShowErrorModal(true);
       }
     }, [error, hasRedirected]);
+
+    // OPTIMIZATION: Skip loading screen after first check
+    // Only show loading on very first mount, then render instantly
+    const shouldShowLoading = isLoading && !hasCheckedOnce.current;
+    // CRITICAL: Always render after first check to prevent hooks mismatch
+    // Let the component handle logout redirect internally
+    const shouldRenderComponent = hasCheckedOnce.current;
 
     // Handle login redirect
     const handleLoginPress = async () => {
@@ -79,50 +88,43 @@ export function withTechnicianAuth<P extends object>(
       }
     };
 
-    // OPTIMIZATION: Skip loading screen after first check
-    // Only show loading on very first mount, then render instantly
-    const shouldShowLoading = isLoading && !hasCheckedOnce.current;
+    // CRITICAL: Always return same JSX structure, never use conditional returns
+    // This prevents "Rendered fewer hooks than expected" error
+    return (
+      <>
+        {/* Show custom loading component on first load */}
+        {shouldShowLoading && customLoadingComponent && (
+          <>{customLoadingComponent}</>
+        )}
+        
+        {/* CRITICAL: Always render component to prevent hooks mismatch */}
+        {/* Component will handle its own redirect logic */}
+        {!shouldShowLoading && <Component {...props} />}
+        
+        {/* Error overlay and modal */}
+        {error && showErrorModal && (
+          <>
+            <View style={styles.errorContainer}>
+              <View style={styles.blurOverlay} />
+            </View>
+            
+            <AuthErrorModal
+              visible={showErrorModal}
+              errorType={error}
+              onClose={redirectOnError ? undefined : handleClose}
+              onLoginPress={handleLoginPress}
+              autoCloseSeconds={redirectOnError ? autoCloseSeconds : 0}
+            />
+          </>
+        )}
+      </>
+    );
+  }
 
-    // Show loading only on first check
-    if (shouldShowLoading) {
-      if (customLoadingComponent) {
-        return <>{customLoadingComponent}</>;
-      }
+  // Set display name for debugging
+  TechnicianProtectedComponent.displayName = `withTechnicianAuth(${Component.displayName || Component.name || 'Component'})`;
 
-      // Minimal loading (no full screen)
-      return null; // Or render component immediately with background check
-    }
-
-    // Error state
-    if (error && showErrorModal) {
-      return (
-        <>
-          {/* Show underlying component blurred */}
-          <View style={styles.errorContainer}>
-            <View style={styles.blurOverlay} />
-          </View>
-          
-          {/* Error modal */}
-          <AuthErrorModal
-            visible={showErrorModal}
-            errorType={error}
-            onClose={redirectOnError ? undefined : handleClose}
-            onLoginPress={handleLoginPress}
-            autoCloseSeconds={redirectOnError ? autoCloseSeconds : 0}
-          />
-        </>
-      );
-    }
-
-    // Authorized - render component immediately
-    // Background validation continues without blocking UI
-    if (isAuthorized || hasCheckedOnce.current) {
-      return <Component {...props} />;
-    }
-
-    // Fallback - should not reach here
-    return null;
-  };
+  return TechnicianProtectedComponent;
 }
 
 const styles = StyleSheet.create({

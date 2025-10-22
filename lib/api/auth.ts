@@ -188,7 +188,6 @@ export class AuthService {
       const decoded = atob(payload);
       return JSON.parse(decoded);
     } catch (error) {
-      if (__DEV__) console.error('JWT decode error:', error);
       return null;
     }
   }
@@ -208,7 +207,7 @@ export class AuthService {
         try {
           isVerify = jwtPayload.isVerify || false;
         } catch (jwtError) {
-          if (__DEV__) console.warn('Failed to decode JWT for isVerify:', jwtError);
+          // Silently handle JWT decode error
         }
       }
       
@@ -234,7 +233,6 @@ export class AuthService {
         AsyncStorage.setItem(STORAGE_KEYS.USER_TYPE, userType)
       ]);
     } catch (error) {
-      if (__DEV__) console.error('Error storing auth data:', error);
       throw new Error('Failed to store authentication data');
     }
   }
@@ -247,7 +245,6 @@ export class AuthService {
       const userData = await AsyncStorage.getItem(STORAGE_KEYS.USER_DATA);
       return userData ? JSON.parse(userData) : null;
     } catch (error) {
-      if (__DEV__) console.error('Error getting user data:', error);
       return null;
     }
   }
@@ -263,7 +260,7 @@ export class AuthService {
         await AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData));
       }
     } catch (error) {
-      if (__DEV__) console.error('Error updating user verification status:', error);
+      // Silently handle error
     }
   }
 
@@ -274,7 +271,6 @@ export class AuthService {
     try {
       return await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     } catch (error) {
-      if (__DEV__) console.error('Error getting access token:', error);
       return null;
     }
   }
@@ -287,7 +283,6 @@ export class AuthService {
       const token = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
       return !!token;
     } catch (error) {
-      if (__DEV__) console.error('Error checking authentication:', error);
       return false;
     }
   }
@@ -314,7 +309,6 @@ export class AuthService {
         throw new Error(response.message || 'Token refresh failed');
       }
     } catch (error: any) {
-      if (__DEV__) console.error('Token refresh error:', error);
       await this.clearAuthData();
       throw error;
     }
@@ -330,13 +324,14 @@ export class AuthService {
       if (token) {
         try {
           await apiService.post(API_ENDPOINTS.AUTH.LOGOUT, {});
-        } catch (error) {
-          if (__DEV__) console.warn('Server logout failed:', error);
+        } catch (error: any) {
+          // Ignore errors - just clear local data
         }
       }
     } catch (error) {
-      if (__DEV__) console.error('Logout error:', error);
+      // Silently handle logout error
     } finally {
+      // Always clear local data regardless of server response
       await this.clearAuthData();
     }
   }
@@ -353,7 +348,7 @@ export class AuthService {
         AsyncStorage.removeItem(STORAGE_KEYS.USER_TYPE)
       ]);
     } catch (error) {
-      if (__DEV__) console.error('Error clearing auth data:', error);
+      // Silently handle error
     }
   }
 
@@ -373,7 +368,6 @@ export class AuthService {
         throw new Error(response.message || 'Failed to send OTP');
       }
     } catch (error: any) {
-      if (__DEV__) console.error('Send OTP error:', error);
       throw error;
     }
   }
@@ -392,7 +386,6 @@ export class AuthService {
         throw new Error(response.message || 'Failed to change password');
       }
     } catch (error: any) {
-      if (__DEV__) console.error('Change password error:', error);
       throw error;
     }
   }
@@ -413,7 +406,6 @@ export class AuthService {
         throw new Error(response.message || 'Failed to send reset password email');
       }
     } catch (error: any) {
-      if (__DEV__) console.error('Forgot password error:', error);
       throw error;
     }
   }
@@ -432,7 +424,7 @@ export class AuthService {
         await AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData));
       }
     } catch (error) {
-      if (__DEV__) console.error('Error setting user type:', error);
+      // Silently handle error
     }
   }
 
@@ -443,7 +435,6 @@ export class AuthService {
     try {
       return await AsyncStorage.getItem(STORAGE_KEYS.USER_TYPE) as UserType | null;
     } catch (error) {
-      if (__DEV__) console.error('Error getting user type:', error);
       return null;
     }
   }
@@ -473,12 +464,6 @@ export class AuthService {
       const camelCaseMatch = singleName.match(/^([A-Z][a-z]+)([A-Z][a-z]+.*)$/);
       if (camelCaseMatch) {
         return camelCaseMatch[2];
-      }
-      
-      // Nếu tên có length > 4 và có pattern đặc biệt
-      if (singleName.length > 4) {
-        // Tạm thời return empty, có thể cần điều chỉnh logic này
-        console.log('🤔 Single name detected, might need firstName/lastName from backend:', singleName);
       }
       
       return '';

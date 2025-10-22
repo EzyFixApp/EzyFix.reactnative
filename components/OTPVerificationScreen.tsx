@@ -209,23 +209,19 @@ export default function OTPVerificationScreen({
     if (purpose === 'registration') {
       try {
         await checkAuthStatus();
-        if (__DEV__) {
-          console.log('✅ Final auth refresh before navigation completed');
-        }
       } catch (error) {
-        if (__DEV__) {
-          console.warn('⚠️ Final auth refresh failed, proceeding with navigation:', error);
-        }
+        // Silently handle error
       }
     }
     
     // Navigate to appropriate screen based on purpose
     if (purpose === 'registration') {
-      // After successful registration verification, go to dashboard
-      const dashboardRoute = userType === 'customer' 
-        ? '/customer/dashboard' 
-        : '/technician/dashboard';
-      router.replace(dashboardRoute);
+      // After successful registration verification, go to login screen
+      // User needs to login with their new account
+      const loginRoute = userType === 'customer' 
+        ? '/customer/login' 
+        : '/technician/login';
+      router.replace(loginRoute);
     } else {
       // For password reset, go to login screen
       const loginRoute = userType === 'customer' 
@@ -781,7 +777,7 @@ export default function OTPVerificationScreen({
               {/* Success Message */}
               <Text style={styles.successModalMessage}>
                 {purpose === 'registration' 
-                  ? 'Tài khoản của bạn đã được xác thực thành công!\nBạn sẽ được chuyển đến trang chính.'
+                  ? 'Chúc mừng! Tài khoản của bạn đã được xác thực thành công.\nVui lòng đăng nhập để sử dụng dịch vụ.'
                   : 'Mã OTP đã được xác thực thành công.\nBạn có thể tiếp tục đặt lại mật khẩu.'
                 }
               </Text>

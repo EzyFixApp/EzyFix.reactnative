@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   Alert,
   Platform,
@@ -17,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
 import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
+import { STANDARD_HEADER_STYLE, HEADER_CONSTANTS } from '../../constants/HeaderConstants';
 
 interface OrderItem {
   id: string;
@@ -450,7 +450,7 @@ function TechnicianOrders() {
   console.log('Current orders:', currentOrders.length);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
       <Stack.Screen options={{ headerShown: false }} />
 
@@ -692,7 +692,7 @@ function TechnicianOrders() {
           </ScrollView>
         </Animated.View>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -702,17 +702,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    paddingTop: Platform.OS === 'ios' ? 50 : 40,
-    minHeight: Platform.OS === 'ios' ? 100 : 80,
+    ...STANDARD_HEADER_STYLE,
   },
   backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: HEADER_CONSTANTS.TECHNICIAN_HEADER_CONTENT_HEIGHT,
+    height: HEADER_CONSTANTS.TECHNICIAN_HEADER_CONTENT_HEIGHT,
+    borderRadius: HEADER_CONSTANTS.TECHNICIAN_HEADER_CONTENT_HEIGHT / 2,
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',

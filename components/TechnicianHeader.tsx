@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { HEADER_CONSTANTS } from '../constants/HeaderConstants';
 
 interface TechnicianHeaderProps {
   title: string;
@@ -65,8 +66,8 @@ export default function TechnicianHeader({
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: 60, // Status bar height + padding
-    paddingBottom: 20,
+    paddingTop: HEADER_CONSTANTS.TECHNICIAN_HEADER_PADDING_TOP,
+    paddingBottom: HEADER_CONSTANTS.TECHNICIAN_HEADER_PADDING_BOTTOM,
     paddingHorizontal: 20,
   },
   content: {
@@ -75,8 +76,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   searchButton: {
-    width: 44,
-    height: 44,
+    width: HEADER_CONSTANTS.TECHNICIAN_HEADER_CONTENT_HEIGHT,
+    height: HEADER_CONSTANTS.TECHNICIAN_HEADER_CONTENT_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -103,8 +104,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   notificationButton: {
-    width: 44,
-    height: 44,
+    width: HEADER_CONSTANTS.TECHNICIAN_HEADER_CONTENT_HEIGHT,
+    height: HEADER_CONSTANTS.TECHNICIAN_HEADER_CONTENT_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',

@@ -887,6 +887,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#ffffff',
+    lineHeight: 29,
   },
 
   // Divider
@@ -1045,6 +1046,7 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '700',
+    lineHeight: 29,
   },
   passwordButtonContainer: {
     flexDirection: 'row',
