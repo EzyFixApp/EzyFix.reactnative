@@ -20,6 +20,11 @@ import { ThemeToggle } from '~/components/ThemeToggle';
 import { cn } from '~/lib/cn';
 import { useColorScheme, useInitialAndroidBarSync } from '~/lib/useColorScheme';
 import { NAV_THEME } from '~/theme';
+import { useNotifications } from '~/hooks/useNotifications';
+import { useAuthStore } from '~/store/authStore';
+import { useRouter, useSegments } from 'expo-router';
+import { useEffect, useRef } from 'react';
+import { Alert } from 'react-native';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -29,6 +34,70 @@ export {
 export default function RootLayout() {
   useInitialAndroidBarSync();
   const { colorScheme, isDarkColorScheme } = useColorScheme();
+  const router = useRouter();
+  const segments = useSegments();
+  const { isAuthenticated, error, clearError } = useAuthStore();
+  
+  // Track if we've already shown the session expired alert
+  const hasShownAlertRef = useRef(false);
+  
+  // Initialize push notifications
+  const { isInitialized } = useNotifications();
+
+  // Handle authentication state changes and auto-redirect on session expiry
+  useEffect(() => {
+    // Define public routes that don't require authentication
+    const publicRoutes = [
+      'login', 
+      'register', 
+      'forgot-password', 
+      'reset-password', 
+      'otp-verification',
+      'verify'
+    ];
+    
+    // Check if current route is public
+    const currentRoute = segments[1]; // segments[0] = 'customer' or 'technician', segments[1] = actual page
+    const isPublicRoute = currentRoute ? publicRoutes.includes(currentRoute) : false;
+    
+    // Check if user is on protected route
+    const isProtectedRoute = (segments[0] === 'customer' || segments[0] === 'technician') && !isPublicRoute;
+    
+    if (!isAuthenticated && isProtectedRoute) {
+      // User is not authenticated and trying to access protected route
+      // Show alert ONLY if there's a session expired error (not normal logout)
+      // AND we haven't shown the alert yet (prevent infinite loop)
+      if (error && error.includes('hết hạn') && !hasShownAlertRef.current) {
+        hasShownAlertRef.current = true; // Mark as shown
+        
+        Alert.alert(
+          'Phiên đăng nhập không hợp lệ',
+          error,
+          [
+            {
+              text: 'Đăng nhập lại',
+              onPress: () => {
+                clearError();
+                hasShownAlertRef.current = false; // Reset for next time
+                router.replace('/');
+              }
+            }
+          ],
+          { cancelable: false }
+        );
+      } else {
+        // Redirect to home silently (normal logout or no error)
+        if (__DEV__) console.log('🔒 Not authenticated, redirecting to home from:', segments.join('/'));
+        clearError(); // Clear any error before redirecting
+        router.replace('/');
+      }
+    }
+    
+    // Reset alert flag when user is authenticated (for next session expiry)
+    if (isAuthenticated) {
+      hasShownAlertRef.current = false;
+    }
+  }, [isAuthenticated, segments, error]);
 
   return (
     <>

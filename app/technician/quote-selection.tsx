@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   TouchableOpacity,
   Alert,
@@ -15,6 +14,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
+import { serviceDeliveryOffersService } from '../../lib/api';
+import { useAuth } from '../../store/authStore';
+import { orderCache } from '../../lib/cache/orderCache';
+import { STANDARD_HEADER_STYLE, HEADER_CONSTANTS } from '../../constants/HeaderConstants';
 
 interface OrderItem {
   id: string;
@@ -47,9 +50,11 @@ const mockOrders: OrderItem[] = [
 
 function QuoteSelection() {
   const { orderId } = useLocalSearchParams();
+  const { user } = useAuth(); // Get technician user data
   const [order, setOrder] = useState<OrderItem | null>(null);
   const [selectedType, setSelectedType] = useState<'estimated' | 'final' | null>(null);
   const [quoteAmount, setQuoteAmount] = useState('');
+  const [notes, setNotes] = useState(''); // Notes for estimated quotes
   const [loading, setLoading] = useState(false);
   const amountInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -57,14 +62,26 @@ function QuoteSelection() {
 
   useEffect(() => {
     if (orderId) {
-      const foundOrder = mockOrders.find(o => o.id === orderId);
-      setOrder(foundOrder || null);
+      // Get order from cache (set from orders.tsx)
+      const cachedOrder = orderCache.get(orderId as string);
+      if (cachedOrder) {
+        setOrder({
+          id: cachedOrder.id,
+          serviceName: cachedOrder.serviceName,
+          customerName: cachedOrder.customerName,
+          priceRange: '200,000 - 500,000đ', // Can be calculated from service
+        });
+      } else {
+        // Fallback to mock data if cache not available
+        const foundOrder = mockOrders.find(o => o.id === orderId);
+        setOrder(foundOrder || null);
+      }
     }
   }, [orderId]);
 
   if (!order) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
         <Stack.Screen options={{ headerShown: false }} />
 
@@ -74,7 +91,7 @@ function QuoteSelection() {
             <Text style={styles.backButtonText}>Quay lại</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -87,7 +104,7 @@ function QuoteSelection() {
     }, 300);
   };
 
-  const handleSendQuote = () => {
+  const handleSendQuote = async () => {
     if (!selectedType) {
       Alert.alert('Thông báo', 'Vui lòng chọn loại báo giá');
       return;
@@ -98,6 +115,20 @@ function QuoteSelection() {
       return;
     }
 
+    // Validate notes for estimated quotes
+    if (selectedType === 'estimated' && !notes.trim()) {
+      Alert.alert(
+        'Thông báo', 
+        'Báo giá dự kiến cần có ghi chú giải thích. Vui lòng thêm ghi chú về lý do giá có thể thay đổi.'
+      );
+      return;
+    }
+
+    if (!user?.id) {
+      Alert.alert('Lỗi', 'Không tìm thấy thông tin thợ. Vui lòng đăng nhập lại.');
+      return;
+    }
+
     const quoteTypeText = selectedType === 'estimated' ? 'dự kiến' : 'chốt';
     const confirmMessage = selectedType === 'estimated'
       ? 'Báo giá dự kiến có thể thay đổi sau khi kiểm tra thực tế. Bạn có chắc chắn gửi báo giá này?'
@@ -105,37 +136,88 @@ function QuoteSelection() {
 
     Alert.alert(
       `Xác nhận báo giá ${quoteTypeText}`,
-      `${confirmMessage}\n\n💰 Số tiền: ${quoteAmount} VNĐ`,
+      `${confirmMessage}\n\n💰 Số tiền: ${quoteAmount} VNĐ${selectedType === 'estimated' ? `\n📝 Ghi chú: ${notes}` : ''}`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
           text: 'Xác nhận gửi',
           style: 'default',
-          onPress: () => {
+          onPress: async () => {
             setLoading(true);
-            setTimeout(() => {
+            try {
+              // Remove ALL thousand separators (both comma and dot) then parse to number
+              const amountString = quoteAmount.replace(/[,\.]/g, '');
+              const amount = parseFloat(amountString);
+              
+              // Validate parsed amount
+              if (isNaN(amount) || amount <= 0) {
+                setLoading(false);
+                Alert.alert('Lỗi', 'Số tiền không hợp lệ. Vui lòng nhập lại.');
+                return;
+              }
+
+              // Prepare quote data based on type (technicianId comes from JWT token)
+              const quoteData = {
+                serviceRequestId: order!.id,
+                // technicianId NOT needed - backend gets it from JWT token
+                estimatedCost: selectedType === 'estimated' ? amount : undefined,
+                finalCost: selectedType === 'final' ? amount : undefined,
+                notes: selectedType === 'estimated' ? notes.trim() : undefined,
+              };
+
+              // Debug log
+              if (__DEV__) {
+                console.log('💰 Quote submission details:', {
+                  originalInput: quoteAmount,
+                  cleanedString: amountString,
+                  parsedAmount: amount,
+                  type: selectedType,
+                  quoteData
+                });
+              }
+
+              // Submit quote to API
+              const response = await serviceDeliveryOffersService.submitQuote(quoteData);
+
               setLoading(false);
+
+              // Show success alert and navigate to dashboard activity tab
               Alert.alert(
                 '✅ Gửi báo giá thành công!',
                 `Đã gửi báo giá ${quoteTypeText} với số tiền ${quoteAmount} VNĐ cho khách hàng.\n\nKhách hàng sẽ nhận được thông báo và có thể xem chi tiết báo giá.`,
                 [
                   {
-                    text: 'Theo dõi đơn hàng',
+                    text: 'Xem đơn hàng',
                     onPress: () => {
-                      // Navigate to technician order tracking with quote info
+                      // Navigate to dashboard activity tab
                       router.push({
-                        pathname: './technician-order-tracking',
-                        params: {
-                          orderId: order.id,
-                          quoteType: selectedType,
-                          quoteAmount: quoteAmount
-                        }
-                      } as any);
+                        pathname: '/technician/dashboard',
+                        params: { tab: 'activity' }
+                      });
                     }
+                  },
+                  {
+                    text: 'Về trang chủ',
+                    onPress: () => {
+                      // Navigate to dashboard home tab
+                      router.push({
+                        pathname: '/technician/dashboard',
+                        params: { tab: 'dashboard' }
+                      });
+                    },
+                    style: 'cancel'
                   }
-                ]
+                ],
+                { cancelable: false }
               );
-            }, 1500);
+            } catch (error: any) {
+              setLoading(false);
+              Alert.alert(
+                'Lỗi gửi báo giá',
+                error.message || 'Không thể gửi báo giá. Vui lòng thử lại.',
+                [{ text: 'Đóng' }]
+              );
+            }
           }
         }
       ]
@@ -143,12 +225,13 @@ function QuoteSelection() {
   };
 
   const formatCurrency = (text: string) => {
-    // Remove non-numeric characters except commas
+    // Remove non-numeric characters
     const numericText = text.replace(/[^\d]/g, '');
 
-    // Format with thousand separators
+    // Format with thousand separators using comma (not locale-specific)
     if (numericText) {
-      const formatted = parseInt(numericText).toLocaleString('vi-VN');
+      // Use English locale to ensure comma separator (not dot)
+      const formatted = parseInt(numericText).toLocaleString('en-US');
       return formatted;
     }
     return '';
@@ -176,7 +259,7 @@ function QuoteSelection() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
       <Stack.Screen options={{ headerShown: false }} />
 
@@ -312,6 +395,29 @@ function QuoteSelection() {
                 : 'Giá này sẽ không thay đổi và là giá cuối cùng'
               }
             </Text>
+
+            {/* Notes Input - Required for estimated quotes */}
+            {selectedType === 'estimated' && (
+              <View style={styles.notesContainer}>
+                <Text style={styles.notesLabel}>
+                  Ghi chú <Text style={styles.required}>*</Text>
+                </Text>
+                <View style={styles.notesInputContainer}>
+                  <TextInput
+                    style={styles.notesInput}
+                    placeholder="Giải thích lý do giá có thể thay đổi, ví dụ: 'Giá có thể thay đổi sau kiểm tra thiết bị ban đầu'"
+                    value={notes}
+                    onChangeText={setNotes}
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                  />
+                </View>
+                <Text style={styles.notesHint}>
+                  Ghi chú giúp khách hàng hiểu rõ hơn về báo giá dự kiến
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -493,7 +599,7 @@ function QuoteSelection() {
           </TouchableOpacity>
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -503,16 +609,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight! + 16 : 16,
+    ...STANDARD_HEADER_STYLE,
   },
   headerBackButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: HEADER_CONSTANTS.BACK_BUTTON_SIZE,
+    height: HEADER_CONSTANTS.BACK_BUTTON_SIZE,
+    borderRadius: HEADER_CONSTANTS.BACK_BUTTON_RADIUS,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -974,6 +1076,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  // Notes Input Styles
+  notesContainer: {
+    marginTop: 20,
+  },
+  notesLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  required: {
+    color: '#EF4444',
+  },
+  notesInputContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  notesInput: {
+    fontSize: 15,
+    color: '#1F2937',
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  notesHint: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+    marginTop: 8,
   },
 });
 

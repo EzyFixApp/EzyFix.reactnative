@@ -132,24 +132,12 @@ export default function withCustomerAuth<P extends object>(
 
   // Return a proper React component (capital letter name)
   function CustomerAuthWrapper(props: P) {
-    if (__DEV__) console.log('[CustomerAuthWrapper] ============ START RENDER ============');
-    
     // All hooks must be called unconditionally at the top
-    if (__DEV__) console.log('[CustomerAuthWrapper] 🔵 HOOK 1: useRouter');
     const router = useRouter();
-    
-    if (__DEV__) console.log('[CustomerAuthWrapper] 🔵 HOOK 2: useCustomerAuth');
     const { isAuthorized, isLoading, error } = useCustomerAuth();
-    
-    if (__DEV__) console.log('[CustomerAuthWrapper] 🔵 HOOK 3: useRef');
     const hasCheckedOnce = useRef(false);
-    
-    if (__DEV__) {
-      console.log('[CustomerAuthWrapper] ✅ All 3 hooks called. State:', { isAuthorized, isLoading, error, hasChecked: hasCheckedOnce.current });
-    }
 
     // Mark that we've done first check
-    if (__DEV__) console.log('[CustomerAuthWrapper] 🔵 HOOK 4: useEffect (mark hasCheckedOnce)');
     useEffect(() => {
       if (!isLoading) {
         hasCheckedOnce.current = true;
@@ -179,20 +167,12 @@ export default function withCustomerAuth<P extends object>(
 
     // Handle hooks error during logout transition
     const handleHooksError = () => {
-      if (__DEV__) {
-        console.warn('[CustomerAuthWrapper] Hooks error detected, redirecting to login...');
-      }
       // Redirect on hooks error (likely during logout)
       router.replace('/customer/login');
     };
 
     // CRITICAL: Always return same JSX structure, never use conditional returns
     // This prevents "Rendered fewer hooks than expected" error
-    if (__DEV__) {
-      console.log('[CustomerAuthWrapper] 🔵 Rendering JSX. shouldShowLoading:', shouldShowLoading, 'shouldRenderComponent:', shouldRenderComponent);
-      console.log('[CustomerAuthWrapper] ============ END RENDER ============');
-    }
-    
     return (
       <>
         {/* CRITICAL FIX: Wrap component in error boundary to catch hooks errors */}

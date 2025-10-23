@@ -11,12 +11,20 @@ import {
   Animated,
   TextInput,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
 import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 import { STANDARD_HEADER_STYLE, HEADER_CONSTANTS } from '../../constants/HeaderConstants';
+import SwipeToActivate from '../../components/SwipeToActivate';
+import { useLocation } from '../../hooks/useLocation';
+import { serviceRequestService, servicesService, mediaService } from '../../lib/api';
+import { locationService } from '../../lib/api/location';
+import { orderCache } from '../../lib/cache/orderCache';
+import { serviceDeliveryOffersService } from '../../lib/api/serviceDeliveryOffers';
 
 interface OrderItem {
   id: string;
@@ -29,138 +37,445 @@ interface OrderItem {
   status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled';
   createdAt: string;
   priceRange: string;
+  priceLabel?: string; // Label for price: "Giá đã chốt" or "Giá dự kiến"
   priority: 'normal' | 'urgent' | 'emergency';
   distance: string;
   estimatedTime: string;
   appointmentDate: string;
   appointmentTime: string;
+  addressNote?: string;
   paymentMethod?: 'prepaid' | 'cash' | 'card';
 }
 
-// Mock data - Available orders (pending)
-const availableOrders: OrderItem[] = [
-  {
-    id: '1',
-    serviceName: 'Sửa điều hòa',
-    customerName: 'Nguyễn Văn A',
-    customerPhone: '0901234567',
-    address: '123 Lê Lợi, Q1, TP.HCM',
-    description: 'Điều hòa không làm lạnh, có tiếng kêu lạ khi vận hành',
-    images: [
-      'https://images.unsplash.com/photo-1581092921461-eab62e97a780?w=400&h=300&fit=crop',
-      'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop'
-    ],
-    status: 'pending',
-    createdAt: '2025-10-13T14:30:00Z',
-    priceRange: '200,000đ - 500,000đ',
-    priority: 'urgent',
-    distance: '2.5km',
-    estimatedTime: '45 phút',
-    appointmentDate: '15/10/2025',
-    appointmentTime: '14:00',
-    paymentMethod: 'prepaid'
-  },
-  {
-    id: '2',
-    serviceName: 'Sửa ống nước',
-    customerName: 'Trần Thị B',
-    customerPhone: '0912345678',
-    address: '456 Nguyễn Huệ, Q1, TP.HCM',
-    description: 'Ống nước bị rò rỉ dưới bồn rửa bát',
-    images: [
-      'https://images.unsplash.com/photo-1626806787461-102c1bfaaea1?w=400&h=300&fit=crop'
-    ],
-    status: 'pending',
-    createdAt: '2025-10-13T15:00:00Z',
-    priceRange: '150,000đ - 300,000đ',
-    priority: 'normal',
-    distance: '1.8km',
-    estimatedTime: '30 phút',
-    appointmentDate: '14/10/2025',
-    appointmentTime: '09:30',
-    paymentMethod: 'cash'
-  },
-  {
-    id: '3',
-    serviceName: 'Lắp đặt hệ thống điện',
-    customerName: 'Phạm Văn C',
-    customerPhone: '0933445566',
-    address: '789 Lê Văn Sỹ, Quận 3, TP.HCM',
-    description: 'Lắp đặt hệ thống điện cho căn hộ mới',
-    status: 'pending',
-    createdAt: '2025-10-13T16:30:00Z',
-    priceRange: '800,000đ - 1,200,000đ',
-    priority: 'normal',
-    distance: '4.2km',
-    estimatedTime: '2 giờ',
-    appointmentDate: '16/10/2025',
-    appointmentTime: '19:00',
-    paymentMethod: 'prepaid'
-  },
-  {
-    id: '4',
-    serviceName: 'Sửa máy bơm nước',
-    customerName: 'Nguyễn Thị D',
-    customerPhone: '0944556677',
-    address: '321 Cách Mạng Tháng 8, Quận Tân Bình, TP.HCM',
-    description: 'Máy bơm nước không hoạt động, cần kiểm tra và sửa chữa',
-    status: 'pending',
-    createdAt: '2025-10-13T17:15:00Z',
-    priceRange: '300,000đ - 600,000đ',
-    priority: 'urgent',
-    distance: '6.5km',
-    estimatedTime: '1.5 giờ',
-    appointmentDate: '14/10/2025',
-    appointmentTime: '07:30',
-    paymentMethod: 'cash'
-  },
-  {
-    id: '5',
-    serviceName: 'Thay bóng đèn LED',
-    customerName: 'Hoàng Văn E',
-    customerPhone: '0955667788',
-    address: '654 Võ Văn Tần, Quận 10, TP.HCM',
-    description: 'Thay toàn bộ bóng đèn cũ sang LED cho văn phòng',
-    status: 'pending',
-    createdAt: '2025-10-13T18:00:00Z',
-    priceRange: '400,000đ - 700,000đ',
-    priority: 'normal',
-    distance: '3.8km',
-    estimatedTime: '1 giờ',
-    appointmentDate: '15/10/2025',
-    appointmentTime: '16:30',
-    paymentMethod: 'prepaid'
-  }
-];
+const STORAGE_KEY_ACTIVATED = '@technician_orders_activated';
+const DEFAULT_RADIUS = 10; // 10km
 
-// Mock data - Accepted orders
-const acceptedOrders: OrderItem[] = [
-  {
-    id: '3',
-    serviceName: 'Sửa tủ lạnh',
-    customerName: 'Lê Văn C',
-    customerPhone: '0923456789',
-    address: '789 Lý Tự Trọng, Q1, TP.HCM',
-    description: 'Tủ lạnh không đông đá, ngăn mát vẫn hoạt động bình thường',
-    images: [
-      'https://images.unsplash.com/photo-1571175443880-49e1d25b2bc5?w=400&h=300&fit=crop',
-      'https://images.unsplash.com/photo-1584464491033-06628f3a6b7b?w=400&h=300&fit=crop'
-    ],
-    status: 'accepted',
-    createdAt: '2025-10-13T10:00:00Z',
-    priceRange: '300,000đ - 600,000đ',
-    priority: 'normal',
-    distance: '3.2km',
-    estimatedTime: '1 giờ',
-    appointmentDate: '14/10/2025',
-    appointmentTime: '16:00',
-    paymentMethod: 'cash'
+// Cache for service names to avoid repeated API calls
+const serviceNameCache: { [key: string]: string } = {};
+// Cache for geocoded coordinates to avoid repeated API calls
+const geocodeCache: { [address: string]: { lat: number; lng: number } | null } = {};
+// Track failed service fetches to avoid repeated attempts
+const failedServiceFetches = new Set<string>();
+// Flag to disable service fetch if too many errors
+let disableServiceFetch = false;
+
+// Helper function to extract district/ward from full address
+const extractDistrictFromAddress = (fullAddress: string): string => {
+  if (!fullAddress) return 'TP.HCM';
+  
+  // Address format: "Vinhomes Grand Park, Thành phố Hồ Chí Minh, Phường Long Bình, 71216"
+  // We want: "Phường Long Bình, TP.HCM"
+  const parts = fullAddress.split(',').map(p => p.trim());
+  
+  // Find ward/commune (Phường/Xã)
+  const wardPart = parts.find(p => 
+    p.startsWith('Phường') || 
+    p.startsWith('Xã') || 
+    p.startsWith('Thị trấn')
+  );
+  
+  // Find district (Quận/Huyện) - usually before ward
+  const districtPart = parts.find(p => 
+    p.startsWith('Quận') || 
+    p.startsWith('Huyện') ||
+    p.startsWith('Thành phố Thủ Đức')
+  );
+  
+  if (wardPart && districtPart) {
+    return `${wardPart}, ${districtPart}`;
+  } else if (wardPart) {
+    return `${wardPart}, TP.HCM`;
+  } else if (districtPart) {
+    return `${districtPart}, TP.HCM`;
   }
-];
+  
+  // Fallback: return last 2 parts (usually district and city)
+  if (parts.length >= 2) {
+    return parts.slice(-2).join(', ').replace('Thành phố Hồ Chí Minh', 'TP.HCM');
+  }
+  
+  return 'TP.HCM';
+};
+
+// Helper function to format date
+const formatDate = (dateString: string): string => {
+  if (!dateString) return 'N/A';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return 'N/A';
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  return `${day}/${month}`;
+};
+
+// Helper function to format time (returns null if time is 00:00:00 UTC - meaning no specific time set)
+const formatTime = (dateString: string): string | null => {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return null;
+  
+  // Check if this is a "date-only" timestamp (00:00:00 UTC)
+  const hours = date.getUTCHours();
+  const minutes = date.getUTCMinutes();
+  const seconds = date.getUTCSeconds();
+  
+  if (hours === 0 && minutes === 0 && seconds === 0) {
+    return null; // No specific time set
+  }
+  
+  // Format local time (Vietnam timezone will be applied automatically)
+  const localHours = date.getHours().toString().padStart(2, '0');
+  const localMinutes = date.getMinutes().toString().padStart(2, '0');
+  return `${localHours}:${localMinutes}`;
+};
+
+// Helper function to mask phone number
+const maskPhone = (phone: string): string => {
+  if (!phone || phone.length < 4) return phone;
+  // "+840787171600" -> "+84***1600"
+  const visibleStart = phone.substring(0, 3);
+  const visibleEnd = phone.substring(phone.length - 4);
+  return `${visibleStart}***${visibleEnd}`;
+};
+
+// Haversine formula to calculate distance between two coordinates
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371; // Earth radius in kilometers
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c; // Distance in kilometers
+  
+  return distance;
+};
+
+const toRadians = (degrees: number): number => {
+  return degrees * (Math.PI / 180);
+};
+
+// Helper function to format price in Vietnamese currency
+const formatPrice = (price: number): string => {
+  return price.toLocaleString('vi-VN') + 'đ';
+};
+
+// Format distance for display
+const formatDistance = (distanceInKm: number): string => {
+  if (distanceInKm < 1) {
+    // Less than 1km, show in meters
+    const meters = Math.round(distanceInKm * 1000);
+    return `${meters}m`;
+  } else {
+    // 1km or more, show with 1 decimal
+    return `${distanceInKm.toFixed(1)}km`;
+  }
+};
+
+// Geocode address to get coordinates using Nominatim
+const geocodeAddress = async (address: string): Promise<{ lat: number; lng: number } | null> => {
+  try {
+    // Check cache first
+    if (geocodeCache[address] !== undefined) {
+      return geocodeCache[address];
+    }
+
+    // Use Nominatim to search for the address
+    const results = await locationService.searchAddresses(address);
+    
+    if (results.length > 0) {
+      const coords = {
+        lat: results[0].latitude,
+        lng: results[0].longitude
+      };
+      // Cache the result
+      geocodeCache[address] = coords;
+      return coords;
+    }
+    
+    // Cache null result to avoid repeated failed attempts
+    geocodeCache[address] = null;
+    return null;
+  } catch (error) {
+    console.error('Geocode error:', error);
+    // Cache null result
+    geocodeCache[address] = null;
+    return null;
+  }
+};
+
+// Geocode orders sequentially and update distances (respects 1s delay between requests)
+const geocodeOrdersSequentially = async (
+  orders: OrderItem[], 
+  technicianLat: number, 
+  technicianLng: number,
+  updateCallback: (orderId: string, distance: string) => void
+) => {
+  for (const order of orders) {
+    // Skip if already has distance or if no address
+    if (order.distance !== 'Đang tính...' || !order.address) {
+      continue;
+    }
+
+    try {
+      const coords = await geocodeAddress(order.address);
+      if (coords) {
+        const distanceInKm = calculateDistance(
+          technicianLat,
+          technicianLng,
+          coords.lat,
+          coords.lng
+        );
+        const formattedDistance = formatDistance(distanceInKm);
+        updateCallback(order.id, formattedDistance);
+      } else {
+        updateCallback(order.id, 'N/A');
+      }
+    } catch (error) {
+      console.error(`Error geocoding order ${order.id}:`, error);
+      updateCallback(order.id, 'N/A');
+    }
+  }
+};
+
+// Fetch service name from serviceId with caching
+const fetchServiceName = async (serviceId: string): Promise<string> => {
+  // If service fetch is disabled globally, skip
+  if (disableServiceFetch) {
+    return 'Dịch vụ sửa chữa';
+  }
+  
+  // Check cache first
+  if (serviceNameCache[serviceId]) {
+    return serviceNameCache[serviceId];
+  }
+  
+  // Skip if already failed
+  if (failedServiceFetches.has(serviceId)) {
+    return 'Dịch vụ sửa chữa';
+  }
+  
+  try {
+    // Add timeout to prevent hanging
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('Service fetch timeout')), 3000)
+    );
+    
+    const servicePromise = servicesService.getServiceById(serviceId);
+    const service = await Promise.race([servicePromise, timeoutPromise]);
+    
+    const serviceName = service.serviceName || 'Dịch vụ sửa chữa';
+    
+    // Cache the result
+    serviceNameCache[serviceId] = serviceName;
+    
+    return serviceName;
+  } catch (error) {
+    if (__DEV__) console.warn('Failed to fetch service name:', error);
+    
+    // Mark as failed
+    failedServiceFetches.add(serviceId);
+    
+    // If too many failures, disable service fetch globally
+    if (failedServiceFetches.size >= 3) {
+      disableServiceFetch = true;
+      if (__DEV__) console.warn('⚠️ Too many service fetch failures, disabling service name fetch');
+    }
+    
+    // Fallback to generic name
+    return 'Dịch vụ sửa chữa';
+  }
+};
+
+// Detect service type from description (fallback)
+const detectServiceType = (description: string): string => {
+  const desc = description.toLowerCase();
+  
+  if (desc.includes('điều hòa') || desc.includes('máy lạnh') || desc.includes('ac')) {
+    return 'Sửa chữa điều hòa';
+  } else if (desc.includes('tủ lạnh')) {
+    return 'Sửa chữa tủ lạnh';
+  } else if (desc.includes('máy giặt')) {
+    return 'Sửa chữa máy giặt';
+  } else if (desc.includes('điện') || desc.includes('electric')) {
+    return 'Sửa chữa điện';
+  } else if (desc.includes('nước') || desc.includes('water')) {
+    return 'Sửa chữa nước';
+  } else if (desc.includes('ống') || desc.includes('pipe')) {
+    return 'Sửa ống nước';
+  }
+  
+  return 'Dịch vụ sửa chữa';
+};
+
+// Transform API response to OrderItem (async to fetch service name and media)
+const transformApiResponseToOrderItem = async (
+  apiResponse: any, 
+  technicianLat: number, 
+  technicianLng: number
+): Promise<OrderItem> => {
+  // Debug log API response
+  if (__DEV__) {
+    console.log('📦 Transforming API response:', {
+      requestID: apiResponse.requestID,
+      requestedDate: apiResponse.requestedDate,
+      expectedStartTime: apiResponse.expectedStartTime,
+      mediaUrls: apiResponse.mediaUrls,
+      addressNote: apiResponse.addressNote
+    });
+  }
+
+  const description = apiResponse.serviceDescription || 'Không có mô tả';
+  
+  // Fetch service name from serviceId, with multiple fallbacks
+  let serviceName = 'Dịch vụ sửa chữa';
+  try {
+    if (apiResponse.serviceId && !disableServiceFetch) {
+      serviceName = await fetchServiceName(apiResponse.serviceId);
+    } else {
+      serviceName = detectServiceType(description);
+    }
+  } catch (error) {
+    // Final fallback: use description detection
+    if (__DEV__) console.warn('Service name fetch failed, using description detection');
+    serviceName = detectServiceType(description);
+  }
+  
+  // Fetch media from API by requestID
+  let mediaUrls: string[] = [];
+  try {
+    const mediaList = await mediaService.getMediaByRequest(apiResponse.requestID);
+    if (mediaList && mediaList.length > 0) {
+      mediaUrls = mediaList.map(media => media.fileURL);
+      if (__DEV__) console.log(`📸 Fetched ${mediaUrls.length} media files for request ${apiResponse.requestID}`);
+    }
+  } catch (error) {
+    if (__DEV__) console.warn('Failed to fetch media, using fallback:', error);
+    // Fallback to mediaUrls from API response if available
+    if (apiResponse.mediaUrls && Array.isArray(apiResponse.mediaUrls)) {
+      mediaUrls = apiResponse.mediaUrls;
+    }
+  }
+  
+  // Calculate actual distance using Haversine formula
+  let distance = 'Đang tính...'; // Default while waiting for geocoding
+  
+  // Check if API already provides coordinates
+  if (apiResponse.latitude && apiResponse.longitude && technicianLat && technicianLng) {
+    const distanceInKm = calculateDistance(
+      technicianLat,
+      technicianLng,
+      apiResponse.latitude,
+      apiResponse.longitude
+    );
+    distance = formatDistance(distanceInKm);
+  }
+  // Note: If coordinates not in API, we'll geocode separately to respect rate limits
+  
+  // Format appointment time - if no specific time set, show "Chưa xác định"
+  const formattedTime = formatTime(apiResponse.expectedStartTime);
+  
+  // Normalize status from backend
+  // Backend returns: "Pending", "Quoted", "QuoteAccepted", "ACCEPTED", "IN_PROGRESS", "Completed", "Cancelled"
+  // We need to map to lowercase and handle variations
+  const normalizeStatus = (status: string): OrderItem['status'] => {
+    if (!status) return 'pending';
+    
+    const normalized = status.toLowerCase().replace(/[_\s-]/g, ''); // Remove _, space, -
+    
+    // Map all variations
+    if (normalized === 'quoteaccepted' || normalized === 'accepted') {
+      if (__DEV__) console.log(`✅ Status "${status}" → "accepted"`);
+      return 'accepted';
+    }
+    if (normalized === 'quoted') {
+      if (__DEV__) console.log(`✅ Status "${status}" → "pending" (quoted)`);
+      return 'pending'; // Quoted is still available (waiting for customer)
+    }
+    if (normalized === 'pending') return 'pending';
+    if (normalized === 'inprogress') {
+      if (__DEV__) console.log(`✅ Status "${status}" → "in-progress"`);
+      return 'in-progress';
+    }
+    if (normalized === 'completed') return 'completed';
+    if (normalized === 'cancelled') return 'cancelled';
+    
+    // Log unknown status
+    if (__DEV__) console.warn(`⚠️ Unknown status "${status}" (normalized: "${normalized}"), defaulting to pending`);
+    return 'pending'; // Default fallback
+  };
+  
+  // Fetch offer to get price information
+  let priceRange = '200,000 - 500,000đ'; // Default fallback
+  let priceLabel: string | undefined = undefined;
+  
+  try {
+    const offers = await serviceDeliveryOffersService.getAllOffers(apiResponse.requestID);
+    
+    if (offers && offers.length > 0) {
+      // Get the first offer (should be technician's own offer)
+      const offer = offers[0];
+      
+      if (offer.finalCost && offer.finalCost > 0) {
+        // Final cost is set - this is confirmed price
+        priceRange = formatPrice(offer.finalCost);
+        priceLabel = 'Giá đã chốt';
+        if (__DEV__) console.log(`💰 Order ${apiResponse.requestID}: Final cost ${priceRange}`);
+      } else if (offer.estimatedCost && offer.estimatedCost > 0) {
+        // Only estimated cost - this is quote
+        priceRange = formatPrice(offer.estimatedCost);
+        priceLabel = 'Giá dự kiến';
+        if (__DEV__) console.log(`💰 Order ${apiResponse.requestID}: Estimated cost ${priceRange}`);
+      }
+    }
+  } catch (error) {
+    if (__DEV__) console.warn(`⚠️ Could not fetch offer for request ${apiResponse.requestID}:`, error);
+    // Keep default price range
+  }
+  
+  return {
+    id: apiResponse.requestID,
+    serviceName: serviceName,
+    customerName: apiResponse.fullName,
+    customerPhone: apiResponse.phoneNumber,
+    address: apiResponse.requestAddress,
+    description: description,
+    images: mediaUrls, // Use fetched media URLs from API
+    status: normalizeStatus(apiResponse.status),
+    createdAt: apiResponse.createdDate || apiResponse.requestedDate,
+    priceRange: priceRange,
+    priceLabel: priceLabel,
+    priority: 'normal', // Có thể dựa vào expectedStartTime để detect urgent
+    distance: distance, // Calculated distance
+    estimatedTime: '30-60 phút',
+    appointmentDate: formatDate(apiResponse.expectedStartTime), // Use expectedStartTime for appointment date (when to do the service)
+    appointmentTime: formattedTime || 'Chưa xác định', // Show "Chưa xác định" if no specific time
+    addressNote: apiResponse.addressNote || undefined,
+    paymentMethod: undefined
+  };
+};
 
 function TechnicianOrders() {
   const [selectedTab, setSelectedTab] = useState<'available' | 'accepted'>('available');
   const [fadeAnim] = useState(new Animated.Value(1));
+  const [hasCheckedAcceptedOrders, setHasCheckedAcceptedOrders] = useState(false); // Track if we've checked for accepted orders
+  
+  // Activation state
+  const [isActivated, setIsActivated] = useState(false);
+  const [isLoadingActivation, setIsLoadingActivation] = useState(true);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [isFirstLoad, setIsFirstLoad] = useState(true); // Track first load
+  const [lastLoadTime, setLastLoadTime] = useState(0); // Track last load timestamp
+  
+  // Location hook
+  const { location, isLoading: isLocationLoading, requestLocation } = useLocation();
+  
+  // Orders state (replace mock data)
+  const [availableOrders, setAvailableOrders] = useState<OrderItem[]>([]);
+  const [acceptedOrders, setAcceptedOrders] = useState<OrderItem[]>([]);
   
   // Search and filter states
   const [searchText, setSearchText] = useState('');
@@ -172,6 +487,244 @@ function TechnicianOrders() {
     timeSlot: '', // 'morning', 'afternoon', 'evening'
     district: '' // 'q1', 'q3', 'q10', 'tanbinh'
   });
+
+  // Load activation state from storage on mount
+  useEffect(() => {
+    loadActivationState();
+  }, []);
+
+  const loadActivationState = async () => {
+    try {
+      const savedState = await AsyncStorage.getItem(STORAGE_KEY_ACTIVATED);
+      if (savedState === 'true') {
+        setIsActivated(true);
+        // Request location immediately if previously activated
+        const coords = await requestLocation();
+        if (coords) {
+          await loadOrders(coords.latitude, coords.longitude);
+          setIsFirstLoad(false); // Mark first load complete
+        }
+      }
+    } catch (error) {
+      if (__DEV__) console.error('Load activation state error:', error);
+    } finally {
+      setIsLoadingActivation(false);
+    }
+  };
+
+  const saveActivationState = async (activated: boolean) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY_ACTIVATED, activated.toString());
+    } catch (error) {
+      if (__DEV__) console.error('Save activation state error:', error);
+    }
+  };
+
+  const handleActivate = async () => {
+    setIsLoadingActivation(true);
+    
+    // Request location permission and get coords
+    const coords = await requestLocation();
+    
+    if (coords) {
+      // Activate and save state
+      setIsActivated(true);
+      await saveActivationState(true);
+      
+      // Load orders with location
+      await loadOrders(coords.latitude, coords.longitude);
+      setIsFirstLoad(false); // Mark first load complete
+    }
+    
+    setIsLoadingActivation(false);
+  };
+
+  const handleRefresh = async () => {
+    if (!location) {
+      Alert.alert('Lỗi', 'Không có thông tin vị trí. Vui lòng thử lại.');
+      return;
+    }
+    
+    if (isLoadingOrders) {
+      if (__DEV__) console.log('⏸️ Already loading, skipping manual refresh');
+      return;
+    }
+    
+    await loadOrders(location.latitude, location.longitude, false);
+  };
+
+  const handleDeactivate = async () => {
+    Alert.alert(
+      'Tắt chế độ nhận đơn',
+      'Bạn có chắc muốn tắt chế độ nhận đơn? Bạn sẽ không nhận được đơn hàng mới.',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Tắt',
+          style: 'destructive',
+          onPress: async () => {
+            setIsActivated(false);
+            await saveActivationState(false);
+            setAvailableOrders([]);
+            setIsFirstLoad(true); // Reset for next activation
+          },
+        },
+      ]
+    );
+  };
+
+  const loadOrders = async (lat: number, lng: number, silent = false, retryCount = 0) => {
+    // Prevent concurrent calls - even for silent ones
+    if (isLoadingOrders) {
+      if (__DEV__) console.log('⏸️ Load orders already in progress, skipping...');
+      return;
+    }
+    
+    setIsLoadingOrders(true);
+    
+    try {
+      if (__DEV__) {
+        console.log(`Loading orders (attempt ${retryCount + 1})...`, { lat, lng, radius: DEFAULT_RADIUS });
+      }
+      
+      // Add small delay before first request to let server stabilize
+      if (retryCount === 0 && !silent) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      // Load both available orders (filter API) and accepted orders (user requests API) in parallel
+      const [availableApiOrders, acceptedApiOrders] = await Promise.all([
+        // Available orders: Filter API returns only Pending/Quoted orders (no technician assigned yet)
+        serviceRequestService.filterServiceRequests(lat, lng, DEFAULT_RADIUS),
+        // Accepted orders: Get orders where this technician has submitted offers
+        serviceRequestService.getUserServiceRequests()
+      ]);
+      
+      if (__DEV__) {
+        console.log(`✅ Filter API returned ${availableApiOrders.length} available orders`);
+        console.log(`✅ User requests API returned ${acceptedApiOrders.length} accepted orders`);
+        if (availableApiOrders.length > 0) {
+          console.log('Sample available order:', {
+            id: availableApiOrders[0].requestID,
+            serviceId: availableApiOrders[0].serviceId,
+            status: availableApiOrders[0].status
+          });
+        }
+        if (acceptedApiOrders.length > 0) {
+          console.log('Sample accepted order:', {
+            id: acceptedApiOrders[0].requestID,
+            serviceId: acceptedApiOrders[0].serviceId,
+            status: acceptedApiOrders[0].status
+          });
+        }
+      }
+      
+      // Transform API responses to OrderItem format (now async with service name fetch and distance calculation)
+      const [transformedAvailableOrders, transformedAcceptedOrders] = await Promise.all([
+        Promise.all(availableApiOrders.map(order => transformApiResponseToOrderItem(order, lat, lng))),
+        Promise.all(acceptedApiOrders.map(order => transformApiResponseToOrderItem(order, lat, lng)))
+      ]);
+      
+      // Filter available orders: Only show Pending status (from filter API, these are new orders)
+      // Note: Status đã được normalize trong transformApiResponseToOrderItem
+      // Backend "Pending" | "Quoted" → Frontend "pending" (available to accept)
+      const available = transformedAvailableOrders.filter(order => 
+        order.status === 'pending' // Includes both Pending and Quoted from backend
+      );
+      
+      // Filter accepted orders: Show orders where technician has involvement
+      // Backend "QuoteAccepted" | "InProgress" | "Completed" → Frontend "accepted" | "in-progress" | "completed"
+      
+      // DEBUG: Log all statuses from acceptedApiOrders
+      if (__DEV__ && transformedAcceptedOrders.length > 0) {
+        console.log('🔍 DEBUG: All accepted order statuses:', 
+          transformedAcceptedOrders.map(o => ({ id: o.id, status: o.status }))
+        );
+      }
+      
+      const accepted = transformedAcceptedOrders.filter(order => {
+        const isAccepted = order.status === 'accepted' ||    // QuoteAccepted from backend
+                          order.status === 'in-progress' || // InProgress from backend
+                          order.status === 'completed';      // Completed from backend
+        
+        if (__DEV__ && !isAccepted) {
+          console.log(`⚠️ Order ${order.id} with status "${order.status}" was FILTERED OUT`);
+        }
+        
+        return isAccepted;
+      });
+      
+      setAvailableOrders(available);
+      setAcceptedOrders(accepted);
+      setLastLoadTime(Date.now()); // Track successful load time
+      
+      // Auto-switch to "Đã nhận" tab if there are accepted orders and this is first check
+      if (!hasCheckedAcceptedOrders && accepted.length > 0) {
+        setSelectedTab('accepted');
+        setHasCheckedAcceptedOrders(true);
+        if (__DEV__) console.log('🔄 Auto-switched to "Đã nhận" tab (found accepted orders)');
+      }
+      
+      if (__DEV__) {
+        console.log('✅ Orders loaded successfully:', {
+          available: available.length,
+          accepted: accepted.length,
+          total: available.length + accepted.length,
+          rawAcceptedCount: transformedAcceptedOrders.length,
+          filteredOut: transformedAcceptedOrders.length - accepted.length,
+          timestamp: new Date().toLocaleTimeString()
+        });
+      }
+
+      // Start geocoding addresses in background (sequentially to respect rate limits)
+      const allOrders = [...transformedAvailableOrders, ...transformedAcceptedOrders];
+      if (allOrders.length > 0) {
+        geocodeOrdersSequentially(allOrders, lat, lng, (orderId, distance) => {
+          // Update both available and accepted orders
+          setAvailableOrders(prev => 
+            prev.map(order => order.id === orderId ? { ...order, distance } : order)
+          );
+          setAcceptedOrders(prev => 
+            prev.map(order => order.id === orderId ? { ...order, distance } : order)
+          );
+        });
+      }
+    } catch (error: any) {
+      if (__DEV__) {
+        console.error('❌ Load orders error:', {
+          status: error.status,
+          message: error.message,
+          attempt: retryCount + 1
+        });
+      }
+      
+      // Retry logic for 500 errors (max 2 retries with exponential backoff)
+      if (error.status === 500 && retryCount < 2) {
+        const waitTime = (retryCount + 1) * 2000; // 2s, 4s
+        if (__DEV__) console.log(`⏳ Retrying in ${waitTime/1000}s... (attempt ${retryCount + 2}/3)`);
+        
+        // Clear loading before retry
+        setIsLoadingOrders(false);
+        
+        // Wait before retry
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        return loadOrders(lat, lng, silent, retryCount + 1);
+      }
+      
+      // Show error alert only on final failure and not silent
+      if (!silent) {
+        Alert.alert(
+          'Lỗi tải đơn hàng',
+          error.status === 500 
+            ? 'Server đang gặp sự cố. Vui lòng thử lại sau ít phút.'
+            : error.message || 'Không thể tải danh sách đơn hàng. Vui lòng thử lại.',
+          [{ text: 'OK' }]
+        );
+      }
+    } finally {
+      setIsLoadingOrders(false); // Always clear loading state
+    }
+  };
 
   const animateTabChange = () => {
     Animated.sequence([
@@ -188,22 +741,7 @@ function TechnicianOrders() {
     ]).start();
   };
 
-  // Helper function to mask phone number
-  const maskPhoneNumber = (phone: string) => {
-    if (phone.length < 4) return phone;
-    return phone.substring(0, 3) + '*'.repeat(phone.length - 6) + phone.substring(phone.length - 3);
-  };
-
-  // Helper function to hide specific address, show only district/city
-  const hideSpecificAddress = (fullAddress: string) => {
-    // Extract district and city from address like "123 Lê Lợi, Q1, TP.HCM"
-    const parts = fullAddress.split(', ');
-    if (parts.length >= 2) {
-      // Return only district and city parts
-      return parts.slice(-2).join(', ');
-    }
-    return 'Khu vực TP.HCM'; // Fallback
-  };
+  // Note: maskPhoneNumber and hideSpecificAddress moved to top-level for reuse
 
   useEffect(() => {
     animateTabChange();
@@ -314,6 +852,26 @@ function TechnicianOrders() {
   };
 
   const handleViewOrder = (orderId: string, status: OrderItem['status']) => {
+    // Find the order and cache it for the details page
+    const order = [...availableOrders, ...acceptedOrders].find(o => o.id === orderId);
+    if (order) {
+      orderCache.set(orderId, {
+        id: order.id,
+        serviceName: order.serviceName,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        address: order.address,
+        description: order.description,
+        images: order.images,
+        status: order.status,
+        createdAt: order.createdAt,
+        appointmentDate: order.appointmentDate,
+        appointmentTime: order.appointmentTime,
+        distance: order.distance,
+        addressNote: order.addressNote,
+      });
+    }
+
     if (status === 'accepted' || status === 'in-progress' || status === 'completed') {
       // Navigate to technician order tracking for accepted orders
       router.push({
@@ -334,7 +892,6 @@ function TechnicianOrders() {
 
     return (
       <TouchableOpacity
-        key={order.id}
         style={[styles.orderCard, isAccepted && styles.acceptedOrderCard]}
         onPress={() => handleViewOrder(order.id, order.status)}
         activeOpacity={0.7}
@@ -359,13 +916,13 @@ function TechnicianOrders() {
           {isAccepted && (
             <View style={styles.infoRow}>
               <Ionicons name="call-outline" size={16} color="#6B7280" />
-              <Text style={styles.infoText}>{maskPhoneNumber(order.customerPhone)}</Text>
+              <Text style={styles.infoText}>{maskPhone(order.customerPhone)}</Text>
             </View>
           )}
           <View style={styles.infoRow}>
             <Ionicons name="location-outline" size={16} color="#6B7280" />
             <Text style={styles.infoText}>
-              {isAccepted ? order.address : hideSpecificAddress(order.address)}
+              {isAccepted ? order.address : extractDistrictFromAddress(order.address)}
             </Text>
           </View>
           <View style={styles.infoRow}>
@@ -383,8 +940,15 @@ function TechnicianOrders() {
         {/* Price and time info */}
         <View style={styles.orderMeta}>
           <View style={styles.priceContainer}>
-            <Text style={styles.priceLabel}>Giá dự kiến:</Text>
-            <Text style={styles.priceText}>{order.priceRange}</Text>
+            <Text style={styles.priceLabel}>
+              {order.priceLabel || 'Giá dự kiến'}:
+            </Text>
+            <Text style={[
+              styles.priceText,
+              order.priceLabel === 'Giá đã chốt' && styles.priceTextConfirmed
+            ]}>
+              {order.priceRange}
+            </Text>
           </View>
           <View style={styles.timeContainer}>
             <Ionicons name="time-outline" size={14} color="#6B7280" />
@@ -441,35 +1005,105 @@ function TechnicianOrders() {
   };
 
   const baseOrders = selectedTab === 'available' ? availableOrders : acceptedOrders;
-  const currentOrders = filterOrders(baseOrders);
   
-  // Debug log
-  console.log('Current tab:', selectedTab);
-  console.log('Available orders:', availableOrders.length);
-  console.log('Accepted orders:', acceptedOrders.length);
-  console.log('Current orders:', currentOrders.length);
+  // Use useMemo to prevent unnecessary re-filtering on every render
+  const currentOrders = React.useMemo(
+    () => filterOrders(baseOrders),
+    [baseOrders, searchText, filters, selectedTab]
+  );
 
+  // CRITICAL: NO early returns to prevent "Rendered fewer hooks" error
+  // All hooks MUST be called in the same order every render
+  // Render different content based on state using conditional rendering
+  
+  // Loading state
+  if (isLoadingActivation) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
+        <Stack.Screen options={{ headerShown: false }} />
+        <ActivityIndicator size="large" color="#609CEF" />
+        <Text style={styles.loadingText}>Đang tải...</Text>
+      </View>
+    );
+  }
+
+  // Swipe to activate state
+  if (!isActivated) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
+        <Stack.Screen options={{ headerShown: false }} />
+
+        <LinearGradient
+          colors={['#609CEF', '#4F8EF7']}
+          style={styles.header}
+        >
+          <View style={styles.headerLeft}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => router.back()}
+            >
+              <Ionicons name="arrow-back" size={26} color="white" />
+            </TouchableOpacity>
+          </View>
+          
+          <Text style={styles.headerTitle}>Đơn hàng</Text>
+          
+          <View style={styles.headerRight} />
+        </LinearGradient>
+
+        <SwipeToActivate
+          onActivate={handleActivate}
+          isLoading={isLocationLoading}
+        />
+      </View>
+    );
+  }
+
+  // Main activated content
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Custom Header with Back Button */}
+      {/* Custom Header with Back Button, Refresh and Deactivate Button */}
       <LinearGradient
         colors={['#609CEF', '#4F8EF7']}
         style={styles.header}
       >
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={26} color="white" />
-        </TouchableOpacity>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="arrow-back" size={26} color="white" />
+          </TouchableOpacity>
+        </View>
         
         <Text style={styles.headerTitle}>Đơn hàng</Text>
         
-        {/* Empty view for centering title */}
-        <View style={styles.headerRight} />
+        {/* Header Right: Refresh + Deactivate */}
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={handleRefresh}
+            disabled={isLoadingOrders}
+          >
+            <Ionicons 
+              name="refresh" 
+              size={22} 
+              color={isLoadingOrders ? 'rgba(255,255,255,0.5)' : 'white'}
+            />
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.deactivateButton}
+            onPress={handleDeactivate}
+          >
+            <Ionicons name="power" size={22} color="white" />
+          </TouchableOpacity>
+        </View>
       </LinearGradient>
 
       {/* Search and Filter Section */}
@@ -642,8 +1276,16 @@ function TechnicianOrders() {
             showsVerticalScrollIndicator={false}
           >
           <View style={styles.ordersList}>
+            {/* Loading indicator */}
+            {isLoadingOrders && (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#609CEF" />
+                <Text style={styles.loadingText}>Đang tải đơn hàng...</Text>
+              </View>
+            )}
+
             {/* Filter Results Info */}
-            {hasActiveFilters() && currentOrders.length > 0 && (
+            {!isLoadingOrders && hasActiveFilters() && currentOrders.length > 0 && (
               <View style={styles.filterResultsInfo}>
                 <Ionicons name="funnel-outline" size={16} color="#609CEF" />
                 <Text style={styles.filterResultsText}>
@@ -652,9 +1294,13 @@ function TechnicianOrders() {
               </View>
             )}
 
-            {currentOrders.length > 0 ? (
-              currentOrders.map(renderOrderCard)
-            ) : (
+            {!isLoadingOrders && currentOrders.length > 0 ? (
+              currentOrders.map((order) => (
+                <View key={order.id}>
+                  {renderOrderCard(order)}
+                </View>
+              ))
+            ) : !isLoadingOrders ? (
               <View style={styles.emptyState}>
                 <View style={styles.emptyIconContainer}>
                   <LinearGradient
@@ -685,10 +1331,10 @@ function TechnicianOrders() {
                   }
                 </Text>
               </View>
-            )}
+            ) : null}
           </View>
 
-            <View style={styles.bottomSpacing} />
+          <View style={styles.bottomSpacing} />
           </ScrollView>
         </Animated.View>
       </View>
@@ -701,6 +1347,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginTop: 12,
+  },
   header: {
     ...STANDARD_HEADER_STYLE,
   },
@@ -712,6 +1371,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 88, // Same as headerRight (2 buttons + gap = 40 + 8 + 40)
+  },
   headerTitle: {
     flex: 1,
     textAlign: 'center',
@@ -720,7 +1384,26 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   headerRight: {
-    width: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 88, // 2 buttons (40 + 40) + gap (8)
+  },
+  refreshButton: {
+    width: HEADER_CONSTANTS.TECHNICIAN_HEADER_CONTENT_HEIGHT,
+    height: HEADER_CONSTANTS.TECHNICIAN_HEADER_CONTENT_HEIGHT,
+    borderRadius: HEADER_CONSTANTS.TECHNICIAN_HEADER_CONTENT_HEIGHT / 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deactivateButton: {
+    width: HEADER_CONSTANTS.TECHNICIAN_HEADER_CONTENT_HEIGHT,
+    height: HEADER_CONSTANTS.TECHNICIAN_HEADER_CONTENT_HEIGHT,
+    borderRadius: HEADER_CONSTANTS.TECHNICIAN_HEADER_CONTENT_HEIGHT / 2,
+    backgroundColor: 'rgba(239, 68, 68, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   
   // Search and Filter Styles
@@ -987,6 +1670,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#059669',
+  },
+  priceTextConfirmed: {
+    color: '#10B981', // Brighter green for confirmed price
+    fontWeight: '800',
   },
   timeContainer: {
     flexDirection: 'row',

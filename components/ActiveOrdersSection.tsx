@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -17,12 +17,43 @@ interface ActiveOrder {
   currentStep?: string;
   requestedDate?: string;
   expectedStartTime?: string;
+  requestAddress?: string;  // Full address text from backend
 }
 
 export default function ActiveOrdersSection() {
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
+
+  // Auto-refresh interval (30 seconds)
+  const REFRESH_INTERVAL = 30000;
+
+  // Animation for loading spinner
+  const spinValue = new Animated.Value(0);
+
+  // Start spinning animation
+  const startSpinning = () => {
+    spinValue.setValue(0);
+    Animated.loop(
+      Animated.timing(spinValue, {
+        toValue: 1,
+        duration: 800, // Tăng tốc độ để dễ thấy
+        useNativeDriver: true,
+      })
+    ).start();
+  };
+
+  // Stop spinning animation
+  const stopSpinning = () => {
+    spinValue.stopAnimation();
+    spinValue.setValue(0);
+  };
+
+  // Convert spin value to rotation
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
 
   // Helper function to map API status to local status
   const getStatusFromApiStatus = (apiStatus: string): ActiveOrder['status'] => {
@@ -67,28 +98,52 @@ export default function ActiveOrdersSection() {
 
   useEffect(() => {
     loadActiveOrders();
+    
+    // Set up auto-refresh interval for real-time updates
+    const interval = setInterval(() => {
+      loadActiveOrders(true); // Silent refresh - don't show loading spinner
+    }, REFRESH_INTERVAL);
+
+    // Cleanup interval on unmount
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+        stopSpinning(); // Stop animation on unmount
+      }
+    };
   }, []);
 
-  const loadActiveOrders = async () => {
+  // Start animation when loading starts
+  useEffect(() => {
+    if (loading) {
+      startSpinning();
+    } else {
+      stopSpinning();
+    }
+  }, [loading]);
+
+  // Add manual refresh function for pull-to-refresh or button
+  const refreshOrders = async () => {
+    await loadActiveOrders();
+  };
+
+  const loadActiveOrders = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       
       // Only load orders for customers - skip for technicians until API is ready
       if (user?.userType !== 'customer') {
-        if (__DEV__) {
-          console.log('ActiveOrdersSection: Skipping load for non-customer role:', user?.userType);
-        }
         setActiveOrders([]);
-        setLoading(false);
+        if (!silent) {
+          setLoading(false);
+        }
         return;
       }
       
       // Get service requests using the endpoint with customer access support
       const serviceRequests = await serviceRequestService.getUserServiceRequests();
-      
-      if (__DEV__) {
-        console.log('Service requests loaded:', serviceRequests.length, 'items');
-      }
       
       // Convert service requests to active orders format with service names
       const orders: ActiveOrder[] = await Promise.all(
@@ -111,18 +166,16 @@ export default function ActiveOrdersSection() {
                 ? request.serviceDescription.substring(0, 30) + '...' 
                 : request.serviceDescription;
             }
-            if (__DEV__) {
-              console.warn(`Failed to get service name for ${request.serviceId}:`, error);
-            }
           }
           
           return {
-            id: request.id,
+            id: request.requestID,
             serviceName,
             status: getStatusFromApiStatus(request.status),
             currentStep: getStepFromStatus(request.status),
             requestedDate: request.requestedDate,
             expectedStartTime: request.expectedStartTime,
+            requestAddress: request.requestAddress || undefined,
           };
         })
       );
@@ -131,18 +184,18 @@ export default function ActiveOrdersSection() {
     } catch (error: any) {
       // Silent handling for expected errors (403, 404) - these are OK when API is not ready
       if (error.status_code === 403 || error.status_code === 404) {
-        if (__DEV__) {
-          console.log('ActiveOrdersSection: Service requests API not available (expected)');
-        }
+        // Expected errors when API is not ready
       } else {
-        // Only log unexpected errors
+        // Only log unexpected errors in development
         if (__DEV__) console.error('Error loading active orders:', error);
       }
       
       // Set empty array to hide the section when API has issues or no orders
       setActiveOrders([]);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
@@ -150,10 +203,30 @@ export default function ActiveOrdersSection() {
     return (
       <View style={styles.container}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Đơn đang xử lý</Text>
+          <View style={styles.titleContainer}>
+            <LinearGradient
+              colors={['#609CEF', '#7B68EE']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.titleIconContainer}
+            >
+              <Ionicons name="flash" size={16} color="#FFFFFF" />
+            </LinearGradient>
+            <Text style={styles.sectionTitle}>Đơn đang xử lý</Text>
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>0</Text>
+            </View>
+            <View style={styles.refreshButton}>
+              <Animated.View style={{ transform: [{ rotate: spin }] }}>
+                <Ionicons name="refresh" size={14} color="#609CEF" />
+              </Animated.View>
+            </View>
+          </View>
         </View>
-        <View style={styles.orderCard}>
-          <Text style={styles.stepText}>Đang tải...</Text>
+        <View style={styles.loadingContainer}>
+          <Animated.View style={{ transform: [{ rotate: spin }] }}>
+            <Ionicons name="refresh-circle" size={32} color="#609CEF" />
+          </Animated.View>
         </View>
       </View>
     );
@@ -200,13 +273,14 @@ export default function ActiveOrdersSection() {
           <View style={styles.countBadge}>
             <Text style={styles.countText}>{activeOrders.length}</Text>
           </View>
+          <TouchableOpacity
+            onPress={refreshOrders}
+            style={styles.refreshButton}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="refresh" size={14} color="#609CEF" />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          onPress={() => router.push('./booking-history' as any)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.viewAllText}>Xem tất cả</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Horizontal Scrollable Cards */}
@@ -349,10 +423,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#EF4444',
   },
-  viewAllText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#609CEF',
+  refreshButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F0F7FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  loadingContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scrollContainer: {
     paddingHorizontal: 20,

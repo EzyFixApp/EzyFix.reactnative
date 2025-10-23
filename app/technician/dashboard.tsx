@@ -5,7 +5,6 @@ import {
   StyleSheet, 
   Text, 
   TouchableOpacity, 
-  Animated, 
   Dimensions, 
   StatusBar 
 } from 'react-native';
@@ -17,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import BottomNavigation from '../../components/BottomNavigation';
 import TechnicianHeader from '../../components/TechnicianHeader';
+import TechnicianActivityContent from '../../components/TechnicianActivityContent';
 
 interface StatCardProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -251,118 +251,10 @@ function Dashboard() {
     (params.tab as TabType) || 'dashboard'
   );
   
-  // Separate opacity animations for each tab (parallel rendering)
-  const dashboardOpacity = useRef(new Animated.Value(1)).current;
-  const activityOpacity = useRef(new Animated.Value(0)).current;
-  
   // State for time
   const [currentTime, setCurrentTime] = useState(new Date());
   
-  // Check authentication and verification status
-  useEffect(() => {
-    if (!isAuthenticated) {
-      router.replace('/technician/login');
-      return;
-    }
-
-    // Check if user has verified their email  
-    // isVerify: false means user never verified their email after registration
-    if (user?.isVerify === false && user?.email) {
-      router.replace(`/technician/verify?email=${encodeURIComponent(user.email)}`);
-      return;
-    }
-  }, [isAuthenticated, user?.isVerify, user?.email]);
-  
-  // Update time every second  
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-    
-    return () => {
-      clearInterval(timer);
-    };
-  }, []);
-
-  // Show loading while checking authentication and verification
-  if (!isAuthenticated || user?.isVerify === false) {
-    return null;
-  }
-  
-  // Format time function
-  const formatTime = () => {
-    return currentTime.toLocaleTimeString('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-  
-  // Format date function
-  const formatDate = () => {
-    return currentTime.toLocaleDateString('vi-VN', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  };
-  
-  // Handle tab press with FAST parallel animation
-  const handleTabPress = useCallback((tabId: string) => {
-    const newTab: TabType = tabId === 'home' ? 'dashboard' : 'activity';
-    
-    // Don't animate if already on this tab
-    if (newTab === activeTab) return;
-
-    // Update state immediately for instant response
-    setActiveTab(newTab);
-
-    // Parallel fade animation (both tabs animate at the same time)
-    if (newTab === 'dashboard') {
-      // Show dashboard, hide activity
-      Animated.parallel([
-        Animated.timing(dashboardOpacity, {
-          toValue: 1,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(activityOpacity, {
-          toValue: 0,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      // Show activity, hide dashboard
-      Animated.parallel([
-        Animated.timing(dashboardOpacity, {
-          toValue: 0,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(activityOpacity, {
-          toValue: 1,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [activeTab, dashboardOpacity, activityOpacity]);
-  
-  // Handle center button press
-  const handleCenterButtonPress = () => {
-    // Logo pressed - could add navigation to main menu
-  };
-  
-  // Handle search press
-  const handleSearchPress = () => {
-    router.push('./orders');
-  };
-  
-  // Handle notification press
-  const handleNotificationPress = () => {
-    // Navigation to notifications page
-  };
+  // ALL OTHER STATE - Must be declared before any conditional returns
   const [isOnline, setIsOnline] = useState(true);
   const [todayStats, setTodayStats] = useState({
     jobsCompleted: 8,
@@ -424,6 +316,76 @@ function Dashboard() {
       customerPhone: '0945678901'
     }
   ]);
+  
+  // Check authentication and verification status
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.replace('/technician/login');
+      return;
+    }
+
+    // Check if user has verified their email  
+    // isVerify: false means user never verified their email after registration
+    if (user?.isVerify === false && user?.email) {
+      router.replace(`/technician/verify?email=${encodeURIComponent(user.email)}`);
+      return;
+    }
+  }, [isAuthenticated, user?.isVerify, user?.email]);
+  
+  // Update time every second  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+  
+  // Format time function
+  const formatTime = () => {
+    return currentTime.toLocaleTimeString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+  
+  // Format date function
+  const formatDate = () => {
+    return currentTime.toLocaleDateString('vi-VN', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  };
+  
+  // Handle tab press - instant switch, no animation
+  const handleTabPress = useCallback((tabId: string) => {
+    const newTab: TabType = tabId === 'home' ? 'dashboard' : 'activity';
+    
+    // Don't switch if already on this tab
+    if (newTab === activeTab) return;
+
+    // Update state immediately for instant response
+    setActiveTab(newTab);
+  }, [activeTab]);
+  
+  // Handle center button press
+  const handleCenterButtonPress = () => {
+    // Logo pressed - could add navigation to main menu
+  };
+  
+  // Handle search press
+  const handleSearchPress = () => {
+    router.push('./orders');
+  };
+  
+  // Handle notification press
+  const handleNotificationPress = () => {
+    // Navigation to notifications page
+  };
 
   const handleNewOrderPress = () => {
     router.push('/technician/orders');
@@ -486,6 +448,17 @@ const toggleOnlineStatus = () => {
     [activeTab]
   );
 
+  // CRITICAL: Render empty view during logout transition to prevent hooks errors
+  // This prevents the component from trying to render with stale data
+  if (!isAuthenticated || user?.isVerify === false) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
+        <Stack.Screen options={{ headerShown: false }} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
@@ -499,16 +472,13 @@ const toggleOnlineStatus = () => {
         notificationCount={2}
       />
 
-      {/* Dashboard Content - Pre-rendered */}
-      <Animated.ScrollView 
-        style={[
-          styles.scrollContainer,
-          { opacity: dashboardOpacity }
-        ]}
-        pointerEvents={activeTab === 'dashboard' ? 'auto' : 'none'}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-      >
+      {/* Conditional Rendering - Only render active tab */}
+      {activeTab === 'dashboard' && (
+        <ScrollView 
+          style={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
         {/* Enhanced Greeting Section with Real-time Clock */}
       <View style={styles.greetingSection}>
         <LinearGradient
@@ -657,7 +627,7 @@ const toggleOnlineStatus = () => {
         {/* Progress Bar */}
         <View style={styles.progressContainer}>
           <View style={styles.progressBar}>
-            <Animated.View 
+            <View 
               style={[
                 styles.progressFill, 
                 { width: `${getCompletionRate()}%` }
@@ -806,36 +776,15 @@ const toggleOnlineStatus = () => {
 
       {/* Bottom Spacing for Navigation */}
       <View style={styles.bottomSpacing} />
-    </Animated.ScrollView>
+    </ScrollView>
+      )}
 
-    {/* Activity Content - Pre-rendered but hidden */}
-    <Animated.ScrollView
-      style={[
-        styles.scrollContainer,
-        {
-          opacity: activityOpacity,
-          position: 'absolute',
-          top: 70, // Height of header
-          left: 0,
-          right: 0,
-          bottom: 70, // Height of bottom navigation
-        }
-      ]}
-      pointerEvents={activeTab === 'activity' ? 'auto' : 'none'}
-      showsVerticalScrollIndicator={false}
-      bounces={false}
-    >
-      <View style={styles.activityPlaceholder}>
-        <View style={styles.emptyOrdersContainer}>
-          <Ionicons name="time-outline" size={64} color="#CBD5E1" />
-          <Text style={styles.emptyOrdersTitle}>Lịch sử hoạt động</Text>
-          <Text style={styles.emptyOrdersSubtitle}>
-            Các đơn hàng và hoạt động của bạn sẽ hiển thị ở đây
-          </Text>
-        </View>
+    {/* Activity Content - Only render when active */}
+    {activeTab === 'activity' && (
+      <View style={styles.scrollContainer}>
+        <TechnicianActivityContent />
       </View>
-      <View style={styles.bottomSpacing} />
-    </Animated.ScrollView>
+    )}
 
     {/* Bottom Navigation */}
     <BottomNavigation 

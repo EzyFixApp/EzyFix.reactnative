@@ -30,31 +30,24 @@ interface BookingDetail {
   address: string;
   status: 'searching' | 'quoted' | 'accepted' | 'in-progress' | 'completed' | 'cancelled';
   createdAt: string;
+  requestedDate?: string;
+  expectedStartTime?: string;
+  serviceDescription?: string;
   technicianName?: string;
   quotePrice?: string;
   notes?: string;
 }
 
-const mockBookingDetail: BookingDetail = {
-  id: '1',
-  serviceName: 'Sửa điều hòa',
-  servicePrice: '200,000đ - 500,000đ',
-  customerName: 'Nguyễn Văn A',
-  phoneNumber: '0901234567',
-  address: '123 Lê Lợi, Quận 1, TP.HCM',
-  status: 'quoted',
-  createdAt: '2025-09-29T17:30:00Z',
-  technicianName: 'Thợ Minh',
-  quotePrice: '350,000đ',
-  notes: 'Điều hòa không lạnh, có tiếng ồn khi chạy'
-};
-
 function BookingDetail() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [loading, setLoading] = useState(false);
-  const { isAuthenticated } = useAuth();
+  const [loadingAction, setLoadingAction] = useState(false);
+  const { isAuthenticated, user } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Auto-refresh interval (30 seconds)
+  const REFRESH_INTERVAL = 30000;
 
   // Check authentication when screen is focused
   useFocusEffect(
@@ -67,20 +60,21 @@ function BookingDetail() {
 
   // Map API status to UI status
   const mapApiStatus = (apiStatus: string): BookingDetail['status'] => {
-    switch (apiStatus.toLowerCase()) {
-      case 'pending':
-      case 'waiting':
+    switch (apiStatus?.toUpperCase()) {
+      case 'PENDING':
+      case 'WAITING':
         return 'searching';
-      case 'quoted':
+      case 'QUOTED':
         return 'quoted';
-      case 'accepted':
+      case 'QUOTE_ACCEPTED':
+      case 'ACCEPTED':
         return 'accepted';
-      case 'in_progress':
-      case 'in-progress':
+      case 'IN_PROGRESS':
+      case 'INPROGRESS':
         return 'in-progress';
-      case 'completed':
+      case 'COMPLETED':
         return 'completed';
-      case 'cancelled':
+      case 'CANCELLED':
         return 'cancelled';
       default:
         return 'searching';
@@ -88,7 +82,7 @@ function BookingDetail() {
   };
 
   // Load booking details from API
-  const loadBookingDetail = async () => {
+  const loadBookingDetail = async (silent = false) => {
     if (!orderId) {
       Alert.alert('Lỗi', 'Không tìm thấy ID đơn hàng');
       router.back();
@@ -96,35 +90,68 @@ function BookingDetail() {
     }
 
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
+      
+      if (__DEV__) {
+        console.log('Loading booking detail for orderId:', orderId);
+      }
       
       // Get service request details
       const serviceRequest = await serviceRequestService.getServiceRequestById(orderId);
       
+      if (__DEV__) {
+        console.log('Service request loaded:', serviceRequest);
+      }
+      
       let serviceName = 'Dịch vụ';
+      let servicePrice = 'Đang cập nhật';
       
       try {
-        // Get service details for name
+        // Get service details for name and price
         const service = await servicesService.getServiceById(serviceRequest.serviceId);
         serviceName = service.serviceName || service.description || 'Dịch vụ';
+        
+        // Format price if available
+        if (service.basePrice) {
+          const price = service.basePrice;
+          if (price > 0) {
+            servicePrice = new Intl.NumberFormat('vi-VN', {
+              style: 'currency',
+              currency: 'VND'
+            }).format(price);
+          }
+        }
+        
+        // Truncate service name if too long
+        if (serviceName.length > 50) {
+          serviceName = serviceName.substring(0, 50) + '...';
+        }
       } catch (error) {
         // Fallback to description
         serviceName = serviceRequest.serviceDescription || 'Dịch vụ';
+        if (serviceName.length > 50) {
+          serviceName = serviceName.substring(0, 50) + '...';
+        }
         if (__DEV__) {
-          console.warn(`Failed to get service name for ${serviceRequest.serviceId}:`, error);
+          console.warn(`Failed to get service details for ${serviceRequest.serviceId}:`, error);
         }
       }
       
       // Transform API data to BookingDetail format
       const transformedBooking: BookingDetail = {
-        id: serviceRequest.id,
+        id: serviceRequest.requestID,
         serviceName: serviceName,
-        servicePrice: 'Đang cập nhật',
-        customerName: '', // Will be filled from user data if needed
-        phoneNumber: '',
-        address: serviceRequest.addressNote || 'Địa chỉ chưa cập nhật',
+        servicePrice: servicePrice,
+        customerName: serviceRequest.fullName || user?.fullName || 'Chưa cập nhật', 
+        phoneNumber: serviceRequest.phoneNumber || user?.phoneNumber || 'Chưa cập nhật',
+        address: serviceRequest.requestAddress || serviceRequest.addressNote || 'Địa chỉ chưa cập nhật',
         status: mapApiStatus(serviceRequest.status),
-        createdAt: serviceRequest.createdAt,
+        createdAt: serviceRequest.createdDate || serviceRequest.requestedDate,
+        requestedDate: serviceRequest.requestedDate,
+        expectedStartTime: serviceRequest.expectedStartTime,
+        serviceDescription: serviceRequest.serviceDescription,
         notes: serviceRequest.serviceDescription,
         // TODO: Add these when technician and quote APIs are available
         technicianName: undefined,
@@ -149,23 +176,56 @@ function BookingDetail() {
           'Không có quyền truy cập chi tiết đơn hàng này.',
           [{ text: 'OK', onPress: () => router.back() }]
         );
+      } else if (error.status_code === 401) {
+        setShowAuthModal(true);
       } else {
-        Alert.alert(
-          'Lỗi',
-          'Không thể tải chi tiết đơn hàng. Vui lòng thử lại sau.',
-          [{ text: 'OK', onPress: () => router.back() }]
-        );
+        if (!silent) {
+          Alert.alert(
+            'Lỗi',
+            'Không thể tải chi tiết đơn hàng. Vui lòng thử lại sau.',
+            [
+              { text: 'Thử lại', onPress: () => loadBookingDetail() },
+              { text: 'Quay lại', onPress: () => router.back() }
+            ]
+          );
+        }
       }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     loadBookingDetail();
+    
+    // Set up auto-refresh interval for real-time updates
+    const interval = setInterval(() => {
+      if (__DEV__) {
+        console.log('BookingDetail: Auto-refreshing booking detail...');
+      }
+      loadBookingDetail(true); // Silent refresh
+    }, REFRESH_INTERVAL);
+
+    // Cleanup interval on unmount
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+        if (__DEV__) {
+          console.log('BookingDetail: Cleared refresh interval');
+        }
+      }
+    };
   }, [orderId]);
 
-  const [loadingAction, setLoadingAction] = useState(false);
+  // Manual refresh function
+  const refreshBookingDetail = async () => {
+    if (__DEV__) {
+      console.log('BookingDetail: Manual refresh triggered');
+    }
+    await loadBookingDetail();
+  };
 
   const getStatusInfo = (status: BookingDetail['status']) => {
     switch (status) {
@@ -183,12 +243,33 @@ function BookingDetail() {
           backgroundColor: '#DBEAFE',
           icon: 'document-text-outline',
         };
+      case 'accepted':
+        return {
+          text: 'Đã xác nhận',
+          color: '#8B5CF6',
+          backgroundColor: '#EDE9FE',
+          icon: 'checkmark-circle-outline',
+        };
+      case 'in-progress':
+        return {
+          text: 'Đang thực hiện',
+          color: '#F59E0B',
+          backgroundColor: '#FEF3C7',
+          icon: 'build-outline',
+        };
       case 'completed':
         return {
           text: 'Hoàn thành',
           color: '#10B981',
           backgroundColor: '#D1FAE5',
-          icon: 'checkmark-circle-outline',
+          icon: 'checkmark-done-outline',
+        };
+      case 'cancelled':
+        return {
+          text: 'Đã hủy',
+          color: '#EF4444',
+          backgroundColor: '#FEE2E2',
+          icon: 'close-circle-outline',
         };
       default:
         return {
@@ -347,9 +428,19 @@ function BookingDetail() {
               <Text style={styles.customHeaderSubtitle}>Mã đơn #{booking.id.padStart(6, '0')}</Text>
             </View>
 
-            <TouchableOpacity style={styles.customShareButton}>
-              <Ionicons name="share-outline" size={24} color="white" />
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              <TouchableOpacity 
+                style={styles.refreshButton}
+                onPress={refreshBookingDetail}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="refresh" size={20} color="white" />
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.customShareButton}>
+                <Ionicons name="share-outline" size={24} color="white" />
+              </TouchableOpacity>
+            </View>
           </View>
         </LinearGradient>
       </View>
@@ -365,10 +456,24 @@ function BookingDetail() {
               {statusInfo.text}
             </Text>
             <Text style={styles.statusDescription}>
-              {booking.status === 'quoted' 
-                ? 'Thợ đã gửi báo giá, vui lòng xem xét và xác nhận'
-                : 'Hệ thống đang xử lý yêu cầu của bạn'
-              }
+              {(() => {
+                switch (booking.status) {
+                  case 'searching':
+                    return 'Hệ thống đang tìm kiếm thợ phù hợp cho yêu cầu của bạn';
+                  case 'quoted':
+                    return 'Thợ đã gửi báo giá, vui lòng xem xét và xác nhận';
+                  case 'accepted':
+                    return 'Đã xác nhận báo giá, thợ sẽ liên hệ để thực hiện';
+                  case 'in-progress':
+                    return 'Thợ đang thực hiện dịch vụ tại địa điểm của bạn';
+                  case 'completed':
+                    return 'Dịch vụ đã hoàn thành, cảm ơn bạn đã sử dụng EzyFix';
+                  case 'cancelled':
+                    return 'Đơn hàng đã bị hủy';
+                  default:
+                    return 'Hệ thống đang xử lý yêu cầu của bạn';
+                }
+              })()}
             </Text>
           </View>
         </View>
@@ -386,18 +491,43 @@ function BookingDetail() {
                 <Text style={styles.infoValue}>{booking.serviceName}</Text>
               </View>
               <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Giá dịch vụ:</Text>
+                <Text style={styles.infoValue}>{booking.servicePrice}</Text>
+              </View>
+              <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Ngày tạo:</Text>
                 <Text style={styles.infoValue}>
                   {new Date(booking.createdAt).toLocaleString('vi-VN')}
                 </Text>
               </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Ghi chú:</Text>
-                <Text style={styles.infoValue}>{booking.notes}</Text>
-              </View>
+              {booking.requestedDate && (
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Ngày yêu cầu:</Text>
+                  <Text style={styles.infoValue}>
+                    {new Date(booking.requestedDate).toLocaleDateString('vi-VN')}
+                  </Text>
+                </View>
+              )}
+              {booking.expectedStartTime && (
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Giờ bắt đầu:</Text>
+                  <Text style={styles.infoValue}>
+                    {new Date(booking.expectedStartTime).toLocaleTimeString('vi-VN', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </Text>
+                </View>
+              )}
+              {booking.serviceDescription && (
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Mô tả:</Text>
+                  <Text style={styles.infoValue}>{booking.serviceDescription}</Text>
+                </View>
+              )}
               {booking.quotePrice && (
                 <View style={styles.priceRow}>
-                  <Text style={styles.infoLabel}>Giá dịch vụ:</Text>
+                  <Text style={styles.infoLabel}>Báo giá:</Text>
                   <Text style={styles.priceValue}>{booking.quotePrice}</Text>
                 </View>
               )}
@@ -491,6 +621,36 @@ function BookingDetail() {
           </TouchableOpacity>
         </View>
       )}
+      
+      {booking.status === 'completed' && (
+        <View style={styles.actionContainer}>
+          <TouchableOpacity
+            style={styles.reviewButton}
+            onPress={() => {
+              // TODO: Navigate to review screen
+              Alert.alert('Thông báo', 'Chức năng đánh giá sẽ có sớm!');
+            }}
+          >
+            <LinearGradient
+              colors={['#F59E0B', '#D97706']}
+              style={styles.reviewGradient}
+            >
+              <Text style={styles.reviewButtonText}>Đánh giá dịch vụ</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      )}
+      
+      {(booking.status === 'cancelled' || booking.status === 'searching') && (
+        <View style={styles.actionContainer}>
+          <TouchableOpacity
+            style={styles.backToHomeButton}
+            onPress={() => router.push('/customer/(tabs)/dashboard' as any)}
+          >
+            <Text style={styles.backToHomeButtonText}>Về trang chủ</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       </View>
       
       <AuthModal
@@ -556,6 +716,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   customShareButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  refreshButton: {
     width: 44,
     height: 44,
     justifyContent: 'center',
@@ -753,6 +926,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: 'white',
+  },
+  reviewButton: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  reviewGradient: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  reviewButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: 'white',
+  },
+  backToHomeButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+  },
+  backToHomeButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#64748B',
   },
   bottomSpacing: {
     height: 20,

@@ -6,6 +6,8 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from './base';
+import { tokenManager } from './tokenManager';
+import { logger } from '../logger';
 import { API_ENDPOINTS, STORAGE_KEYS, API_BASE_URL } from './config';
 import type {
   LoginRequest,
@@ -315,24 +317,48 @@ export class AuthService {
   }
 
   /**
-   * Logout user
+   * Logout user with proper DELETE refresh token API
    */
   public async logout(): Promise<void> {
     try {
-      const token = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      const accessToken = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      const refreshToken = await AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
       
-      if (token) {
+      // Step 1: Call backend to invalidate refresh token
+      if (accessToken && refreshToken) {
         try {
-          await apiService.post(API_ENDPOINTS.AUTH.LOGOUT, {});
-        } catch (error: any) {
-          // Ignore errors - just clear local data
+          logger.info('🚪 Calling DELETE refresh token API...');
+          
+          // Backend expects refreshToken as query parameter, not body
+          const url = `${API_BASE_URL}${API_ENDPOINTS.AUTH.DELETE_REFRESH_TOKEN}?refreshToken=${encodeURIComponent(refreshToken)}`;
+          
+          // Use fetch directly to avoid interceptor complications during logout
+          const response = await fetch(url, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`,
+            },
+          });
+          
+          if (response.ok) {
+            logger.info('✅ Refresh token deleted successfully on server');
+          } else {
+            const errorText = await response.text();
+            logger.warn('⚠️ Failed to delete refresh token on server:', response.status, errorText);
+          }
+        } catch (error) {
+          logger.error('❌ Error calling delete refresh token API:', error);
+          // Continue with local cleanup even if API fails
         }
       }
     } catch (error) {
-      // Silently handle logout error
+      logger.error('❌ Logout error:', error);
     } finally {
-      // Always clear local data regardless of server response
+      // Step 2: Always clear local data regardless of server response
       await this.clearAuthData();
+      await tokenManager.clearTokens();
+      logger.info('✅ Local auth data cleared');
     }
   }
 

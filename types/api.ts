@@ -301,42 +301,46 @@ export interface FormErrors {
 
 // ============= Service Request Types =============
 export interface ServiceRequestData {
-  request: string; // Required field based on server validation
-  addressID: string;
-  serviceId: string;
-  serviceDescription: string;
-  addressNote: string;
-  requestedDate: string; // ISO string format
-  expectedStartTime: string; // ISO string format 
-  mediaUrls: string[];
+  addressID: string;            // ID của địa chỉ đã lưu (để reference)
+  serviceId: string;            // ID dịch vụ
+  serviceDescription: string;   // Mô tả chi tiết vấn đề
+  fullName: string;             // Tên người nhận - REQUIRED (user có thể edit)
+  phoneNumber: string;          // SĐT người nhận - REQUIRED (user có thể edit)
+  addressNote?: string;         // Ghi chú địa chỉ (tầng, căn hộ, etc.)
+  requestedDate: string;        // Ngày yêu cầu (ISO string format)
+  expectedStartTime: string;    // Giờ bắt đầu dự kiến (ISO string format)
+  mediaUrls?: string[];         // Danh sách URL ảnh/video
 }
 
 export interface ServiceRequestResponse {
-  id: string;
-  addressID: string;
+  requestID: string;
+  customerID: string;
+  addressID: string | null;
   serviceId: string;
+  fullName: string | null;
+  phoneNumber: string | null;
+  requestAddress: string | null;
   serviceDescription: string;
-  addressNote: string;
+  addressNote: string | null;
   requestedDate: string;
   expectedStartTime: string;
-  mediaUrls: string[];
   status: string;
-  createdAt: string;
-  updatedAt: string;
+  createdDate: string;
+  mediaUrls: string[];
 }
 
 // Booking form data for UI
 export interface BookingFormData {
-  customerName: string;
-  phoneNumber: string;
-  serviceName: string;
-  serviceId: string;
-  servicePrice: string;
-  serviceDescription: string;
-  address: string;
-  addressId: string; // ID of selected address (GUID)
-  addressNote: string;
-  requestedDate: string;
-  expectedStartTime: string;
-  images: string[];
+  customerName: string;         // Tên khách hàng (from auth)
+  phoneNumber: string;          // SĐT khách hàng (from auth)
+  serviceName: string;          // Tên dịch vụ (for display)
+  serviceId: string;            // ID dịch vụ
+  servicePrice: string;         // Giá dịch vụ (for display)
+  serviceDescription: string;   // Mô tả chi tiết vấn đề
+  address: string;              // Địa chỉ đầy đủ (for display)
+  addressID: string;            // ID của địa chỉ đã lưu (GUID) - send to API
+  addressNote: string;          // Ghi chú địa chỉ
+  requestedDate: string;        // Ngày yêu cầu (YYYY-MM-DD)
+  expectedStartTime: string;    // Giờ bắt đầu (HH:mm)
+  images: string[];             // Danh sách URI ảnh local
 }

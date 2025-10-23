@@ -81,38 +81,73 @@ export default function AddressSearchModal({
       
       // Get GPS coordinates
       const location = await Location.getCurrentPositionAsync({});
+      const { latitude, longitude } = location.coords;
       
-      // Convert coordinates to address
-      const addressFromCoords = await locationService.getAddressFromCoordinates(
-        location.coords.latitude,
-        location.coords.longitude
-      );
-      
-      const addressText = addressFromCoords || 'Vị trí hiện tại';
-      
-      const currentLocationSuggestion: AddressSuggestion = {
-        id: 'current',
-        description: addressText,
-        mainText: addressText.split(',')[0] || 'Vị trí hiện tại',
-        secondaryText: addressText.includes(',') ? addressText.split(',').slice(1).join(',').trim() : `${location.coords.latitude.toFixed(6)}, ${location.coords.longitude.toFixed(6)}`,
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        distance: 0,
-        addressComponents: {
-          display_name: addressText,
-          lat: location.coords.latitude,
-          lon: location.coords.longitude
-        }
-      };
+      // Reverse geocode to get detailed address components
+      try {
+        const geocodeResult = await locationService.reverseGeocode(latitude, longitude);
+        
+        if (geocodeResult) {
+          // Parse address components
+          const parsed = locationService.parseAddressComponents(geocodeResult);
+          const addressText = geocodeResult.display_name || 'Vị trí hiện tại';
+          
+          const currentLocationSuggestion: AddressSuggestion = {
+            id: 'current',
+            description: addressText,
+            mainText: parsed.street || addressText.split(',')[0] || 'Vị trí hiện tại',
+            secondaryText: `${parsed.province}, ${parsed.city}`,
+            latitude: latitude,
+            longitude: longitude,
+            distance: 0,
+            addressComponents: {
+              ...geocodeResult,
+              parsed: parsed // Include parsed components for later use
+            }
+          };
 
-      setSelectedLocation({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        address: addressText,
-        suggestion: currentLocationSuggestion
-      });
-      
-      setSearchText(addressText);
+          setSelectedLocation({
+            latitude: latitude,
+            longitude: longitude,
+            address: addressText,
+            suggestion: currentLocationSuggestion
+          });
+          
+          setSearchText(addressText);
+        } else {
+          throw new Error('No geocode result');
+        }
+      } catch (geocodeError) {
+        console.error('Reverse geocode error:', geocodeError);
+        
+        // Fallback: use basic coordinates if reverse geocoding fails
+        const addressText = `Vị trí hiện tại (${latitude.toFixed(6)}, ${longitude.toFixed(6)})`;
+        
+        const currentLocationSuggestion: AddressSuggestion = {
+          id: 'current',
+          description: addressText,
+          mainText: 'Vị trí hiện tại',
+          secondaryText: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+          latitude: latitude,
+          longitude: longitude,
+          distance: 0,
+          addressComponents: {
+            display_name: addressText,
+            lat: latitude,
+            lon: longitude
+          }
+        };
+
+        setSelectedLocation({
+          latitude: latitude,
+          longitude: longitude,
+          address: addressText,
+          suggestion: currentLocationSuggestion
+        });
+        
+        setSearchText(addressText);
+        Alert.alert('Cảnh báo', 'Đã lấy tọa độ nhưng không thể tự động điền địa chỉ chi tiết.');
+      }
     } catch (error) {
       console.error('Get location error:', error);
       Alert.alert('Lỗi', 'Không thể lấy vị trí hiện tại');

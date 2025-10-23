@@ -54,6 +54,7 @@ export const API_ENDPOINTS = {
     CREATE: '/api/v1/serviceRequests',
     GET_ALL: '/api/v1/serviceRequests', // List all service requests (with query params)
     GET_USER_REQUESTS: '/api/v1/serviceRequests', // Same endpoint, filtered by customer
+    FILTER: '/api/v1/api/servicerequests/filter', // Filter service requests by location (lat, lng, radius) - Technician only
     GET_BY_ID: (id: string) => `/api/v1/serviceRequests/${id}`,
     UPDATE: (id: string) => `/api/v1/serviceRequests/${id}`,
     DELETE: (id: string) => `/api/v1/serviceRequests/${id}`,
@@ -79,6 +80,16 @@ export const API_ENDPOINTS = {
   MEDIA: {
     BASE: '/api/v1/media',
     UPLOAD: '/api/v1/media',
+    DELETE: (id: string) => `/api/v1/media/${id}/delete`,
+  },
+
+  // Service Delivery Offers endpoints (Quotes)
+  SERVICE_DELIVERY_OFFERS: {
+    BASE: '/api/v1/serviceDeliveryOffers',
+    CREATE: '/api/v1/serviceDeliveryOffers',
+    GET_BY_ID: (id: string) => `/api/v1/serviceDeliveryOffers/${id}`,
+    ACCEPT: (id: string) => `/api/v1/serviceDeliveryOffers/${id}/accept`,
+    REJECT: (id: string) => `/api/v1/serviceDeliveryOffers/${id}/reject`,
   },
 } as const;
 

@@ -116,6 +116,107 @@ export class MediaService {
       throw error;
     }
   }
+
+  /**
+   * Get media list by requestID or appointmentID
+   * Returns all proof-of-work files (INITIAL/FINAL/EXCEED/PAYMENT) tied to a request or appointment
+   */
+  public async getMediaByRequest(requestID?: string, appointmentID?: string): Promise<MediaUploadResponse[]> {
+    try {
+      const token = await authService.getAccessToken();
+      if (!token) {
+        throw new Error('No access token available');
+      }
+
+      // Build query params
+      const params = new URLSearchParams();
+      if (requestID) params.append('requestID', requestID);
+      if (appointmentID) params.append('appointmentID', appointmentID);
+
+      const url = `${API_BASE_URL}${API_ENDPOINTS.MEDIA.BASE}?${params.toString()}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Get media failed: ${response.status} - ${errorData}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.is_success && result.data) {
+        // Filter out media with NULL requestID/appointmentID to prevent cross-contamination
+        // This handles legacy data or backend query issues
+        let filteredData = result.data;
+        if (requestID) {
+          filteredData = result.data.filter((media: MediaUploadResponse) => 
+            media.requestID === requestID
+          );
+        } else if (appointmentID) {
+          filteredData = result.data.filter((media: MediaUploadResponse) => 
+            media.appointmentID === appointmentID
+          );
+        }
+        
+        if (__DEV__) {
+          console.log(`📸 Media fetched for ${requestID ? `request ${requestID}` : `appointment ${appointmentID}`}:`, filteredData.length, 'files (filtered from', result.data.length, 'total)');
+        }
+        return filteredData;
+      } else {
+        if (__DEV__) console.warn('Get media returned unsuccessful response:', result.message);
+        return [];
+      }
+    } catch (error: any) {
+      if (__DEV__) console.error('Get media error:', error);
+      // Return empty array on error to prevent crashes
+      return [];
+    }
+  }
+
+  /**
+   * Delete media file by ID
+   */
+  public async deleteMedia(mediaID: string): Promise<void> {
+    try {
+      const token = await authService.getAccessToken();
+      if (!token) {
+        throw new Error('No access token available');
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}${API_ENDPOINTS.MEDIA.DELETE(mediaID)}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Delete media failed: ${response.status} - ${errorData}`);
+      }
+
+      const result = await response.json();
+      
+      if (!result.is_success) {
+        throw new Error(result.message || 'Delete failed');
+      }
+
+      if (__DEV__) console.log(`🗑️ Media deleted: ${mediaID}`);
+    } catch (error: any) {
+      if (__DEV__) console.error('Delete media error:', error);
+      throw error;
+    }
+  }
 }
 
 // Export singleton instance

@@ -4,7 +4,12 @@
  */
 
 import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService } from '../lib/api/auth';
+import { apiService } from '../lib/api/base';
+import { tokenManager } from '../lib/api/tokenManager';
+import { logger } from '../lib/logger';
+import { STORAGE_KEYS } from '../lib/api/config';
 import type { 
   AuthState, 
   UserData, 
@@ -15,7 +20,7 @@ import type {
 interface AuthActions {
   // Auth actions
   login: (credentials: LoginRequest, userType: UserType) => Promise<void>;
-  logout: () => Promise<void>;
+  logout: (silent?: boolean) => Promise<void>;
   refreshTokenAction: () => Promise<void>;
   checkAuthStatus: () => Promise<void>;
   
@@ -27,6 +32,9 @@ interface AuthActions {
   
   // User type management
   setUserType: (userType: UserType) => Promise<void>;
+  
+  // Session management
+  handleSessionExpired: () => void;
 }
 
 type AuthStore = AuthState & AuthActions;
@@ -67,6 +75,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       // Perform login with userType
       const loginResponse = await authService.loginWithUserType(credentials, userType);
 
+      // Update tokenManager with new access token
+      await tokenManager.updateAccessToken(loginResponse.accessToken);
+
       // Get user data
       const userData = await authService.getUserData();
       const accessToken = await authService.getAccessToken();
@@ -81,11 +92,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         error: null
       });
 
+      logger.info('✅ Login successful - token cached');
+
     } catch (error: any) {
-      // Don't log expected authentication failures  
-      if (error.status_code !== 401) {
-        if (__DEV__) console.error('Unexpected login error:', error);
-      }
+      logger.error('❌ Login failed:', error);
       set({
         isAuthenticated: false,
         user: null,
@@ -97,17 +107,17 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       
       // Re-throw error for component to handle
       throw error;
-      throw error;
     }
   },
 
-  logout: async () => {
+  logout: async (silent = false) => {
     const { setLoading, setError } = get();
     
     try {
       setLoading(true);
       setError(null);
 
+      // Call logout API (will call DELETE refresh token and clear tokenManager)
       await authService.logout();
 
       // Reset store state
@@ -120,16 +130,22 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         error: null
       });
 
+      if (!silent) {
+        logger.info('✅ Logout successful');
+      }
+
     } catch (error: any) {
-      if (__DEV__) console.error('Logout failed:', error);
-      // Even if logout fails, reset local state
+      logger.error('❌ Logout error:', error);
+      
+      // Even if logout fails, reset local state WITHOUT setting error
+      // (logout errors are not critical - user just wants to log out)
       set({
         isAuthenticated: false,
         user: null,
         accessToken: null,
         refreshToken: null,
         isLoading: false,
-        error: error.message || 'Logout failed'
+        error: null // Don't show error for logout failures
       });
     }
   },
@@ -165,16 +181,23 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const isAuthenticated = await authService.isAuthenticated();
       
       if (isAuthenticated) {
+        // Load token into tokenManager for expiry checking
+        await tokenManager.loadAccessToken();
+        
         const userData = await authService.getUserData();
         const accessToken = await authService.getAccessToken();
+        const refreshToken = await AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
 
         set({
           isAuthenticated: true,
           user: userData,
           accessToken,
+          refreshToken,
           isLoading: false,
           error: null
         });
+        
+        logger.info('✅ Auth status checked - token loaded into manager');
       } else {
         set({
           isAuthenticated: false,
@@ -212,8 +235,37 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       set({ error: error.message || 'Failed to set user type' });
       throw error;
     }
+  },
+
+  /**
+   * Handle session expired - called when API returns 401
+   * or when refresh token fails
+   */
+  handleSessionExpired: () => {
+    logger.warn('🔒 Session expired - forcing logout');
+    
+    // Clear tokenManager cache
+    tokenManager.clearTokens().catch(err => {
+      logger.error('Error clearing tokens:', err);
+    });
+    
+    // Reset store state immediately
+    set({
+      isAuthenticated: false,
+      user: null,
+      accessToken: null,
+      refreshToken: null,
+      isLoading: false,
+      error: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+    });
   }
 }));
+
+// Setup session expired handler on module load
+apiService.setOnSessionExpired(() => {
+  const store = useAuthStore.getState();
+  store.handleSessionExpired();
+});
 
 // Selectors for easier access to specific state
 export const useAuth = () => {

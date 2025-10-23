@@ -128,6 +128,37 @@ class LocationService {
     }
   }
 
+  async reverseGeocode(latitude: number, longitude: number): Promise<any> {
+    try {
+      // Add delay to respect Nominatim usage policy
+      await this.delay(1000);
+
+      const response = await fetch(
+        `${this.BASE_URL}/reverse?` +
+        `lat=${latitude}&` +
+        `lon=${longitude}&` +
+        `format=json&` +
+        `addressdetails=1&` +
+        `accept-language=vi`,
+        {
+          headers: {
+            'User-Agent': 'EzyFix-ReactNative-App/1.0',
+          }
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Reverse geocoding error:', error);
+      throw error;
+    }
+  }
+
   private extractMainAddress(item: any): string {
     const address = item.address || {};
     const parts = [

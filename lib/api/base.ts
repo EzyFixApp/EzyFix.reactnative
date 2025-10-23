@@ -11,6 +11,7 @@ import {
   REQUEST_TIMEOUT, 
   STORAGE_KEYS 
 } from './config';
+import { tokenManager } from './tokenManager';
 import type { 
   ApiResponse, 
   ApiError, 
@@ -46,6 +47,42 @@ export class BaseApiService {
   }
 
   /**
+   * Session expired handler callback
+   */
+  private onSessionExpiredCallback?: () => void;
+
+  /**
+   * Set callback for session expired event
+   */
+  public setOnSessionExpired(callback: () => void): void {
+    this.onSessionExpiredCallback = callback;
+  }
+
+  /**
+   * Handle session expired (401 Unauthorized)
+   */
+  private async handleSessionExpired(): Promise<void> {
+    try {
+      // Clear all auth tokens
+      await AsyncStorage.multiRemove([
+        STORAGE_KEYS.ACCESS_TOKEN,
+        STORAGE_KEYS.REFRESH_TOKEN,
+        STORAGE_KEYS.USER_DATA,
+        STORAGE_KEYS.USER_TYPE,
+      ]);
+      
+      logger.info('✅ Auth tokens cleared after session expiry');
+      
+      // Trigger callback (will be used to reset auth store and navigate)
+      if (this.onSessionExpiredCallback) {
+        this.onSessionExpiredCallback();
+      }
+    } catch (error) {
+      logger.error('❌ Error handling session expired:', error);
+    }
+  }
+
+  /**
    * Get stored refresh token
    */
   private async getRefreshToken(): Promise<string | null> {
@@ -58,22 +95,34 @@ export class BaseApiService {
   }
 
   /**
-   * Create authorization headers
+   * Create authorization headers with automatic token refresh
    */
   private async createAuthHeaders(): Promise<Record<string, string>> {
-    const token = await this.getAccessToken();
-    
-    if (__DEV__ && token) {
-      // Only log first and last 10 characters for security
-      const maskedToken = `${token.substring(0, 10)}...${token.substring(token.length - 10)}`;
-      console.log('Auth token available:', maskedToken);
-    } else if (__DEV__) {
-      console.warn('No auth token available for request');
+    try {
+      // Get valid token (auto refresh if needed)
+      const token = await tokenManager.getValidAccessToken();
+      
+      if (__DEV__ && token) {
+        // Only log first and last 10 characters for security
+        const maskedToken = `${token.substring(0, 10)}...${token.substring(token.length - 10)}`;
+        const timeLeft = tokenManager.getTimeUntilExpiry();
+        console.log(`✅ Valid token (expires in ${timeLeft}s):`, maskedToken);
+      } else if (__DEV__) {
+        console.warn('⚠️ No auth token available for request');
+      }
+      
+      return token 
+        ? { 'Authorization': `Bearer ${token}` }
+        : {};
+    } catch (error) {
+      logger.error('❌ Error getting valid token - refresh may have failed:', error);
+      
+      // Token refresh failed → Trigger logout
+      await this.handleSessionExpired();
+      
+      // Return empty headers to let the request fail gracefully
+      return {};
     }
-    
-    return token 
-      ? { 'Authorization': `Bearer ${token}` }
-      : {};
   }
 
   /**
@@ -94,7 +143,7 @@ export class BaseApiService {
   }
 
   /**
-   * Handle API response
+   * Handle response and parse data
    */
   private async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
     const contentType = response.headers.get('content-type');
@@ -107,7 +156,18 @@ export class BaseApiService {
     }
 
     if (!response.ok) {
-      throw this.createApiError(response.status, data);
+      const error = this.createApiError(response.status, data);
+      
+      // Handle 401 Unauthorized - session expired
+      if (response.status === 401) {
+        logger.warn('🔒 Session expired (401) - triggering logout');
+        // Clear tokens and trigger global logout - DON'T AWAIT to avoid blocking the error throw
+        this.handleSessionExpired().catch(err => {
+          logger.error('Error handling session expired:', err);
+        });
+      }
+      
+      throw error;
     }
 
     // If the response is already in ApiResponse format, return as is

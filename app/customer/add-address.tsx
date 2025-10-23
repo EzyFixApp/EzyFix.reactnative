@@ -355,7 +355,7 @@ function AddAddress() {
             <View style={styles.coordinatesRow}>
               <View style={styles.coordinateField}>
                 <InputField
-                  label="Vĩ độ (Latitude)"
+                  label="Vĩ độ"
                   value={formData.latitude?.toString() || ''}
                   onChangeText={(text) => {
                     const value = text ? parseFloat(text) : undefined;
@@ -367,7 +367,7 @@ function AddAddress() {
               
               <View style={styles.coordinateField}>
                 <InputField
-                  label="Kinh độ (Longitude)"
+                  label="Kinh độ"
                   value={formData.longitude?.toString() || ''}
                   onChangeText={(text) => {
                     const value = text ? parseFloat(text) : undefined;
@@ -382,21 +382,51 @@ function AddAddress() {
               style={styles.getCurrentLocationButton}
               onPress={async () => {
                 try {
+                  setLoading(true);
+                  
                   // Request location permission
                   const { status } = await Location.requestForegroundPermissionsAsync();
                   if (status !== 'granted') {
                     Alert.alert('Lỗi', 'Vui lòng cấp quyền truy cập vị trí để sử dụng tính năng này');
+                    setLoading(false);
                     return;
                   }
 
                   // Get current location
                   const location = await Location.getCurrentPositionAsync({});
-                  updateFormData('latitude', location.coords.latitude);
-                  updateFormData('longitude', location.coords.longitude);
+                  const { latitude, longitude } = location.coords;
                   
-                  Alert.alert('Thành công', 'Đã lấy vị trí hiện tại thành công!');
+                  // Update coordinates
+                  updateFormData('latitude', latitude);
+                  updateFormData('longitude', longitude);
+                  
+                  // Reverse geocode to get address components
+                  try {
+                    const result = await locationService.reverseGeocode(latitude, longitude);
+                    
+                    if (result) {
+                      // Parse address components
+                      const parsed = locationService.parseAddressComponents(result);
+                      
+                      // Update all address fields
+                      updateFormData('street', parsed.street || result.display_name);
+                      updateFormData('city', parsed.city);
+                      updateFormData('province', parsed.province);
+                      updateFormData('postalCode', parsed.postalCode);
+                      
+                      Alert.alert('Thành công', 'Đã lấy vị trí và địa chỉ hiện tại!');
+                    } else {
+                      Alert.alert('Thành công', 'Đã lấy tọa độ. Vui lòng điền thông tin địa chỉ thủ công.');
+                    }
+                  } catch (geocodeError) {
+                    console.error('Reverse geocode error:', geocodeError);
+                    Alert.alert('Cảnh báo', 'Đã lấy tọa độ nhưng không thể tự động điền địa chỉ. Vui lòng điền thủ công.');
+                  }
                 } catch (error) {
+                  console.error('Get location error:', error);
                   Alert.alert('Lỗi', 'Không thể lấy vị trí hiện tại');
+                } finally {
+                  setLoading(false);
                 }
               }}
             >
@@ -436,24 +466,29 @@ function AddAddress() {
         visible={showAddressModal}
         onClose={() => setShowAddressModal(false)}
         onAddressSelect={(address, lat, lng, components) => {
-          updateFormData('street', address);
           updateFormData('latitude', lat);
           updateFormData('longitude', lng);
           
           // Auto-parse and fill other fields using locationService
           if (components) {
-            // Create the proper structure for parseAddressComponents
-            const itemForParsing = {
-              display_name: components.display_name || address,
-              address: components.addressComponents || components
-            };
-            
-            const parsed = locationService.parseAddressComponents(itemForParsing);
-            
-            updateFormData('city', parsed.city);
-            updateFormData('province', parsed.province);
-            updateFormData('postalCode', parsed.postalCode);
+            // Check if we have parsed components from getCurrentLocation
+            if (components.parsed) {
+              const parsed = components.parsed;
+              updateFormData('street', parsed.street || address);
+              updateFormData('city', parsed.city);
+              updateFormData('province', parsed.province);
+              updateFormData('postalCode', parsed.postalCode);
+            } else {
+              // Parse from raw address components
+              const parsed = locationService.parseAddressComponents(components);
+              updateFormData('street', parsed.street || address);
+              updateFormData('city', parsed.city);
+              updateFormData('province', parsed.province);
+              updateFormData('postalCode', parsed.postalCode);
+            }
           } else {
+            // Fallback: only update street
+            updateFormData('street', address);
             updateFormData('city', 'Thành phố Hồ Chí Minh');
             updateFormData('province', 'Quận 1');
             updateFormData('postalCode', '700000');

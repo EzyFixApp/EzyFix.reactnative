@@ -2,6 +2,12 @@
  * Booking History Content Fragment
  * Extracted booking history content without header/footer
  * Used in tab-based container
+ * 
+ * Features:
+ * - Two-tab layout: Active Orders (Đang tiếp nhận) & History (Lịch sử)
+ * - Order filtering by status
+ * - Beautiful card design with status badges
+ * - Pull-to-refresh functionality
  */
 
 import React, { useState, useEffect } from 'react';
@@ -14,6 +20,7 @@ import {
   Animated,
   Alert,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,8 +28,11 @@ import { router, useFocusEffect } from 'expo-router';
 import { serviceRequestService } from '../lib/api/serviceRequests';
 import { servicesService } from '../lib/api/services';
 import { addressService } from '../lib/api/addresses';
+import { serviceDeliveryOffersService } from '../lib/api/serviceDeliveryOffers';
 import { ServiceRequestResponse } from '../types/api';
 import { useAuth } from '../store/authStore';
+import QuoteNotificationModal from './QuoteNotificationModal';
+import { useNotifications } from '../hooks/useNotifications';
 
 interface BookingItem {
   id: string;
@@ -39,10 +49,19 @@ interface BookingItem {
   addressNote?: string;
   requestedDate?: string;
   expectedStartTime?: string;
+  // Quote notification fields
+  pendingQuote?: {
+    offerID: string;
+    estimatedCost?: number;
+    finalCost?: number;
+    notes?: string;
+  };
 }
 
-// Check if booking is trackable (active order)
-const isTrackableStatus = (status: BookingItem['status']): boolean => {
+type TabType = 'active' | 'history';
+
+// Check if order is active (not completed or cancelled)
+const isActiveOrder = (status: BookingItem['status']): boolean => {
   return status !== 'completed' && status !== 'cancelled';
 };
 
@@ -55,8 +74,23 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
   const [bookings, setBookings] = useState<BookingItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>('active');
+  const [lastCheckedQuotes, setLastCheckedQuotes] = useState<Set<string>>(new Set());
   
-  const { isAuthenticated } = useAuth();
+  // Quote notification modal state
+  const [quoteModalVisible, setQuoteModalVisible] = useState(false);
+  const [selectedQuote, setSelectedQuote] = useState<{
+    offerID: string;
+    serviceName: string;
+    technicianName: string;
+    estimatedCost?: number;
+    finalCost?: number;
+    notes?: string;
+    serviceRequestId: string;
+  } | null>(null);
+  
+  const { isAuthenticated, user } = useAuth();
+  const { notifyNewQuote } = useNotifications();
 
   // Map API status to UI status
   const mapApiStatus = (apiStatus: string): BookingItem['status'] => {
@@ -66,6 +100,7 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
         return 'searching';
       case 'quoted':
         return 'quoted';
+      case 'quote_accepted':
       case 'accepted':
         return 'accepted';
       case 'in_progress':
@@ -107,35 +142,80 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
             serviceName = request.serviceDescription || 'Dịch vụ';
           }
 
-          // Get address details from addressID
-          if (request.addressID) {
-            try {
-              const addressResponse = await addressService.getAddressById(request.addressID);
-              const address = addressResponse as any;
-              addressText = address.street || 'Địa chỉ chưa cập nhật';
-            } catch (error) {
-              addressText = request.addressNote || 'Địa chỉ chưa cập nhật';
+          // Use requestAddress from API response (already contains full address text)
+          // No need to fetch addressID separately
+          addressText = request.requestAddress || request.addressNote || 'Địa chỉ chưa cập nhật';
+          
+          // Check for pending quotes
+          let pendingQuote = undefined;
+          try {
+            const pendingOffers = await serviceDeliveryOffersService.getPendingOffers(request.requestID);
+            
+            if (__DEV__) {
+              console.log(`📋 [Customer] Request ${request.requestID} - Status: ${request.status}, Pending Offers: ${pendingOffers.length}`);
             }
-          } else {
-            addressText = request.addressNote || 'Địa chỉ chưa cập nhật';
+            
+            if (pendingOffers.length > 0) {
+              // Take the first pending offer (most recent)
+              const offer = pendingOffers[0];
+              pendingQuote = {
+                offerID: offer.offerId, // Backend uses lowercase 'offerId'
+                estimatedCost: offer.estimatedCost,
+                finalCost: offer.finalCost,
+                notes: offer.notes,
+              };
+              
+              if (__DEV__) {
+                console.log(`💰 [Customer] Found quote for ${request.requestID}:`, {
+                  offerID: offer.offerId,
+                  estimatedCost: offer.estimatedCost,
+                  finalCost: offer.finalCost
+                });
+              }
+
+              // Send notification if this is a NEW quote (not checked before)
+              if (!lastCheckedQuotes.has(offer.offerId)) {
+                const amount = offer.estimatedCost || offer.finalCost || 0;
+                await notifyNewQuote({
+                  type: 'new_quote',
+                  quoteId: offer.offerId,
+                  serviceRequestId: request.requestID,
+                  serviceName,
+                  technicianName: offer.technicianId, // TODO: Get technician name
+                  amount,
+                  isEstimated: !!offer.estimatedCost,
+                  notes: offer.notes,
+                });
+
+                // Mark this quote as checked
+                setLastCheckedQuotes(prev => new Set(prev).add(offer.offerId));
+              }
+            }
+          } catch (error) {
+            if (__DEV__) console.warn(`[Customer] Could not fetch pending quotes for ${request.requestID}`);
+          }
+
+          const mappedStatus = mapApiStatus(request.status);
+          
+          if (__DEV__) {
+            console.log(`📦 [Customer] Booking ${request.requestID}: API Status="${request.status}" → UI Status="${mappedStatus}", Has Quote: ${!!pendingQuote}`);
           }
           
-          const transformedItem = {
-            id: request.id || `booking-${Date.now()}-${Math.random()}`,
-            serviceName: serviceName,
+          return {
+            id: request.requestID || `booking-${Date.now()}-${Math.random()}`,
+            serviceName,
             servicePrice: 'Đang cập nhật',
-            customerName: '',
-            phoneNumber: '',
+            customerName: request.fullName || user?.firstName || '',
+            phoneNumber: request.phoneNumber || user?.email || '',
             address: addressText,
-            status: mapApiStatus(request.status),
-            createdAt: request.createdAt || new Date().toISOString(),
+            status: mappedStatus,
+            createdAt: request.createdDate || new Date().toISOString(),
             notes: request.serviceDescription,
-            addressNote: request.addressNote,
+            addressNote: request.addressNote || undefined,
             requestedDate: request.requestedDate,
             expectedStartTime: request.expectedStartTime,
+            pendingQuote,
           };
-          
-          return transformedItem;
         })
       );
       
@@ -183,6 +263,16 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
     loadBookings(true);
   };
 
+  // Filter bookings based on active tab
+  const filteredBookings = bookings.filter((booking) => {
+    if (activeTab === 'active') {
+      return isActiveOrder(booking.status);
+    } else {
+      return !isActiveOrder(booking.status);
+    }
+  });
+
+  // Get status info (color, text, icon)
   const getStatusInfo = (status: BookingItem['status']) => {
     switch (status) {
       case 'searching':
@@ -190,116 +280,313 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
           text: 'Đang tìm thợ',
           color: '#F59E0B',
           backgroundColor: '#FEF3C7',
-          borderColor: '#F59E0B',
+          icon: 'search' as const,
         };
       case 'quoted':
         return {
           text: 'Có báo giá',
           color: '#3B82F6',
           backgroundColor: '#DBEAFE',
-          borderColor: '#3B82F6',
+          icon: 'document-text' as const,
+        };
+      case 'accepted':
+        return {
+          text: 'Đã chấp nhận',
+          color: '#8B5CF6',
+          backgroundColor: '#EDE9FE',
+          icon: 'checkmark-circle' as const,
+        };
+      case 'in-progress':
+        return {
+          text: 'Đang thực hiện',
+          color: '#06B6D4',
+          backgroundColor: '#CFFAFE',
+          icon: 'construct' as const,
         };
       case 'completed':
         return {
           text: 'Hoàn thành',
           color: '#10B981',
           backgroundColor: '#D1FAE5',
-          borderColor: '#10B981',
+          icon: 'checkmark-done-circle' as const,
+        };
+      case 'cancelled':
+        return {
+          text: 'Đã hủy',
+          color: '#EF4444',
+          backgroundColor: '#FEE2E2',
+          icon: 'close-circle' as const,
         };
       default:
         return {
           text: 'Đang xử lý',
           color: '#6B7280',
           backgroundColor: '#F3F4F6',
-          borderColor: '#6B7280',
+          icon: 'time' as const,
         };
     }
   };
 
+  // Render booking card
   const renderBookingCard = (booking: BookingItem) => {
     const statusInfo = getStatusInfo(booking.status);
+    const isActive = isActiveOrder(booking.status);
     
     return (
       <TouchableOpacity
-        style={styles.bookingCard}
-        onPress={() => router.push({
-          pathname: './order-tracking',
-          params: { orderId: booking.id }
-        } as any)}
+        key={booking.id}
+        style={[
+          styles.bookingCard,
+          { borderLeftColor: statusInfo.color },
+        ]}
+        onPress={() =>
+          router.push({
+            pathname: './order-tracking',
+            params: { orderId: booking.id },
+          } as any)
+        }
         activeOpacity={0.7}
       >
+        {/* Card Header */}
         <View style={styles.cardHeader}>
           <View style={styles.serviceInfo}>
-            <Text style={styles.serviceName}>{booking.serviceName}</Text>
+            <Text style={styles.serviceName} numberOfLines={1}>
+              {booking.serviceName}
+            </Text>
             <Text style={styles.serviceDate}>
-              {new Date(booking.createdAt).toLocaleDateString('vi-VN')} • {new Date(booking.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+              {new Date(booking.createdAt).toLocaleDateString('vi-VN', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+              })}{' '}
+              •{' '}
+              {new Date(booking.createdAt).toLocaleTimeString('vi-VN', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
             </Text>
           </View>
-          <View style={[
-            styles.statusBadge,
-            { backgroundColor: statusInfo.backgroundColor }
-          ]}>
-            <Text style={[
-              styles.statusText,
-              { color: statusInfo.color }
-            ]}>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: statusInfo.backgroundColor },
+            ]}
+          >
+            <Ionicons name={statusInfo.icon} size={14} color={statusInfo.color} />
+            <Text style={[styles.statusText, { color: statusInfo.color }]}>
               {statusInfo.text}
             </Text>
           </View>
         </View>
 
+        {/* Card Body */}
         <View style={styles.cardBody}>
+          {/* Address */}
           <View style={styles.infoRow}>
-            <Ionicons name="location-outline" size={16} color="#6B7280" />
-            <Text style={styles.addressText}>{booking.address}</Text>
+            <Ionicons name="location-outline" size={16} color="#64748B" />
+            <Text style={styles.infoText} numberOfLines={2}>
+              {booking.address}
+            </Text>
           </View>
-          
-          {booking.technicianName && (
+
+          {/* Customer Info */}
+          <View style={styles.infoRow}>
+            <Ionicons name="person-outline" size={16} color="#64748B" />
+            <Text style={styles.infoText}>
+              {booking.customerName} • {booking.phoneNumber}
+            </Text>
+          </View>
+
+          {/* Scheduled Time */}
+          {booking.requestedDate && (
             <View style={styles.infoRow}>
-              <Ionicons name="person-outline" size={16} color="#6B7280" />
-              <Text style={styles.technicianText}>Thợ: {booking.technicianName}</Text>
+              <Ionicons name="calendar-outline" size={16} color="#64748B" />
+              <Text style={styles.infoText}>
+                Lịch hẹn:{' '}
+                {new Date(booking.requestedDate).toLocaleDateString('vi-VN', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                })}
+                {booking.expectedStartTime &&
+                  ` - ${new Date(booking.expectedStartTime).toLocaleTimeString('vi-VN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}`}
+              </Text>
             </View>
           )}
 
-          <View style={styles.priceRow}>
+          {/* Notes */}
+          {booking.notes && (
+            <View style={styles.notesContainer}>
+              <Text style={styles.notesText} numberOfLines={2}>
+                {booking.notes}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Card Footer */}
+        <View style={styles.cardFooter}>
+          <View style={styles.priceContainer}>
             <Text style={styles.priceLabel}>Giá dịch vụ:</Text>
             <Text style={styles.priceText}>
               {booking.quotePrice || booking.servicePrice}
             </Text>
           </View>
-        </View>
 
-        <View style={styles.cardFooter}>
-          {isTrackableStatus(booking.status) ? (
+          {/* Show "Xem báo giá" button if status is 'quoted' and has pendingQuote */}
+          {booking.status === 'quoted' && booking.pendingQuote ? (
+            <TouchableOpacity
+              style={styles.quoteButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                setSelectedQuote({
+                  offerID: booking.pendingQuote!.offerID,
+                  serviceName: booking.serviceName,
+                  technicianName: booking.technicianName || 'Thợ',
+                  estimatedCost: booking.pendingQuote!.estimatedCost,
+                  finalCost: booking.pendingQuote!.finalCost,
+                  notes: booking.pendingQuote!.notes,
+                  serviceRequestId: booking.id,
+                });
+                setQuoteModalVisible(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <LinearGradient
+                colors={['#10B981', '#059669']}
+                style={styles.quoteGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Ionicons name="receipt" size={16} color="#FFFFFF" />
+                <Text style={styles.quoteButtonText}>Xem báo giá</Text>
+                <View style={styles.newBadge}>
+                  <Text style={styles.newBadgeText}>MỚI</Text>
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          ) : isActive ? (
             <TouchableOpacity
               style={styles.trackButton}
               onPress={(e) => {
                 e.stopPropagation();
                 router.push({
                   pathname: './order-tracking',
-                  params: { orderId: booking.id }
+                  params: { orderId: booking.id },
                 } as any);
               }}
               activeOpacity={0.7}
             >
-              <Ionicons name="location" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-              <Text style={styles.trackButtonText}>Theo dõi đơn</Text>
+              <LinearGradient
+                colors={['#609CEF', '#4F8BE8']}
+                style={styles.trackGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Ionicons name="location" size={16} color="#FFFFFF" />
+                <Text style={styles.trackButtonText}>Theo dõi</Text>
+              </LinearGradient>
             </TouchableOpacity>
           ) : (
-            <>
-              <Text style={styles.viewDetails}>Xem đơn hàng</Text>
+            <TouchableOpacity style={styles.viewDetailsButton} activeOpacity={0.7}>
+              <Text style={styles.viewDetailsText}>Chi tiết</Text>
               <Ionicons name="chevron-forward" size={16} color="#609CEF" />
-            </>
+            </TouchableOpacity>
           )}
         </View>
       </TouchableOpacity>
     );
   };
 
+  // Render empty state
+  const renderEmptyState = () => {
+    const isActiveTab = activeTab === 'active';
+
+    return (
+      <View style={styles.emptyState}>
+        <View style={styles.emptyIconContainer}>
+          <LinearGradient
+            colors={['#F3F4F6', '#E5E7EB']}
+            style={styles.emptyIconGradient}
+          >
+            <Ionicons
+              name={isActiveTab ? 'clipboard-outline' : 'time-outline'}
+              size={48}
+              color="#9CA3AF"
+            />
+          </LinearGradient>
+        </View>
+        <Text style={styles.emptyTitle}>
+          {isActiveTab ? 'Chưa có đơn hàng đang thực hiện' : 'Chưa có lịch sử đơn hàng'}
+        </Text>
+        <Text style={styles.emptySubtitle}>
+          {isActiveTab
+            ? 'Các đơn hàng đang được xử lý sẽ hiển thị ở đây'
+            : 'Lịch sử các đơn hàng đã hoàn thành hoặc hủy sẽ hiển thị ở đây'}
+        </Text>
+        {isActiveTab && (
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => router.push('./all-services' as any)}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={['#609CEF', '#4F8BE8']}
+              style={styles.createGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Ionicons name="add" size={20} color="white" />
+              <Text style={styles.createButtonText}>Đặt dịch vụ ngay</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
+      {/* Tab Selector */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'active' && styles.activeTab]}
+          onPress={() => setActiveTab('active')}
+          activeOpacity={0.7}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'active' && styles.activeTabText,
+            ]}
+          >
+            Đang tiếp nhận
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'history' && styles.activeTab]}
+          onPress={() => setActiveTab('history')}
+          activeOpacity={0.7}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'history' && styles.activeTabText,
+            ]}
+          >
+            Lịch sử
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Content */}
       <ScrollView
         style={styles.scrollContainer}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         bounces={true}
         refreshControl={
@@ -311,58 +598,59 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
           />
         }
       >
-        {/* Simple Header */}
-        <View style={styles.simpleHeader}>
-          <Text style={styles.simpleTitle}>Danh sách yêu cầu</Text>
-        </View>
-
-        <View style={styles.bookingsList}>
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>Đang tải lịch sử đặt lịch...</Text>
-            </View>
-          ) : bookings.length > 0 ? (
-            bookings.map((booking: BookingItem, index: number) => (
-              <View key={booking.id || `booking-${index}`}>
-                {renderBookingCard(booking)}
-              </View>
-            ))
-          ) : (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconContainer}>
-                <LinearGradient
-                  colors={['#F3F4F6', '#E5E7EB']}
-                  style={styles.emptyIconGradient}
-                >
-                  <Ionicons name="document-outline" size={48} color="#9CA3AF" />
-                </LinearGradient>
-              </View>
-              <Text style={styles.emptyTitle}>
-                Chưa có lịch sử đặt lịch
-              </Text>
-              <Text style={styles.emptySubtitle}>
-                Các yêu cầu dịch vụ của bạn sẽ hiển thị ở đây
-              </Text>
-              <TouchableOpacity
-                style={styles.createButton}
-                onPress={() => router.push('./all-services' as any)}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={['#609CEF', '#4F8BE8']}
-                  style={styles.createGradient}
-                >
-                  <Ionicons name="add" size={20} color="white" style={styles.createIcon} />
-                  <Text style={styles.createButtonText}>Đặt dịch vụ ngay</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Đang tải đơn hàng...</Text>
+          </View>
+        ) : filteredBookings.length > 0 ? (
+          <View style={styles.bookingsList}>
+            {filteredBookings.map((booking) => renderBookingCard(booking))}
+          </View>
+        ) : (
+          renderEmptyState()
+        )}
 
         {/* Bottom Spacing */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
+      
+      {/* Quote Notification Modal */}
+      {selectedQuote && (
+        <QuoteNotificationModal
+          visible={quoteModalVisible}
+          quote={selectedQuote}
+          onClose={() => {
+          setQuoteModalVisible(false);
+          setSelectedQuote(null);
+        }}
+        onAccepted={async () => {
+          if (selectedQuote) {
+            try {
+              await serviceDeliveryOffersService.acceptQuote(selectedQuote.offerID);
+              setQuoteModalVisible(false);
+              setSelectedQuote(null);
+              // Reload bookings to reflect changes
+              loadBookings(true);
+            } catch (error: any) {
+              Alert.alert('Lỗi', error.message || 'Không thể chấp nhận báo giá');
+            }
+          }
+        }}
+        onRejected={async () => {
+          if (selectedQuote) {
+            try {
+              await serviceDeliveryOffersService.rejectQuote(selectedQuote.offerID);
+              setQuoteModalVisible(false);
+              setSelectedQuote(null);
+              // Reload bookings to reflect changes
+              loadBookings(true);
+            } catch (error: any) {
+              Alert.alert('Lỗi', error.message || 'Không thể từ chối báo giá');
+            }
+          }
+        }}
+        />
+      )}
     </View>
   );
 }
@@ -372,54 +660,100 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
+
+  // Tab Container
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
+    gap: 12,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    gap: 8,
+  },
+  activeTab: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#609CEF',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  activeTabText: {
+    color: '#609CEF',
+  },
+  badge: {
+    backgroundColor: '#609CEF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    minWidth: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyBadge: {
+    backgroundColor: '#64748B',
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
+  // Content
   scrollContainer: {
     flex: 1,
   },
-
-  // Simple Header Styles
-  simpleHeader: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    marginTop: 12,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
-  simpleTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1E293B',
+  scrollContent: {
+    flexGrow: 1,
   },
 
-  // Booking Cards
+  // Bookings List
   bookingsList: {
     paddingHorizontal: 20,
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    paddingTop: 16,
   },
   bookingCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 16,
     borderLeftWidth: 4,
     borderWidth: 1,
     borderColor: '#F1F5F9',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
+
+  // Card Header
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
+    gap: 12,
   },
   serviceInfo: {
     flex: 1,
@@ -431,30 +765,39 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   serviceDate: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#64748B',
     fontWeight: '500',
   },
   statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 12,
-    alignItems: 'center',
-    minWidth: 90,
+    borderRadius: 8,
+    gap: 4,
   },
   statusText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+
+  // Card Body
   cardBody: {
-    marginBottom: 12,
+    gap: 10,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    gap: 8,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#475569',
+    lineHeight: 18,
   },
   addressText: {
     fontSize: 14,
@@ -469,97 +812,171 @@ const styles = StyleSheet.create({
     flex: 1,
     fontWeight: '500',
   },
-  priceRow: {
+  notesContainer: {
+    backgroundColor: '#F8FAFC',
+    padding: 10,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#CBD5E1',
+  },
+  notesText: {
+    fontSize: 13,
+    color: '#475569',
+    fontStyle: 'italic',
+    lineHeight: 18,
+  },
+
+  // Card Footer
+  cardFooter: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 4,
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  priceContainer: {
+    flex: 1,
   },
   priceLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#64748B',
     fontWeight: '500',
+    marginBottom: 2,
   },
   priceText: {
     fontSize: 16,
     fontWeight: '700',
     color: '#059669',
   },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-    gap: 4,
+  quoteButton: {
+    borderRadius: 10,
+    overflow: 'hidden',
+    alignSelf: 'flex-start',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#10B981',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
-  viewDetails: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#609CEF',
-  },
-  trackButton: {
-    flex: 1,
+  quoteGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#609CEF',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    shadowColor: '#609CEF',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 3,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    gap: 6,
   },
-  trackButtonText: {
-    fontSize: 14,
+  quoteButtonText: {
+    fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.3,
   },
+  newBadge: {
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  newBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#EF4444',
+    letterSpacing: 0.5,
+  },
+  trackButton: {
+    borderRadius: 10,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#609CEF',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  trackGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    gap: 6,
+  },
+  trackButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  viewDetailsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  viewDetailsText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#609CEF',
+  },
 
   // Empty State
   emptyState: {
+    flex: 1,
     alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 20,
+    justifyContent: 'center',
+    paddingVertical: 80,
+    paddingHorizontal: 32,
   },
   emptyIconContainer: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   emptyIconGradient: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     justifyContent: 'center',
     alignItems: 'center',
   },
   emptyTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#374151',
+    color: '#1E293B',
     marginBottom: 8,
     textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#6B7280',
+    color: '#64748B',
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 32,
-    paddingHorizontal: 16,
   },
   createButton: {
     borderRadius: 12,
     overflow: 'hidden',
-    shadowColor: '#609CEF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 4,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#609CEF',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
   },
   createGradient: {
     flexDirection: 'row',
@@ -567,6 +984,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
     paddingVertical: 14,
+    gap: 8,
   },
   createIcon: {
     marginRight: 6,
@@ -574,17 +992,20 @@ const styles = StyleSheet.create({
   createButtonText: {
     fontSize: 15,
     fontWeight: '700',
-    color: 'white',
+    color: '#FFFFFF',
     letterSpacing: 0.3,
   },
 
   loadingContainer: {
-    paddingVertical: 40,
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 60,
   },
   loadingText: {
-    fontSize: 16,
-    color: '#6B7280',
+    marginTop: 16,
+    fontSize: 14,
+    color: '#64748B',
     fontWeight: '500',
   },
 

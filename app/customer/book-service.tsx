@@ -25,6 +25,14 @@ import AddressSearchInput from '../../components/AddressSearchInput';
 import type { BookingFormData, ServiceRequestData, Address } from '../../types/api';
 import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
+// Interface for tracking uploaded media
+interface UploadedMedia {
+  mediaID: string;      // ID from backend
+  fileURL: string;      // Backend URL for submission
+  localUri: string;     // Local URI for display
+  isUploading?: boolean; // Upload in progress
+}
+
 function BookService() {
   const params = useLocalSearchParams();
   const serviceName = params.serviceName as string || 'Dịch vụ';
@@ -34,6 +42,32 @@ function BookService() {
   // Get user data from auth
   const { user } = useAuth();
 
+  // Helper function to get current Vietnam time (UTC+7)
+  const getVietnamDate = () => {
+    const now = new Date();
+    const vietnamTime = new Date(now.getTime() + (7 * 60 * 60 * 1000)); // UTC+7
+    return vietnamTime;
+  };
+
+  // Helper function to create Date from time string in Vietnam timezone
+  const createDateFromTime = (timeString: string) => {
+    try {
+      const [hours, minutes] = timeString.split(':');
+      const hoursNum = parseInt(hours) || 9; // Default to 9 if invalid
+      const minutesNum = parseInt(minutes) || 0; // Default to 0 if invalid
+      
+      const date = new Date(); // Use current local time
+      date.setHours(hoursNum, minutesNum, 0, 0);
+      console.log('createDateFromTime:', timeString, '->', date.getHours(), date.getMinutes());
+      return date;
+    } catch (error) {
+      console.error('Error creating date from time:', error);
+      const fallbackDate = new Date();
+      fallbackDate.setHours(9, 0, 0, 0);
+      return fallbackDate;
+    }
+  };
+
   const [formData, setFormData] = useState<BookingFormData>({
     customerName: user?.fullName || '',
     phoneNumber: user?.phoneNumber || '', // Get phone number from auth
@@ -42,12 +76,20 @@ function BookService() {
     servicePrice: servicePrice,
     serviceDescription: '', // User input for service description
     address: '',
-    addressId: '', // ID of selected address
+    addressID: '', // ID of selected address (changed from addressId to addressID)
     addressNote: '',
     requestedDate: new Date().toISOString().split('T')[0], // Today's date
     expectedStartTime: '09:00',
-    images: []
+    images: [] // Keep for backward compatibility (display only)
   });
+  
+  // Separate state for picker values to prevent re-render issues
+  const [pickerTimeValue, setPickerTimeValue] = useState<Date>(() => createDateFromTime('09:00'));
+  const [pickerDateValue, setPickerDateValue] = useState<Date>(() => new Date());
+
+  // NEW: Track uploaded media with backend IDs and URLs
+  const [uploadedMedia, setUploadedMedia] = useState<UploadedMedia[]>([]);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(false);
@@ -133,7 +175,7 @@ function BookService() {
       setFormData(prev => ({
         ...prev,
         customerName: user.fullName || '',
-        // phoneNumber can be added if available in user data
+        phoneNumber: user.phoneNumber || ''
       }));
     }
   }, [user]);
@@ -160,7 +202,16 @@ function BookService() {
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
 
-    // Customer name and phone number are now read-only from auth, no validation needed
+    // Validate customer name and phone number (now editable)
+    if (!formData.customerName.trim()) {
+      newErrors.customerName = 'Vui lòng nhập tên khách hàng';
+    }
+
+    if (!formData.phoneNumber.trim()) {
+      newErrors.phoneNumber = 'Vui lòng nhập số điện thoại';
+    } else if (!/^[0-9+\s\-()]{9,15}$/.test(formData.phoneNumber.trim())) {
+      newErrors.phoneNumber = 'Số điện thoại không hợp lệ';
+    }
     
     if (!formData.address.trim()) {
       newErrors.address = 'Vui lòng chọn địa chỉ từ danh sách hoặc thêm địa chỉ mới';
@@ -249,35 +300,90 @@ function BookService() {
 
   // Date/Time picker handlers
   const handleDateChange = (event: any, selectedDate?: Date) => {
+    const currentDate = selectedDate || new Date(formData.requestedDate);
+    
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
-    }
-    
-    if (selectedDate) {
-      const dateString = selectedDate.toISOString().split('T')[0];
-      handleInputChange('requestedDate', dateString);
-    }
-    
-    if (Platform.OS === 'ios') {
-      setShowDatePicker(false);
+      if (event.type === 'set' && selectedDate) {
+        setPickerDateValue(selectedDate);
+        const dateString = selectedDate.toISOString().split('T')[0];
+        handleInputChange('requestedDate', dateString);
+      }
+    } else {
+      // iOS: update immediately while picker is open
+      if (selectedDate) {
+        setPickerDateValue(selectedDate);
+        const dateString = selectedDate.toISOString().split('T')[0];
+        handleInputChange('requestedDate', dateString);
+      }
     }
   };
 
   const handleTimeChange = (event: any, selectedTime?: Date) => {
+    if (!selectedTime) return;
+    
+    console.log('Time changed:', selectedTime.getHours(), selectedTime.getMinutes());
+    
+    // Update picker value immediately for smooth scrolling
+    setPickerTimeValue(selectedTime);
+    
     if (Platform.OS === 'android') {
       setShowTimePicker(false);
-    }
-    
-    if (selectedTime) {
+      if (event.type === 'set') {
+        const hours = selectedTime.getHours().toString().padStart(2, '0');
+        const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
+        const timeString = `${hours}:${minutes}`;
+        console.log('Android time string:', timeString);
+        handleInputChange('expectedStartTime', timeString);
+      }
+    } else {
+      // iOS: update form data immediately while picker is open
       const hours = selectedTime.getHours().toString().padStart(2, '0');
       const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
       const timeString = `${hours}:${minutes}`;
+      console.log('iOS time string:', timeString);
       handleInputChange('expectedStartTime', timeString);
     }
+  };
+
+  const handleCloseDatePicker = () => {
+    setShowDatePicker(false);
+  };
+
+  const handleCloseTimePicker = () => {
+    setShowTimePicker(false);
+  };
+  
+  // Sync picker values with form data
+  useEffect(() => {
+    const timeDate = createDateFromTime(formData.expectedStartTime);
+    setPickerTimeValue(timeDate);
+  }, [formData.expectedStartTime]);
+  
+  useEffect(() => {
+    const date = formData.requestedDate ? new Date(formData.requestedDate) : new Date();
+    setPickerDateValue(date);
+  }, [formData.requestedDate]);
+  
+  // Update picker values when opening pickers
+  const handleOpenDatePicker = () => {
+    const date = formData.requestedDate ? new Date(formData.requestedDate) : getVietnamDate();
+    setPickerDateValue(date);
+    setShowDatePicker(true);
+  };
+  
+  const handleOpenTimePicker = () => {
+    console.log('Opening time picker with expectedStartTime:', formData.expectedStartTime);
     
-    if (Platform.OS === 'ios') {
-      setShowTimePicker(false);
-    }
+    // Force create a fresh Date object
+    const currentTime = formData.expectedStartTime || '09:00';
+    const [hours, minutes] = currentTime.split(':');
+    const timeDate = new Date();
+    timeDate.setHours(parseInt(hours) || 9, parseInt(minutes) || 0, 0, 0);
+    
+    console.log('Created time date:', timeDate.toString(), 'Hours:', timeDate.getHours(), 'Minutes:', timeDate.getMinutes());
+    setPickerTimeValue(timeDate);
+    setShowTimePicker(true);
   };
 
   // Load saved addresses
@@ -310,11 +416,11 @@ function BookService() {
   };
 
   // Handle address selection with consistent logic
-  const selectAddress = (address: string, addressId?: string, coordinates?: { latitude: number; longitude: number; components?: any }) => {
+  const selectAddress = (address: string, addressID?: string, coordinates?: { latitude: number; longitude: number; components?: any }) => {
     setFormData(prev => ({ 
       ...prev, 
       address: address,
-      addressId: addressId || '' 
+      addressID: addressID || '' 
     }));
     
     if (coordinates) {
@@ -356,7 +462,7 @@ function BookService() {
 
   const pickImage = async () => {
     // Check if already at max limit
-    if (formData.images.length >= 4) {
+    if (uploadedMedia.length >= 4) {
       Alert.alert(
         'Đã đạt giới hạn',
         'Bạn chỉ có thể thêm tối đa 4 ảnh. Vui lòng xóa ảnh cũ để thêm ảnh mới.',
@@ -419,11 +525,8 @@ function BookService() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        const newImage = result.assets[0].uri;
-        setFormData(prev => ({
-          ...prev,
-          images: [...prev.images, newImage]
-        }));
+        const localUri = result.assets[0].uri;
+        await uploadImageImmediately(localUri);
       }
     } catch (error) {
       console.error('Error taking photo:', error);
@@ -441,11 +544,8 @@ function BookService() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        const newImage = result.assets[0].uri;
-        setFormData(prev => ({
-          ...prev,
-          images: [...prev.images, newImage]
-        }));
+        const localUri = result.assets[0].uri;
+        await uploadImageImmediately(localUri);
       }
     } catch (error) {
       console.error('Error picking image:', error);
@@ -453,11 +553,135 @@ function BookService() {
     }
   };
 
-  const removeImage = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      images: prev.images.filter((_, i) => i !== index)
-    }));
+  // NEW: Upload image immediately after selection
+  // TODO: Backend team - Please update POST /api/v1/media to accept empty requestID
+  // The requestID should be nullable/optional, and will be linked when service request is created
+  const uploadImageImmediately = async (localUri: string) => {
+    // Create a temporary ID outside try block for error handler access
+    const tempId = `temp-${Date.now()}`;
+    
+    try {
+      setIsUploadingImage(true);
+
+      // Create a temporary placeholder while uploading
+      const tempMedia: UploadedMedia = {
+        mediaID: tempId,
+        fileURL: '',
+        localUri: localUri,
+        isUploading: true
+      };
+      
+      setUploadedMedia(prev => [...prev, tempMedia]);
+
+      // Prepare file for upload
+      const file = {
+        uri: localUri,
+        type: 'image/jpeg',
+        name: `issue_${Date.now()}.jpg`
+      };
+
+      // Upload to backend with empty requestID (backend should accept this)
+      // Backend will link this media to the actual requestID when service request is created
+      const uploadResponse = await mediaService.uploadMedia({
+        requestID: '', // Empty string - backend should allow this and link later
+        file,
+        mediaType: 'ISSUE' as MediaType
+      });
+
+      // Update with actual backend data
+      setUploadedMedia(prev => 
+        prev.map(media => 
+          media.mediaID === tempId 
+            ? {
+                mediaID: uploadResponse.mediaID,
+                fileURL: uploadResponse.fileURL,
+                localUri: localUri,
+                isUploading: false
+              }
+            : media
+        )
+      );
+
+      // Also update formData.images for backward compatibility
+      setFormData(prev => ({
+        ...prev,
+        images: [...prev.images, localUri]
+      }));
+
+      if (__DEV__) {
+        console.log('✅ Image uploaded successfully:', {
+          mediaID: uploadResponse.mediaID,
+          fileURL: uploadResponse.fileURL
+        });
+      }
+    } catch (error: any) {
+      console.error('❌ Image upload failed:', error);
+      
+      // Remove temporary placeholder on error
+      setUploadedMedia(prev => prev.filter(media => media.mediaID !== tempId));
+      
+      Alert.alert(
+        'Lỗi tải ảnh',
+        error.message || 'Không thể tải ảnh lên. Vui lòng thử lại.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const removeImage = async (index: number) => {
+    try {
+      const mediaToDelete = uploadedMedia[index];
+      
+      if (!mediaToDelete) {
+        console.warn('No media found at index:', index);
+        return;
+      }
+
+      // Show confirmation dialog
+      Alert.alert(
+        'Xóa ảnh',
+        'Bạn có chắc muốn xóa ảnh này?',
+        [
+          { text: 'Hủy', style: 'cancel' },
+          {
+            text: 'Xóa',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                // Only call DELETE API if upload was successful (not temp ID)
+                if (mediaToDelete.mediaID && !mediaToDelete.mediaID.startsWith('temp-')) {
+                  await mediaService.deleteMedia(mediaToDelete.mediaID);
+                  
+                  if (__DEV__) {
+                    console.log('✅ Image deleted from server:', mediaToDelete.mediaID);
+                  }
+                }
+
+                // Remove from state
+                setUploadedMedia(prev => prev.filter((_, i) => i !== index));
+                
+                // Also update formData.images for backward compatibility
+                setFormData(prev => ({
+                  ...prev,
+                  images: prev.images.filter((_, i) => i !== index)
+                }));
+              } catch (error: any) {
+                console.error('❌ Image delete failed:', error);
+                Alert.alert(
+                  'Lỗi xóa ảnh',
+                  error.message || 'Không thể xóa ảnh. Vui lòng thử lại.',
+                  [{ text: 'OK' }]
+                );
+              }
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Error removing image:', error);
+    }
   };
 
   const openImageViewer = (imageUri: string, index: number) => {
@@ -481,61 +705,97 @@ function BookService() {
       setLoading(true);
 
       // Validate required fields
-      if (!formData.addressId) {
+      if (!formData.addressID) {
         Alert.alert('Lỗi', 'Vui lòng chọn địa chỉ');
         setLoading(false);
         return;
       }
 
-      // First, create the service request to get requestID
-      const requestData: ServiceRequestData = {
-        request: formData.serviceDescription,
-        addressID: formData.addressId,
-        serviceId: formData.serviceId,
-        serviceDescription: formData.serviceDescription,
-        addressNote: formData.addressNote || '',
-        requestedDate: new Date(formData.requestedDate).toISOString(),
-        expectedStartTime: new Date(`${formData.requestedDate}T${formData.expectedStartTime}:00`).toISOString(),
-        mediaUrls: [] // Initially empty, will update after image upload
+      // Validate fullName and phoneNumber before creating request
+      if (!formData.customerName || !formData.customerName.trim()) {
+        Alert.alert('Lỗi', 'Vui lòng nhập tên khách hàng');
+        setLoading(false);
+        return;
+      }
+
+      if (!formData.phoneNumber || !formData.phoneNumber.trim()) {
+        Alert.alert('Lỗi', 'Vui lòng nhập số điện thoại');
+        setLoading(false);
+        return;
+      }
+
+      // Check if any images are still uploading
+      const hasUploadingImages = uploadedMedia.some(media => media.isUploading);
+      if (hasUploadingImages) {
+        Alert.alert(
+          'Vui lòng đợi',
+          'Đang tải ảnh lên. Vui lòng đợi quá trình tải hoàn tất.',
+          [{ text: 'OK' }]
+        );
+        setLoading(false);
+        return;
+      }
+
+      // Helper to create Vietnam timezone datetime (UTC+7)
+      const createVietnamDateTime = (dateString: string, timeString?: string) => {
+        // Parse date components
+        const [year, month, day] = dateString.split('-').map(Number);
+        
+        // Parse time components (default to 00:00 if not provided)
+        let hours = 0, minutes = 0;
+        if (timeString) {
+          [hours, minutes] = timeString.split(':').map(Number);
+        }
+        
+        // Create UTC date and manually adjust for Vietnam timezone (UTC+7)
+        // Vietnam time = UTC + 7 hours, so we subtract 7 hours to get UTC
+        const date = new Date(Date.UTC(year, month - 1, day, hours - 7, minutes, 0, 0));
+        
+        return date.toISOString();
       };
 
+      // Extract fileURLs from uploaded media (images already uploaded)
+      const mediaUrls = uploadedMedia
+        .filter(media => !media.isUploading && media.fileURL) // Only include successfully uploaded
+        .map(media => media.fileURL);
+
+      // Create the service request with pre-uploaded media URLs
+      const requestData: ServiceRequestData = {
+        addressID: formData.addressID,           // ID của địa chỉ đã lưu (for reference)
+        serviceId: formData.serviceId,           // ID dịch vụ
+        serviceDescription: formData.serviceDescription, // Mô tả vấn đề
+        fullName: formData.customerName.trim(),  // Tên khách hàng (editable)
+        phoneNumber: formData.phoneNumber.trim(), // SĐT khách hàng (editable)
+        addressNote: formData.addressNote || '', // Ghi chú địa chỉ
+        requestedDate: createVietnamDateTime(formData.requestedDate), // Ngày đặt (00:00 giờ VN)
+        expectedStartTime: createVietnamDateTime(formData.requestedDate, formData.expectedStartTime), // Giờ hẹn (VN timezone)
+        mediaUrls: mediaUrls // Use pre-uploaded fileURLs
+      };
+
+      if (__DEV__) {
+        console.log('📤 Creating service request with data:', {
+          addressID: requestData.addressID,
+          serviceId: requestData.serviceId,
+          fullName: requestData.fullName,
+          phoneNumber: requestData.phoneNumber,
+          hasDescription: !!requestData.serviceDescription,
+          mediaUrlsCount: mediaUrls.length,
+          mediaUrls: mediaUrls
+        });
+      }
+
       const response = await serviceRequestService.createServiceRequest(requestData);
-      const requestID = response.id;
+      const requestID = response.requestID;
 
-      // Upload images if any
-      let mediaUrls: string[] = [];
-      if (formData.images.length > 0) {
-        try {
-          // Prepare files for upload
-          const files = formData.images.map((uri, index) => ({
-            uri,
-            type: 'image/jpeg', // Assuming JPEG, could be dynamic
-            name: `issue_${requestID}_${index + 1}.jpg`
-          }));
-
-          // Upload all images with MediaType: ISSUE
-          const uploadedMedia = await mediaService.uploadMultipleMedia(
-            requestID,
-            files,
-            'ISSUE' as MediaType
-          );
-
-          // Extract URLs from upload response
-          mediaUrls = uploadedMedia.map(media => media.fileURL);
-
-          if (__DEV__) console.log('Images uploaded successfully:', mediaUrls);
-        } catch (uploadError) {
-          if (__DEV__) console.warn('Image upload failed:', uploadError);
-          // Continue without images rather than failing the whole request
-          Alert.alert(
-            'Cảnh báo',
-            'Không thể upload ảnh, nhưng yêu cầu dịch vụ đã được tạo thành công.'
-          );
-        }
+      if (__DEV__) {
+        console.log('✅ Service request created successfully:', {
+          requestID,
+          mediaCount: mediaUrls.length
+        });
       }
 
       // Navigate to confirmation page with booking details
-      const imageCount = formData.images.length;
+      const imageCount = uploadedMedia.length;
       router.push({
         pathname: '/customer/booking-confirmation' as any,
         params: {
@@ -562,7 +822,7 @@ function BookService() {
 
   const handleSubmit = () => {
     if (validateForm()) {
-      const imageCount = formData.images.length;
+      const imageCount = uploadedMedia.length;
       const imageText = imageCount > 0 ? `\nSố ảnh: ${imageCount} ảnh` : '\nKhông có ảnh đính kèm';
       
       Alert.alert(
@@ -627,22 +887,45 @@ function BookService() {
             </View>
           </View>
 
-          {/* Customer Name */}
+          {/* Customer Name - Editable */}
           <View style={styles.section}>
-            <Text style={styles.label}>Tên khách hàng</Text>
-            <View style={styles.readOnlyContainer}>
-              <Ionicons name="person" size={20} color="#6B7280" />
-              <Text style={styles.readOnlyText}>{formData.customerName || 'Chưa có thông tin'}</Text>
+            <Text style={styles.label}>
+              Tên khách hàng <Text style={styles.required}>*</Text>
+            </Text>
+            <View style={[styles.inputContainer, errors.customerName && styles.inputError]}>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Nhập tên khách hàng"
+                placeholderTextColor="#9CA3AF"
+                value={formData.customerName}
+                onChangeText={(text) => handleInputChange('customerName', text)}
+                autoCapitalize="words"
+              />
             </View>
+            {errors.customerName && (
+              <Text style={styles.errorText}>{errors.customerName}</Text>
+            )}
           </View>
 
-          {/* Phone Number */}
+          {/* Phone Number - Editable */}
           <View style={styles.section}>
-            <Text style={styles.label}>Số điện thoại</Text>
-            <View style={styles.readOnlyContainer}>
-              <Ionicons name="call" size={20} color="#6B7280" />
-              <Text style={styles.readOnlyText}>{formData.phoneNumber || 'Chưa có thông tin'}</Text>
+            <Text style={styles.label}>
+              Số điện thoại <Text style={styles.required}>*</Text>
+            </Text>
+            <View style={[styles.inputContainer, errors.phoneNumber && styles.inputError]}>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Nhập số điện thoại"
+                placeholderTextColor="#9CA3AF"
+                value={formData.phoneNumber}
+                onChangeText={(text) => handleInputChange('phoneNumber', text)}
+                keyboardType="phone-pad"
+                autoCapitalize="none"
+              />
             </View>
+            {errors.phoneNumber && (
+              <Text style={styles.errorText}>{errors.phoneNumber}</Text>
+            )}
           </View>
 
           {/* Address */}
@@ -767,7 +1050,7 @@ function BookService() {
                 </Text>
                 <TouchableOpacity 
                   style={[styles.professionalDateTimeCard, errors.requestedDate && styles.inputError]}
-                  onPress={() => setShowDatePicker(true)}
+                  onPress={handleOpenDatePicker}
                 >
                   <View style={styles.professionalDateTimeContent}>
                     <View style={styles.professionalIconContainer}>
@@ -794,7 +1077,7 @@ function BookService() {
                 </Text>
                 <TouchableOpacity 
                   style={[styles.professionalDateTimeCard, errors.expectedStartTime && styles.inputError]}
-                  onPress={() => setShowTimePicker(true)}
+                  onPress={handleOpenTimePicker}
                 >
                   <View style={styles.professionalDateTimeContent}>
                     <View style={styles.professionalIconContainer}>
@@ -824,27 +1107,45 @@ function BookService() {
             </Text>
             
             <View style={styles.imageContainer}>
-              {formData.images.map((imageUri, index) => (
-                <View key={index} style={styles.imagePreview}>
+              {uploadedMedia.map((media, index) => (
+                <View key={media.mediaID} style={styles.imagePreview}>
                   <TouchableOpacity 
-                    onPress={() => openImageViewer(imageUri, index)}
+                    onPress={() => !media.isUploading && openImageViewer(media.localUri, index)}
                     style={styles.imagePreviewTouchable}
                   >
-                    <Image source={{ uri: imageUri }} style={styles.previewImage} />
+                    <Image source={{ uri: media.localUri }} style={styles.previewImage} />
+                    {/* Show loading overlay while uploading */}
+                    {media.isUploading && (
+                      <View style={styles.imageUploadingOverlay}>
+                        <ActivityIndicator color="#609CEF" size="small" />
+                        <Text style={styles.uploadingText}>Đang tải...</Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.removeImageButton}
                     onPress={() => removeImage(index)}
+                    disabled={media.isUploading}
                   >
                     <Ionicons name="close" size={16} color="#EF4444" />
                   </TouchableOpacity>
                 </View>
               ))}
               
-              {formData.images.length < 4 && (
-                <TouchableOpacity style={styles.addImageButton} onPress={pickImage}>
-                  <Ionicons name="camera" size={24} color="#609CEF" />
-                  <Text style={styles.addImageText}>+ Thêm ảnh ({formData.images.length}/4)</Text>
+              {uploadedMedia.length < 4 && (
+                <TouchableOpacity 
+                  style={styles.addImageButton} 
+                  onPress={pickImage}
+                  disabled={isUploadingImage}
+                >
+                  {isUploadingImage ? (
+                    <ActivityIndicator color="#609CEF" size="small" />
+                  ) : (
+                    <Ionicons name="camera" size={24} color="#609CEF" />
+                  )}
+                  <Text style={styles.addImageText}>
+                    {isUploadingImage ? 'Đang tải...' : `+ Thêm ảnh (${uploadedMedia.length}/4)`}
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -879,27 +1180,79 @@ function BookService() {
         </View>
 
         {/* Native Date & Time Pickers */}
-        {showDatePicker && (
+        {showDatePicker && Platform.OS === 'ios' && (
+          <Modal visible={showDatePicker} transparent animationType="slide">
+            <View style={styles.pickerModalOverlay}>
+              <View style={styles.pickerModalContent}>
+                <View style={styles.pickerHeader}>
+                  <TouchableOpacity onPress={handleCloseDatePicker}>
+                    <Text style={styles.pickerHeaderButton}>Xong</Text>
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={pickerDateValue}
+                  mode="date"
+                  display="spinner"
+                  onChange={handleDateChange}
+                  minimumDate={new Date()}
+                  maximumDate={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)}
+                  textColor="#1F2937"
+                  style={styles.iosPicker}
+                  locale="vi-VN"
+                />
+              </View>
+            </View>
+          </Modal>
+        )}
+
+        {showDatePicker && Platform.OS === 'android' && (
           <DateTimePicker
-            value={formData.requestedDate ? new Date(formData.requestedDate) : new Date()}
+            value={pickerDateValue}
             mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            display="default"
             onChange={handleDateChange}
             minimumDate={new Date()}
-            maximumDate={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)} // 30 days from now
+            maximumDate={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)}
           />
         )}
 
-        {showTimePicker && (
+        {showTimePicker && Platform.OS === 'ios' && (
+          <Modal visible={showTimePicker} transparent animationType="slide">
+            <TouchableOpacity 
+              style={styles.pickerModalOverlay}
+              activeOpacity={1}
+              onPress={handleCloseTimePicker}
+            >
+              <TouchableOpacity 
+                style={styles.pickerModalContent}
+                activeOpacity={1}
+                onPress={() => {}} // Prevent modal close when touching content
+              >
+                <View style={styles.pickerHeader}>
+                  <TouchableOpacity onPress={handleCloseTimePicker}>
+                    <Text style={styles.pickerHeaderButton}>Xong</Text>
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={pickerTimeValue}
+                  mode="time"
+                  display="spinner"
+                  onChange={handleTimeChange}
+                  textColor="#1F2937"
+                  style={styles.iosPicker}
+                  locale="vi-VN"
+                  is24Hour={true}
+                />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </Modal>
+        )}
+
+        {showTimePicker && Platform.OS === 'android' && (
           <DateTimePicker
-            value={(() => {
-              const [hours, minutes] = formData.expectedStartTime.split(':');
-              const date = new Date();
-              date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-              return date;
-            })()}
+            value={pickerTimeValue}
             mode="time"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            display="default"
             onChange={handleTimeChange}
           />
         )}
@@ -1005,7 +1358,7 @@ function BookService() {
                 
                 <View style={styles.imageViewerInfo}>
                   <Text style={styles.imageViewerText}>
-                    Ảnh {imageViewModal.index + 1} / {formData.images.length}
+                    Ảnh {imageViewModal.index + 1} / {uploadedMedia.length}
                   </Text>
                   <TouchableOpacity 
                     style={styles.imageViewerDeleteButton}
@@ -1219,6 +1572,23 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     resizeMode: 'cover',
     overflow: 'hidden',
+  },
+  imageUploadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadingText: {
+    fontSize: 10,
+    color: '#609CEF',
+    fontWeight: '600',
+    marginTop: 4,
   },
   removeImageButton: {
     position: 'absolute',
@@ -1859,6 +2229,36 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1F2937',
     fontWeight: '600',
+  },
+  pickerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  pickerModalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 34, // iPhone bottom safe area
+    minHeight: 300,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  pickerHeaderButton: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#609CEF',
+  },
+  iosPicker: {
+    height: 216,
+    width: '100%',
+    backgroundColor: 'white',
   },
 });
 

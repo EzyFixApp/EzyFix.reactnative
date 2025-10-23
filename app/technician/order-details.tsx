@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 import { STANDARD_HEADER_STYLE, STANDARD_BACK_BUTTON_STYLE } from '../../constants/HeaderConstants';
+import { orderCache } from '../../lib/cache/orderCache';
 
 interface OrderDetailItem {
   id: string;
@@ -29,74 +30,56 @@ interface OrderDetailItem {
   images?: string[];
   status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled';
   createdAt: string;
-  priceRange: string;
-  priority: 'normal' | 'urgent' | 'emergency';
+  appointmentDate: string;
+  appointmentTime: string;
   distance: string;
-  estimatedTime: string;
+  addressNote?: string;
 }
 
-// Mock data - Synced with orders.tsx but with full details and images
-const mockOrders: OrderDetailItem[] = [
-  {
-    id: '1',
-    serviceName: 'Sửa điều hòa',
-    customerName: 'Nguyễn Văn A',
-    customerPhone: '0901234567',
-    address: '123 Lê Lợi, Q1, TP.HCM',
-    description: 'Điều hòa không làm lạnh, có tiếng kêu lạ khi vận hành. Đã sử dụng 3 năm, bảo dưỡng định kỳ 6 tháng/lần. Hiện tại máy vẫn chạy nhưng không xuất khí lạnh, có âm thanh bất thường từ dàn nóng.',
-    images: [
-      'https://images.unsplash.com/photo-1581092921461-eab62e97a780?w=400&h=300&fit=crop',
-      'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop',
-      'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400&h=300&fit=crop'
-    ],
-    status: 'pending',
-    createdAt: '2025-10-13T14:30:00Z',
-    priceRange: '200,000đ - 500,000đ',
-    priority: 'urgent',
-    distance: '2.5km',
-    estimatedTime: '45 phút'
-  },
-  {
-    id: '2',
-    serviceName: 'Sửa ống nước',
-    customerName: 'Trần Thị B',
-    customerPhone: '0912345678',
-    address: '456 Nguyễn Huệ, Q1, TP.HCM',
-    description: 'Ống nước bị rò rỉ dưới bồn rửa bát. Đã thấy nước chảy ra từ đường ống nối với vòi, có thể là đệm cao su bị hỏng hoặc ống nối bị lỏng. Cần kiểm tra và thay thế linh kiện.',
-    images: [
-      'https://images.unsplash.com/photo-1626806787461-102c1bfaaea1?w=400&h=300&fit=crop',
-      'https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?w=400&h=300&fit=crop'
-    ],
-    status: 'pending',
-    createdAt: '2025-10-13T15:00:00Z',
-    priceRange: '150,000đ - 300,000đ',
-    priority: 'normal',
-    distance: '1.8km',
-    estimatedTime: '30 phút'
-  },
-  {
-    id: '3',
-    serviceName: 'Sửa tủ lạnh',
-    customerName: 'Lê Văn C',
-    customerPhone: '0923456789',
-    address: '789 Lý Tự Trọng, Q1, TP.HCM',
-    description: 'Tủ lạnh không đông đá, ngăn mát vẫn hoạt động bình thường. Tủ dùng được 4 năm, thương hiệu LG. Ngăn đá hoàn toàn không lạnh, đồ ăn để trong đó bị tan hết.',
-    images: [
-      'https://images.unsplash.com/photo-1571175443880-49e1d25b2bc5?w=400&h=300&fit=crop',
-      'https://images.unsplash.com/photo-1584464491033-06628f3a6b7b?w=400&h=300&fit=crop',
-      'https://images.unsplash.com/photo-1493723843671-1d655e66ac1c?w=400&h=300&fit=crop'
-    ],
-    status: 'accepted',
-    createdAt: '2025-10-13T10:00:00Z',
-    priceRange: '300,000đ - 600,000đ',
-    priority: 'normal',
-    distance: '3.2km',
-    estimatedTime: '1 giờ'
+// Helper functions
+const formatDate = (isoString: string): string => {
+  if (!isoString) return 'N/A';
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return 'N/A';
+  return date.toLocaleDateString('vi-VN', { 
+    day: '2-digit', 
+    month: '2-digit', 
+    year: 'numeric' 
+  });
+};
+
+const formatTime = (isoString: string): string => {
+  if (!isoString) return 'N/A';
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return 'N/A';
+  return date.toLocaleTimeString('vi-VN', { 
+    hour: '2-digit', 
+    minute: '2-digit' 
+  });
+};
+
+const extractDistrictFromAddress = (fullAddress: string): string => {
+  // Extract only district info for privacy
+  // Example: "Vinhomes Grand Park, Thành phố Hồ Chí Minh, Phường Long Bình, 71216"
+  // Returns: "Phường Long Bình, TP.HCM"
+  const parts = fullAddress.split(',').map(p => p.trim());
+  if (parts.length >= 2) {
+    const district = parts[parts.length - 2]; // Phường/Quận
+    return `${district}, TP.HCM`;
   }
-];
+  return fullAddress;
+};
+
+const maskPhone = (phone: string): string => {
+  // Mask middle digits: +840787171600 -> +84***1600
+  if (phone.length > 6) {
+    return phone.substring(0, 3) + '***' + phone.slice(-4);
+  }
+  return phone;
+};
 
 function OrderDetails() {
-  const { orderId, canAccept } = useLocalSearchParams();
+  const { orderId } = useLocalSearchParams();
   const [order, setOrder] = useState<OrderDetailItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -104,8 +87,14 @@ function OrderDetails() {
 
   useEffect(() => {
     if (orderId) {
-      const foundOrder = mockOrders.find(o => o.id === orderId);
-      setOrder(foundOrder || null);
+      // Get order from cache
+      const cachedOrder = orderCache.get(orderId as string);
+      if (cachedOrder) {
+        setOrder({
+          ...cachedOrder,
+          status: cachedOrder.status.toLowerCase() as 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled'
+        });
+      }
     }
   }, [orderId]);
 
@@ -134,7 +123,7 @@ function OrderDetails() {
   };
 
   const handleCallCustomer = () => {
-    if (canAccept === 'false') {
+    if (!order || order.status === 'pending') {
       Alert.alert('Thông báo', 'Bạn cần nhận đơn trước khi có thể liên hệ khách hàng');
       return;
     }
@@ -144,7 +133,7 @@ function OrderDetails() {
   };
 
   const handleGetDirections = () => {
-    if (canAccept === 'false') {
+    if (!order || order.status === 'pending') {
       Alert.alert('Thông báo', 'Bạn cần nhận đơn trước khi có thể xem địa chỉ cụ thể');
       return;
     }
@@ -169,7 +158,7 @@ function OrderDetails() {
     setSelectedImage(null);
   };
 
-  const isAccepted = canAccept === 'true';
+  const isAccepted = order?.status === 'accepted' || order?.status === 'in-progress';
 
   return (
     <View style={styles.container}>
@@ -201,7 +190,10 @@ function OrderDetails() {
             </View>
             <Text style={styles.customerName}>Khách hàng: {order.customerName}</Text>
             <Text style={styles.orderTime}>
-              Đặt lúc: {new Date(order.createdAt).toLocaleString('vi-VN')}
+              Đặt lúc: {formatDate(order.createdAt)} {formatTime(order.createdAt)}
+            </Text>
+            <Text style={styles.orderTime}>
+              Hẹn làm: {order.appointmentDate} lúc {order.appointmentTime}
             </Text>
           </View>
         </View>
@@ -218,7 +210,7 @@ function OrderDetails() {
               <View style={styles.contactInfo}>
                 <Ionicons name="call-outline" size={20} color={isAccepted ? "#10B981" : "#6B7280"} />
                 <Text style={[styles.contactText, !isAccepted && styles.maskedText]}>
-                  {isAccepted ? order.customerPhone : order.customerPhone.substring(0, 3) + '*****' + order.customerPhone.slice(-2)}
+                  {isAccepted ? order.customerPhone : maskPhone(order.customerPhone)}
                 </Text>
               </View>
               {isAccepted && <Ionicons name="call" size={20} color="#10B981" />}
@@ -241,7 +233,7 @@ function OrderDetails() {
                 <Text style={[styles.contactText, !isAccepted && styles.maskedText]}>
                   {isAccepted
                     ? order.address
-                    : order.address.split(', ').slice(-2).join(', ')
+                    : extractDistrictFromAddress(order.address)
                   }
                 </Text>
               </View>
@@ -292,24 +284,20 @@ function OrderDetails() {
           </View>
         )}
 
-        {/* Price and Time */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Thông tin dự kiến</Text>
-          <View style={styles.card}>
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <Ionicons name="cash-outline" size={20} color="#10B981" />
-                <Text style={styles.infoLabel}>Giá dự kiến</Text>
-                <Text style={styles.infoValue}>{order.priceRange}</Text>
-              </View>
-              <View style={styles.infoItem}>
-                <Ionicons name="time-outline" size={20} color="#F59E0B" />
-                <Text style={styles.infoLabel}>Thời gian ước tính</Text>
-                <Text style={styles.infoValue}>{order.estimatedTime}</Text>
+        {/* Address Note */}
+        {order.addressNote && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Ghi chú địa chỉ</Text>
+            <View style={styles.card}>
+              <View style={styles.infoRow}>
+                <Ionicons name="information-circle-outline" size={20} color="#609CEF" />
+                <Text style={[styles.descriptionText, { marginLeft: 8, flex: 1 }]}>
+                  {order.addressNote}
+                </Text>
               </View>
             </View>
           </View>
-        </View>
+        )}
 
         <View style={styles.bottomSpacing} />
       </ScrollView>

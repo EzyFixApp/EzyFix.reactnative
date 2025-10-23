@@ -28,18 +28,13 @@ let cachedAuthResult: {
 const CACHE_DURATION = 5000; // Cache for 5 seconds
 
 export function useCustomerAuth(): UseCustomerAuthReturn {
-  if (__DEV__) console.log('[useCustomerAuth] 🟢 HOOK 1: useAuth');
   const { isAuthenticated, user, isLoading: authLoading } = useAuth();
-  
-  if (__DEV__) console.log('[useCustomerAuth] 🟢 HOOK 2: useAuthActions');
   const { logout } = useAuthActions();
   
-  if (__DEV__) console.log('[useCustomerAuth] 🟢 HOOK 3-5: useState x3');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<AuthErrorType | null>(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
   
-  if (__DEV__) console.log('[useCustomerAuth] 🟢 HOOK 6-7: useRef x2');
   const checkIntervalRef = useRef<number | null>(null);
   const hasInitialCheck = useRef(false);
 
@@ -48,9 +43,6 @@ export function useCustomerAuth(): UseCustomerAuthReturn {
       // OPTIMIZATION: Use cached result if still valid
       const now = Date.now();
       if (cachedAuthResult && (now - cachedAuthResult.timestamp) < CACHE_DURATION) {
-        if (__DEV__) {
-          console.log('✅ Using cached customer auth result (fast path)');
-        }
         setIsAuthorized(cachedAuthResult.isAuthorized);
         setError(cachedAuthResult.error);
         setIsLoading(false);
@@ -136,9 +128,6 @@ export function useCustomerAuth(): UseCustomerAuthReturn {
       };
       
     } catch (err) {
-      if (__DEV__) {
-        console.error('Error checking customer auth:', err);
-      }
       setError('SESSION_INVALID');
       setIsAuthorized(false);
       
@@ -155,7 +144,6 @@ export function useCustomerAuth(): UseCustomerAuthReturn {
   }, [isAuthenticated, user, logout]);
 
   // Initial check on mount
-  if (__DEV__) console.log('[useCustomerAuth] 🟢 HOOK 8: useEffect (initial check)');
   useEffect(() => {
     // Use cached result for instant validation
     if (cachedAuthResult && (Date.now() - cachedAuthResult.timestamp) < CACHE_DURATION) {
@@ -169,7 +157,6 @@ export function useCustomerAuth(): UseCustomerAuthReturn {
   }, [isAuthenticated, user, checkAuth]);
 
   // Periodic token validation (every 60 seconds)
-  if (__DEV__) console.log('[useCustomerAuth] 🟢 HOOK 9: useEffect (periodic check)');
   useEffect(() => {
     // Clear any existing interval
     if (checkIntervalRef.current) {
@@ -179,9 +166,6 @@ export function useCustomerAuth(): UseCustomerAuthReturn {
     // Only start interval if authorized
     if (isAuthorized) {
       checkIntervalRef.current = setInterval(() => {
-        if (__DEV__) {
-          console.log('🔍 Periodic auth check for customer...');
-        }
         checkAuth();
       }, 60 * 1000) as unknown as number; // Check every 60 seconds
     }
@@ -194,8 +178,6 @@ export function useCustomerAuth(): UseCustomerAuthReturn {
       }
     };
   }, [isAuthorized, checkAuth]);
-
-  if (__DEV__) console.log('[useCustomerAuth] ✅ All 9 hooks called successfully');
 
   return {
     isAuthorized,

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
 import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
+import { useAuthStore } from '~/store/authStore';
 
 interface ProfileItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -66,11 +67,13 @@ function ProfileItem({ icon, title, subtitle, onPress, showArrow = true, isLogou
 }
 
 function TechnicianProfile() {
+  const { logout } = useAuthStore();
+  
   const handleBackPress = () => {
     router.back();
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     Alert.alert(
       'Đăng xuất',
       'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản?',
@@ -82,9 +85,18 @@ function TechnicianProfile() {
         {
           text: 'Đăng xuất',
           style: 'destructive',
-          onPress: () => {
-            // Navigate to login screen and reset navigation stack
-            router.replace('./login' as any);
+          onPress: async () => {
+            try {
+              // Properly logout: Clear tokens, call API, clear storage
+              await logout();
+              
+              // Navigate to home screen
+              router.replace('/');
+            } catch (error) {
+              console.error('Logout error:', error);
+              // Still navigate even if logout fails
+              router.replace('/');
+            }
           }
         }
       ],

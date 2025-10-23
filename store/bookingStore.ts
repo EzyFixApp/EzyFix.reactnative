@@ -41,24 +41,29 @@ const mockBookings: BookingItem[] = [
     serviceName: 'Sửa điều hòa',
     servicePrice: '200,000đ - 500,000đ',
     customerName: 'Nguyễn Văn A',
-    phoneNumber: '0901234567',
+    customerPhone: '0901234567',
+    customerId: 'customer-1',
     address: '123 Lê Lợi, Q1, TP.HCM',
     status: 'quoted',
     createdAt: '2025-09-29T10:30:00Z',
     technicianName: 'Thợ Minh',
-    quotePrice: '350,000đ',
-    notes: 'Điều hòa không lạnh, có tiếng ồn'
+    notes: 'Điều hòa không lạnh, có tiếng ồn',
+    media: [],
+    timeline: [],
   },
   {
     id: '2',
     serviceName: 'Sửa ống nước',
     servicePrice: '150,000đ - 300,000đ',
     customerName: 'Trần Thị B',
-    phoneNumber: '0987654321',
+    customerPhone: '0987654321',
+    customerId: 'customer-2',
     address: '456 Nguyễn Huệ, Q1, TP.HCM',
-    status: 'searching',
+    status: 'pending',
     createdAt: '2025-09-29T14:15:00Z',
-    notes: 'Ống nước bị tắc, áp lực yếu'
+    notes: 'Ống nước bị tắc, áp lực yếu',
+    media: [],
+    timeline: [],
   },
 ];
 
@@ -90,7 +95,11 @@ export const useBookingStore = create<BookingState>((set, get) => ({
     set((state) => ({
       bookings: state.bookings.map((booking) =>
         booking.id === bookingId 
-          ? { ...booking, status, updatedAt: new Date().toISOString() }
+          ? { 
+              ...booking, 
+              status: status as BookingStatus, 
+              updatedAt: new Date().toISOString() 
+            }
           : booking
       )
     })),
@@ -112,8 +121,10 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       const newBooking: BookingItem = {
         ...bookingData,
         id: Date.now().toString(),
-        status: 'searching',
+        status: 'pending',
         createdAt: new Date().toISOString(),
+        media: [],
+        timeline: [],
       };
       
       get().addBooking(newBooking);
@@ -156,9 +167,9 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      get().updateBookingStatus(bookingId, 'accepted');
+      get().updateBookingStatus(bookingId, 'quote_accepted');
       get().updateBooking(bookingId, {
-        acceptedAt: new Date().toISOString()
+        quoteAcceptedAt: new Date().toISOString()
       });
       
       set({ submitting: false });
@@ -178,15 +189,13 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Reset to searching status and clear technician info
+      // Reset to pending status and clear technician info
       get().updateBooking(bookingId, {
-        status: 'searching',
+        status: 'pending',
         technicianId: undefined,
         technicianName: undefined,
         technicianPhone: undefined,
-        quoteId: undefined,
-        quotePrice: undefined,
-        quoteDetails: undefined,
+        initialQuote: undefined,
         quotedAt: undefined,
         updatedAt: new Date().toISOString(),
       });

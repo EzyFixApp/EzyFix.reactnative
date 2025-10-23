@@ -141,22 +141,15 @@ function CustomerProfile() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Logout first, then navigate
-              try {
-                await logout();
-              } catch (err) {
-                // Handle logout error silently
-              }
+              // Properly logout: Clear tokens, call API, clear storage
+              await logout();
               
-              // Navigate to login using absolute path
-              // Using setTimeout to ensure logout state is fully propagated
-              setTimeout(() => {
-                router.replace('/customer/login');
-              }, 50);
-              
+              // Navigate to home screen
+              router.replace('/');
             } catch (error) {
-              // Fallback: navigate anyway
-              router.replace('/customer/login');
+              console.error('Logout error:', error);
+              // Still navigate even if logout fails
+              router.replace('/');
             }
           }
         }
