@@ -24,6 +24,7 @@ export interface ServiceDeliveryOfferResponse {
   submitDate: string;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
   notes?: string;
+  appointmentId?: string; // ID of created appointment (when status is ACCEPTED and appointment created)
   // Backend might include technician details in response
   technician?: {
     technicianId: string;
@@ -251,6 +252,53 @@ export class ServiceDeliveryOffersService {
       if (__DEV__) console.error('❌ Get pending offers error:', error);
       // Return empty array instead of throwing to prevent breaking UI
       return [];
+    }
+  }
+
+  /**
+   * Get a specific offer by ID (Technician view)
+   */
+  public async getOfferById(offerId: string): Promise<ServiceDeliveryOfferResponse> {
+    try {
+      const token = await authService.getAccessToken();
+      if (!token) {
+        throw new Error('No access token available');
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/serviceDeliveryOffers/${offerId}`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Get offer failed: ${response.status} - ${errorData}`);
+      }
+
+      const result = await response.json();
+
+      if (result.is_success && result.data) {
+        if (__DEV__) {
+          console.log(`✅ Found offer ${offerId}:`, {
+            status: result.data.status,
+            estimatedCost: result.data.estimatedCost,
+            finalCost: result.data.finalCost,
+            appointmentId: result.data.appointmentId
+          });
+        }
+        return result.data;
+      } else {
+        throw new Error(result.message || 'Offer not found');
+      }
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ Get offer by ID error:', error);
+      throw error;
     }
   }
 

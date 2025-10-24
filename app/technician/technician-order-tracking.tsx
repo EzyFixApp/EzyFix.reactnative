@@ -11,12 +11,22 @@ import {
   Dimensions,
   Image,
   Modal,
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 import { STANDARD_HEADER_STYLE, STANDARD_BACK_BUTTON_STYLE } from '../../constants/HeaderConstants';
+import { serviceRequestService } from '../../lib/api/serviceRequests';
+import { serviceDeliveryOffersService } from '../../lib/api/serviceDeliveryOffers';
+import { appointmentsService, AppointmentStatus, type AppointmentData } from '../../lib/api/appointments';
+import { servicesService } from '../../lib/api/services';
+import { authService } from '../../lib/api/auth';
+import { useAuthStore } from '../../store/authStore';
+import { useLocation } from '../../hooks/useLocation';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -29,69 +39,6 @@ import Animated, {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-interface OrderItem {
-  id: string;
-  serviceName: string;
-  customerName: string;
-  priceRange: string;
-  status: string;
-  address: string;
-  phone: string;
-  description: string;
-  appointmentDate: string;
-  appointmentTime: string;
-  attachedImages?: string[];
-}
-
-// Mock order data - Synced with orders.tsx
-const mockOrders: OrderItem[] = [
-  {
-    id: '1',
-    serviceName: 'Sửa điều hòa',
-    customerName: 'Nguyễn Văn A',
-    priceRange: '200,000đ - 500,000đ',
-    status: 'quote_sent',
-    address: '123 Lê Lợi, Quận 1, TP.HCM',
-    phone: '090****567',
-    description: 'Điều hòa không làm lạnh, có tiếng kêu lạ khi vận hành',
-    appointmentDate: '15/10/2025',
-    appointmentTime: '14:00',
-    attachedImages: [
-      'https://via.placeholder.com/300x200/609CEF/FFFFFF?text=Điều+hòa+1',
-      'https://via.placeholder.com/300x200/87CEEB/FFFFFF?text=Điều+hòa+2'
-    ]
-  },
-  {
-    id: '2',
-    serviceName: 'Sửa ống nước',
-    customerName: 'Trần Thị B',
-    priceRange: '150,000đ - 300,000đ',
-    status: 'quote_sent',
-    address: '456 Nguyễn Huệ, Quận 1, TP.HCM',
-    phone: '091****678',
-    description: 'Ống nước bị rò rỉ dưới bồn rửa bát',
-    appointmentDate: '16/10/2025',
-    appointmentTime: '09:00'
-  },
-  {
-    id: '3',
-    serviceName: 'Sửa tủ lạnh',
-    customerName: 'Lê Văn C',
-    priceRange: '300,000đ - 600,000đ',
-    status: 'quote_sent',
-    address: '789 Lý Tự Trọng, Quận 1, TP.HCM',
-    phone: '092****789',
-    description: 'Tủ lạnh không đông đá, ngăn mát vẫn hoạt động bình thường',
-    appointmentDate: '14/10/2025',
-    appointmentTime: '16:00',
-    attachedImages: [
-      'https://via.placeholder.com/300x200/10B981/FFFFFF?text=Tủ+lạnh+1',
-      'https://via.placeholder.com/300x200/F59E0B/FFFFFF?text=Tủ+lạnh+2',
-      'https://via.placeholder.com/300x200/EF4444/FFFFFF?text=Tủ+lạnh+3'
-    ]
-  }
-];
 
 // Swipe Button Component
 const SwipeButton: React.FC<{
@@ -201,24 +148,217 @@ const SwipeButton: React.FC<{
 };
 
 function TechnicianOrderTracking() {
-  const { orderId, quoteType, quoteAmount } = useLocalSearchParams();
-  const [order, setOrder] = useState<OrderItem | null>(null);
-  const [currentStatus, setCurrentStatus] = useState('quote_sent');
+  const { serviceRequestId, offerId } = useLocalSearchParams();
+  const { user } = useAuthStore();
+  const { requestLocation } = useLocation(); // Get location hook
+  
+  // State for data
+  const [serviceRequest, setServiceRequest] = useState<any>(null);
+  const [offer, setOffer] = useState<any>(null);
+  const [appointment, setAppointment] = useState<AppointmentData | null>(null);
+  const [serviceName, setServiceName] = useState<string>('Dịch vụ');
+  
+  // UI State
+  const [currentStatus, setCurrentStatus] = useState('');
   const [showTimeline, setShowTimeline] = useState(false);
   const [showEarningsModal, setShowEarningsModal] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [selectedImageUri, setSelectedImageUri] = useState<string>('');
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0);
+  const [totalImages, setTotalImages] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Success popup state
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successTitle, setSuccessTitle] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  
+  // Success checkmark animation
+  const checkmarkScale = useSharedValue(0);
+  const checkmarkOpacity = useSharedValue(0);
+  
+  // Animated style for success checkmark (MUST be before any early returns)
+  const checkmarkAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: checkmarkScale.value }],
+      opacity: checkmarkOpacity.value,
+    };
+  });
 
+  // Fetch data on mount
   useEffect(() => {
-    if (orderId) {
-      const foundOrder = mockOrders.find(o => o.id === orderId);
-      if (foundOrder) {
-        setOrder(foundOrder);
-        setCurrentStatus(foundOrder.status);
-        setCurrentStatus(foundOrder.status);
-      }
+    if (serviceRequestId && offerId) {
+      fetchOrderData();
+    } else {
+      setError('Thiếu thông tin đơn hàng');
+      setLoading(false);
     }
-  }, [orderId]);
+  }, [serviceRequestId, offerId]);
 
-  if (!order) {
+  const fetchOrderData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch service request
+      const requestData = await serviceRequestService.getServiceRequestById(serviceRequestId as string);
+      setServiceRequest(requestData);
+
+      // Fetch service name
+      if (requestData.serviceId) {
+        try {
+          const serviceData = await servicesService.getServiceById(requestData.serviceId);
+          setServiceName(serviceData.serviceName || 'Dịch vụ');
+        } catch (err) {
+          console.log('Could not fetch service name, using default');
+          setServiceName('Dịch vụ');
+        }
+      }
+
+      // Fetch offer
+      const offerData = await serviceDeliveryOffersService.getOfferById(offerId as string);
+      console.log('✅ Fetched offer:', {
+        offerId: offerData.offerId,
+        status: offerData.status,
+        appointmentId: offerData.appointmentId,
+        hasAppointmentId: !!offerData.appointmentId
+      });
+      setOffer(offerData);
+
+      // Check if we have cached appointmentId in AsyncStorage (for when server doesn't sync)
+      // Use userId in cache key to avoid conflicts between different users
+      const cacheKey = user?.id ? `appointment_${offerId}_${user.id}` : `appointment_${offerId}`;
+      const cachedAppointmentId = await AsyncStorage.getItem(cacheKey);
+      console.log('💾 Cached appointmentId from storage:', cachedAppointmentId, 'key:', cacheKey);
+
+      // Determine current status - PRIORITY: appointment status > offer status
+      const effectiveAppointmentId = offerData.appointmentId || cachedAppointmentId;
+      
+      if (effectiveAppointmentId) {
+        // If appointmentId exists (from server or cache), ALWAYS fetch and use appointment status
+        console.log('📋 Found appointmentId, fetching appointment details...', {
+          appointmentId: effectiveAppointmentId,
+          userId: user?.id,
+          hasToken: !!await authService.getAccessToken()
+        });
+        try {
+          const appointmentData = await appointmentsService.getAppointment(effectiveAppointmentId);
+          setAppointment(appointmentData);
+          setCurrentStatus(appointmentData.status); // Use appointment status as source of truth
+          console.log('✅ Current status from appointment:', appointmentData.status);
+        } catch (err: any) {
+          console.error('❌ Error fetching appointment:', err);
+          
+          // If 401 Unauthorized or 404 Not Found, this appointmentId is invalid
+          // Clear cached data and fallback to offer status WITHOUT triggering logout
+          if (err.status_code === 401 || err.status_code === 404 || err.reason?.includes('Authentication') || err.reason?.includes('not found')) {
+            console.log('🔐 Invalid appointmentId (401/404), clearing cache and using offer status');
+            const cacheKey = user?.id ? `appointment_${offerId}_${user.id}` : `appointment_${offerId}`;
+            await AsyncStorage.removeItem(cacheKey);
+            console.log('🗑️ Cleared invalid cached appointmentId');
+            
+            // DO NOT throw error - just fallback to offer status
+            setAppointment(null);
+            setCurrentStatus(offerData.status === 'ACCEPTED' ? 'accepted' : offerData.status.toLowerCase());
+            console.log('✅ Fallback to offer status:', offerData.status);
+          } else {
+            // For other errors, still fallback but log differently
+            console.warn('⚠️ Other error fetching appointment, fallback to offer status');
+            setAppointment(null);
+            setCurrentStatus(offerData.status === 'ACCEPTED' ? 'accepted' : offerData.status.toLowerCase());
+          }
+        }
+      } else if (offerData.status === 'ACCEPTED') {
+        // Offer is accepted but no appointment yet - ready to create appointment
+        setCurrentStatus('accepted');
+        setAppointment(null);
+        console.log('⏳ Offer accepted but no appointment yet. Ready to create appointment on swipe.');
+      } else {
+        // Other offer statuses (PENDING, REJECTED, etc.)
+        setCurrentStatus(offerData.status.toLowerCase());
+        setAppointment(null);
+        console.log('📊 Offer status:', offerData.status);
+      }
+
+      setLoading(false);
+    } catch (err: any) {
+      console.error('Error fetching order data:', err);
+      setError(err.message || 'Không thể tải thông tin đơn hàng');
+      setLoading(false);
+    }
+  };
+
+  // Format datetime for display
+  const formatDateTime = (dateString: string) => {
+    if (!dateString) return { date: '', time: '' };
+    const date = new Date(dateString);
+    const dateStr = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const timeStr = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    return { date: dateStr, time: timeStr };
+  };
+
+  // Get formatted data for display
+  const getDisplayData = () => {
+    if (!serviceRequest || !offer) {
+      return {
+        serviceName: '',
+        customerName: '',
+        phoneNumber: '',
+        address: '',
+        addressNote: '',
+        description: '',
+        appointmentDate: '',
+        appointmentTime: '',
+        priceRange: '',
+        quoteAmount: '',
+        quoteType: '',
+        attachedImages: []
+      };
+    }
+
+    // Use expectedStartTime instead of requestedDateTime
+    const { date: appointmentDate, time: appointmentTime } = formatDateTime(serviceRequest.expectedStartTime);
+    const estimatedCost = offer.estimatedCost || 0;
+    const finalCost = offer.finalCost || 0;
+    const quoteAmount = (finalCost > 0 ? finalCost : estimatedCost).toLocaleString('vi-VN') + 'đ';
+    const quoteType = finalCost > 0 ? 'final' : 'estimated';
+    const priceRange = quoteAmount; // Same as quote amount for display
+
+    return {
+      serviceName: serviceName, // From state (fetched from services API)
+      customerName: serviceRequest.fullName || 'Khách hàng',
+      phoneNumber: serviceRequest.phoneNumber || '',
+      address: serviceRequest.requestAddress || '',
+      addressNote: serviceRequest.addressNote || '', // Add addressNote field
+      description: serviceRequest.serviceDescription || '', // Use serviceDescription field
+      appointmentDate,
+      appointmentTime,
+      priceRange,
+      quoteAmount,
+      quoteType,
+      attachedImages: serviceRequest.mediaUrls || []
+    };
+  };
+
+  const displayData = getDisplayData();
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
+        <Stack.Screen options={{ headerShown: false }} />
+        
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#609CEF" />
+          <Text style={styles.loadingText}>Đang tải thông tin đơn hàng...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (error || !serviceRequest || !offer) {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
@@ -245,49 +385,61 @@ function TechnicianOrderTracking() {
       quote_sent: {
         title: 'Đã báo giá',
         description: 'Đã gửi báo giá, chờ khách hàng xác nhận',
-        color: '#F59E0B',
+        color: '#4F8BE8',
         icon: 'document-text'
       },
-      quote_accepted: {
+      accepted: {
         title: 'Báo giá được chấp nhận',
-        description: 'Khách đã đồng ý, chuẩn bị đến kiểm tra',
+        description: 'Khách đã đồng ý, sẵn sàng tạo lịch hẹn',
         color: '#10B981',
         icon: 'checkmark-circle'
       },
-      on_the_way: {
+      ACCEPTED: {
+        title: 'Báo giá được chấp nhận',
+        description: 'Khách đã đồng ý, sẵn sàng tạo lịch hẹn',
+        color: '#10B981',
+        icon: 'checkmark-circle'
+      },
+      SCHEDULED: {
+        title: 'Đã lên lịch',
+        description: 'Lịch hẹn đã được tạo, chuẩn bị xuất phát',
+        color: '#3B82F6',
+        icon: 'calendar'
+      },
+      EN_ROUTE: {
         title: 'Đang đến',
         description: 'Đang trên đường đến địa điểm khách hàng',
-        color: '#3B82F6',
+        color: '#F59E0B',
         icon: 'car'
       },
-      arrived: {
+      ARRIVED: {
         title: 'Đã đến nơi',
         description: 'Đã có mặt tại địa điểm, kiểm tra tình trạng',
         color: '#8B5CF6',
         icon: 'location'
       },
-      price_confirmation: {
-        title: 'Xác nhận giá cuối',
-        description: 'Đang chờ khách xác nhận giá sau kiểm tra',
-        color: '#F59E0B',
-        icon: 'calculator'
+      CHECKING: {
+        title: 'Đang kiểm tra',
+        description: 'Đang kiểm tra tình trạng thiết bị',
+        color: '#06B6D4',
+        icon: 'search'
       },
-      repairing: {
+      REPAIRING: {
         title: 'Đang sửa chữa',
         description: 'Đang thực hiện sửa chữa thiết bị',
-        color: '#EF4444',
+        color: '#F97316',
         icon: 'construct'
       },
-      payment_pending: {
-        title: 'Chờ thanh toán',
-        description: 'Hoàn thành sửa chữa, chờ khách thanh toán',
+      REPAIRED: {
+        title: 'Đã sửa xong',
+        description: 'Hoàn thành sửa chữa, chờ thanh toán',
         color: '#10B981',
-        icon: 'card'
+        icon: 'checkmark-done'
       },
       completed: {
         title: 'Hoàn thành',
         description: 'Đã hoàn thành và nhận được thanh toán',
-        color: '#059669',
+        color: '#10B981',
         icon: 'checkmark-done'
       }
     };
@@ -296,20 +448,62 @@ function TechnicianOrderTracking() {
   };
 
   const getTimeline = () => {
-    const statusFlow = ['quote_sent', 'quote_accepted', 'on_the_way', 'arrived', 'price_confirmation', 'repairing', 'payment_pending', 'completed'];
+    // New status flow matching appointment statuses
+    const statusFlow = ['accepted', 'SCHEDULED', 'EN_ROUTE', 'ARRIVED', 'CHECKING', 'REPAIRING', 'REPAIRED', 'completed'];
     const currentIndex = statusFlow.indexOf(currentStatus);
     
+    // Timeline with real appointment statuses
     const timelineData = [
-      { status: 'quote_sent', time: '14:30', date: '13/10/2025', completed: true },
-      { status: 'quote_accepted', time: '15:45', date: '13/10/2025', completed: currentIndex >= 1 },
-      { status: 'on_the_way', time: '08:15', date: '14/10/2025', completed: currentIndex >= 2 },
-      { status: 'arrived', time: '09:30', date: '14/10/2025', completed: currentIndex >= 3 },
-      { status: 'price_confirmation', time: '10:15', date: '14/10/2025', completed: currentIndex >= 4 },
-      { status: 'repairing', time: '10:45', date: '14/10/2025', completed: currentIndex >= 5 },
-      { status: 'payment_pending', time: '', date: '', completed: currentIndex >= 6 },
-      { status: 'completed', time: '', date: '', completed: currentIndex >= 7 },
+      { 
+        status: 'accepted', 
+        time: offer?.updatedAt ? formatDateTime(offer.updatedAt).time : '', 
+        date: offer?.updatedAt ? formatDateTime(offer.updatedAt).date : '', 
+        completed: currentIndex >= 0 
+      },
+      { 
+        status: 'SCHEDULED', 
+        time: appointment?.scheduledDate ? formatDateTime(appointment.scheduledDate).time : '', 
+        date: appointment?.scheduledDate ? formatDateTime(appointment.scheduledDate).date : '', 
+        completed: currentIndex >= 1 
+      },
+      { 
+        status: 'EN_ROUTE', 
+        time: '', 
+        date: '', 
+        completed: currentIndex >= 2 
+      },
+      { 
+        status: 'ARRIVED', 
+        time: '', 
+        date: '', 
+        completed: currentIndex >= 3 
+      },
+      { 
+        status: 'CHECKING', 
+        time: '', 
+        date: '', 
+        completed: currentIndex >= 4 
+      },
+      { 
+        status: 'REPAIRING', 
+        time: '', 
+        date: '', 
+        completed: currentIndex >= 5 
+      },
+      { 
+        status: 'REPAIRED', 
+        time: '', 
+        date: '', 
+        completed: currentIndex >= 6 
+      },
+      { 
+        status: 'completed', 
+        time: '', 
+        date: '', 
+        completed: currentIndex >= 7 
+      },
     ];
-
+    
     return timelineData;
   };
 
@@ -319,117 +513,305 @@ function TechnicianOrderTracking() {
 
   const statusInfo = getStatusInfo(currentStatus);
 
-  const handleUpdateStatus = () => {
-    const statusFlow = ['quote_sent', 'quote_accepted', 'on_the_way', 'arrived', 'price_confirmation', 'repairing', 'payment_pending', 'completed'];
-    const currentIndex = statusFlow.indexOf(currentStatus);
+  // Show success popup - Custom modal instead of Alert
+  const showSuccessPopup = (title: string, message: string) => {
+    setSuccessTitle(title);
+    setSuccessMessage(message);
+    setShowSuccessModal(true);
     
-    if (currentIndex < statusFlow.length - 1) {
-      const nextStatus = statusFlow[currentIndex + 1];
-      const nextStatusInfo = getStatusInfo(nextStatus);
-      
-      // Special handling for different status transitions
-      if (nextStatus === 'price_confirmation' && quoteType === 'final') {
-        // Skip price confirmation for final quotes
-        setCurrentStatus('repairing');
-        Alert.alert('Thông báo', 'Báo giá chốt - chuyển thẳng sang sửa chữa');
-        return;
-      }
-      
-      if (nextStatus === 'arrived') {
-        Alert.alert(
-          'Xác nhận đã đến nơi',
-          'Bạn đã có mặt tại địa điểm khách hàng?\n Vui lòng chụp ảnh tình trạng ban đầu',
-          [
-            { text: 'Chưa đến', style: 'cancel' },
-            {
-              text: 'Đã đến - Chụp ảnh',
-              onPress: () => {
-                setCurrentStatus(nextStatus);
-                // Here you would open camera or image picker
-                Alert.alert('Camera', 'Mở camera để chụp ảnh tình trạng thiết bị...');
-              }
-            }
-          ]
+    // Gentle fade in and scale animation
+    checkmarkScale.value = withTiming(1, { duration: 300 });
+    checkmarkOpacity.value = withTiming(1, { duration: 300 });
+    
+    // Auto hide after 3 seconds
+    setTimeout(() => {
+      setShowSuccessModal(false);
+      // Reset animation for next time
+      checkmarkScale.value = 0;
+      checkmarkOpacity.value = 0;
+    }, 3000);
+  };
+
+  // Handle status update with real API calls
+  const handleUpdateStatus = async () => {
+    if (updating) return;
+
+    console.log('🔄 handleUpdateStatus called:', {
+      currentStatus,
+      hasAppointment: !!appointment,
+      appointmentId: appointment?.id,
+      userId: user?.id
+    });
+
+    try {
+      setUpdating(true);
+      let successTitle = '';
+      let successMessage = '';
+
+      // Case 1: Offer ACCEPTED → Create Appointment (SCHEDULED)
+      if (currentStatus === 'accepted' && !appointment) {
+        console.log('📝 Creating new appointment...');
+        
+        if (!user?.id) {
+          Alert.alert('Lỗi', 'Không tìm thấy thông tin thợ');
+          return;
+        }
+
+        // Step 1: Create appointment
+        const createResponse = await appointmentsService.createAppointment(
+          serviceRequestId as string,
+          user.id
         );
+
+        console.log('✅ Created appointment:', createResponse);
+        
+        // Step 2: GET full appointment data from server
+        const appointmentData = await appointmentsService.getAppointment(createResponse.appointmentId);
+        console.log('✅ Fetched full appointment data:', appointmentData);
+        
+        // Update local state with full appointment data from GET
+        setAppointment(appointmentData);
+        setCurrentStatus(appointmentData.status); // Use status from GET response
+        
+        // Update offer locally to include appointmentId
+        if (offer) {
+          setOffer({
+            ...offer,
+            appointmentId: appointmentData.id
+          });
+          console.log('✅ Updated offer with appointmentId:', appointmentData.id);
+        }
+        
+        // Cache appointmentId in AsyncStorage (for persistence across app restarts)
+        // Use userId in cache key to avoid conflicts between different users
+        const cacheKey = user?.id ? `appointment_${offerId}_${user.id}` : `appointment_${offerId}`;
+        await AsyncStorage.setItem(cacheKey, appointmentData.id);
+        console.log('💾 Cached appointmentId to storage:', appointmentData.id, 'key:', cacheKey);
+        
+        successTitle = 'Tạo lịch hẹn thành công';
+        successMessage = 'Đơn hàng đã được lên lịch. Hãy chuẩn bị xuất phát đến địa điểm!';
+        
+        console.log('✅ Appointment creation complete. Status:', appointmentData.status);
+        showSuccessPopup(successTitle, successMessage);
         return;
       }
 
-      if (nextStatus === 'repairing') {
-        Alert.alert(
-          'Bắt đầu sửa chữa',
-          'Bạn đã xác nhận giá với khách hàng và sẵn sàng sửa chữa?',
-          [
-            { text: 'Chưa xác nhận giá', style: 'cancel' },
-            {
-              text: 'Bắt đầu sửa chữa',
-              onPress: () => setCurrentStatus(nextStatus)
-            }
-          ]
-        );
-        return;
-      }
+      // Case 2: Appointment SCHEDULED → Update to EN_ROUTE
+      if (appointment && currentStatus === 'SCHEDULED') {
+        // Get current location
+        const locationCoords = await requestLocation();
+        
+        if (!locationCoords) {
+          Alert.alert(
+            'Cần quyền vị trí',
+            'Vui lòng cấp quyền truy cập vị trí để cập nhật trạng thái xuất phát.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
 
-      if (nextStatus === 'payment_pending') {
-        Alert.alert(
-          'Hoàn thành sửa chữa',
-          'Đã sửa chữa xong?\n\n📷 Vui lòng chụp ảnh sau khi sửa chữa',
-          [
-            { text: 'Chưa xong', style: 'cancel' },
-            {
-              text: 'Đã xong - Chụp ảnh',
-              onPress: () => {
-                setCurrentStatus(nextStatus);
-                // Here you would open camera or image picker
-                Alert.alert('Camera', 'Mở camera để chụp ảnh sau sửa chữa...');
-              }
-            }
-          ]
-        );
-        return;
-      }
-      
-      Alert.alert(
-        'Cập nhật trạng thái',
-        `Chuyển sang: ${nextStatusInfo.title}?`,
-        [
-          { text: 'Hủy', style: 'cancel' },
+        const updateData = await appointmentsService.updateAppointmentStatus(
+          appointment.id,
           {
-            text: 'Xác nhận',
-            onPress: () => setCurrentStatus(nextStatus)
+            status: AppointmentStatus.EN_ROUTE,
+            lat: locationCoords.latitude,
+            lng: locationCoords.longitude
           }
-        ]
-      );
-    } else {
-      Alert.alert('Thông báo', 'Đơn hàng đã hoàn thành!');
+        );
+
+        console.log('✅ Updated to EN_ROUTE with location:', {
+          lat: locationCoords.latitude,
+          lng: locationCoords.longitude,
+          data: updateData
+        });
+        
+        setAppointment(updateData as any);
+        setCurrentStatus(updateData.status); // Use status from API response
+        successTitle = 'Đã xác nhận xuất phát';
+        successMessage = 'Bạn đang trên đường đến địa điểm. An toàn là trên hết!';
+        
+        await fetchOrderData();
+        showSuccessPopup(successTitle, successMessage);
+        return;
+      }
+
+      // Case 3: EN_ROUTE → ARRIVED
+      if (appointment && currentStatus === AppointmentStatus.EN_ROUTE) {
+        // Get current location
+        const locationCoords = await requestLocation();
+        
+        if (!locationCoords) {
+          Alert.alert(
+            'Cần quyền vị trí',
+            'Vui lòng cấp quyền truy cập vị trí để xác nhận đã đến nơi.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+
+        const updateData = await appointmentsService.updateAppointmentStatus(
+          appointment.id,
+          {
+            status: AppointmentStatus.ARRIVED,
+            lat: locationCoords.latitude,
+            lng: locationCoords.longitude
+          }
+        );
+
+        console.log('✅ Updated to ARRIVED with location:', {
+          lat: locationCoords.latitude,
+          lng: locationCoords.longitude,
+          data: updateData
+        });
+        
+        setAppointment(updateData as any);
+        setCurrentStatus(updateData.status); // Use status from API response
+        successTitle = 'Đã đến nơi';
+        successMessage = 'Bạn đã đến địa điểm. Hãy liên hệ khách hàng và bắt đầu kiểm tra!';
+        
+        await fetchOrderData();
+        showSuccessPopup(successTitle, successMessage);
+        return;
+      }
+
+      // Case 4: ARRIVED → CHECKING
+      if (appointment && currentStatus === AppointmentStatus.ARRIVED) {
+        const updateData = await appointmentsService.updateAppointmentStatus(
+          appointment.id,
+          {
+            status: AppointmentStatus.CHECKING,
+            timestamp: new Date().toISOString()
+          }
+        );
+
+        console.log('✅ Updated to CHECKING:', updateData);
+        
+        setAppointment(updateData as any);
+        setCurrentStatus(updateData.status); // Use status from API response
+        successTitle = 'Bắt đầu kiểm tra';
+        successMessage = 'Hãy kiểm tra kỹ lưỡng tình trạng thiết bị và xác định phương án sửa chữa.';
+        
+        await fetchOrderData();
+        showSuccessPopup(successTitle, successMessage);
+        return;
+      }
+
+      // Case 5: CHECKING → REPAIRING
+      if (appointment && currentStatus === AppointmentStatus.CHECKING) {
+        const updateData = await appointmentsService.updateAppointmentStatus(
+          appointment.id,
+          {
+            status: AppointmentStatus.REPAIRING,
+            timestamp: new Date().toISOString()
+          }
+        );
+
+        console.log('✅ Updated to REPAIRING:', updateData);
+        
+        setAppointment(updateData as any);
+        setCurrentStatus(updateData.status); // Use status from API response
+        successTitle = 'Bắt đầu sửa chữa';
+        successMessage = 'Bạn đang tiến hành sửa chữa. Hãy hoàn thành tốt công việc!';
+        
+        await fetchOrderData();
+        showSuccessPopup(successTitle, successMessage);
+        return;
+      }
+
+      // Case 6: REPAIRING → REPAIRED
+      if (appointment && currentStatus === AppointmentStatus.REPAIRING) {
+        const updateData = await appointmentsService.updateAppointmentStatus(
+          appointment.id,
+          {
+            status: AppointmentStatus.REPAIRED,
+            timestamp: new Date().toISOString()
+          }
+        );
+
+        console.log('✅ Updated to REPAIRED:', updateData);
+        
+        setAppointment(updateData as any);
+        setCurrentStatus(updateData.status); // Use status from API response
+        successTitle = 'Hoàn thành sửa chữa';
+        successMessage = 'Xuất sắc! Công việc đã hoàn thành. Hãy chụp ảnh kết quả và xác nhận với khách hàng.';
+        
+        await fetchOrderData();
+        showSuccessPopup(successTitle, successMessage);
+        return;
+      }
+
+    } catch (err: any) {
+      console.error('Error updating status:', err);
+      Alert.alert('Lỗi', err.message || 'Không thể cập nhật trạng thái');
+    } finally {
+      setUpdating(false);
     }
   };
 
   const handleContactCustomer = () => {
+    if (!serviceRequest) return;
+    
     Alert.alert(
       'Liên hệ khách hàng',
-      `Gọi cho ${order.customerName}?`,
+      `Gọi cho ${serviceRequest.customerName || 'khách hàng'}?`,
       [
         { text: 'Hủy', style: 'cancel' },
-        { text: 'Gọi ngay', onPress: () => Alert.alert('Đang gọi...', order.phone) }
+        { text: 'Gọi ngay', onPress: () => Alert.alert('Đang gọi...', serviceRequest.phoneNumber) }
       ]
     );
   };
 
-  const handleViewLocation = () => {
-    Alert.alert(
-      'Xem địa chỉ',
-      `Mở bản đồ đến: ${order.address}?`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { text: 'Mở bản đồ', onPress: () => Alert.alert('Đang mở bản đồ...') }
-      ]
-    );
+  const handleViewLocation = async () => {
+    if (!serviceRequest || !serviceRequest.requestAddress) {
+      Alert.alert('Lỗi', 'Không có thông tin địa chỉ');
+      return;
+    }
+    
+    const address = serviceRequest.requestAddress;
+    const encodedAddress = encodeURIComponent(address);
+    
+    // Try Google Maps first (more common on mobile)
+    const googleMapsUrl = Platform.select({
+      ios: `maps://app?daddr=${encodedAddress}`,
+      android: `google.navigation:q=${encodedAddress}`,
+    });
+    
+    const appleMapsUrl = `http://maps.apple.com/?daddr=${encodedAddress}`;
+    const googleMapsWebUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`;
+    
+    try {
+      // Check if Google Maps app is available
+      const canOpenGoogleMaps = await Linking.canOpenURL(googleMapsUrl || '');
+      
+      if (canOpenGoogleMaps) {
+        await Linking.openURL(googleMapsUrl || '');
+      } else {
+        // Fallback to web Google Maps or Apple Maps on iOS
+        const fallbackUrl = Platform.OS === 'ios' ? appleMapsUrl : googleMapsWebUrl;
+        const canOpenFallback = await Linking.canOpenURL(fallbackUrl);
+        
+        if (canOpenFallback) {
+          await Linking.openURL(fallbackUrl);
+        } else {
+          Alert.alert(
+            'Không thể mở bản đồ',
+            'Vui lòng cài đặt Google Maps hoặc Apple Maps',
+            [{ text: 'OK' }]
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error opening maps:', error);
+      Alert.alert('Lỗi', 'Không thể mở ứng dụng bản đồ');
+    }
   };
 
   const handleChatCustomer = () => {
+    if (!serviceRequest) return;
+    
     Alert.alert(
       'Chat với khách hàng',
-      `Mở chat với ${order.customerName}?`,
+      `Mở chat với ${serviceRequest.customerName || 'khách hàng'}?`,
       [
         { text: 'Hủy', style: 'cancel' },
         { text: 'Mở chat', onPress: () => Alert.alert('Đang mở chat...') }
@@ -437,30 +819,39 @@ function TechnicianOrderTracking() {
     );
   };
 
-  const handleViewImage = (imageUri: string, index: number, totalImages: number) => {
-    Alert.alert(
-      'Xem hình ảnh',
-      `Hình ${index + 1}/${totalImages}`,
-      [
-        { text: 'Đóng', style: 'cancel' },
-        { text: 'Xem toàn màn hình', onPress: () => Alert.alert('Đang mở hình ảnh...') }
-      ]
-    );
+  const handleViewImage = (imageUri: string, index: number, totalImgs: number) => {
+    setSelectedImageUri(imageUri);
+    setSelectedImageIndex(index);
+    setTotalImages(totalImgs);
+    setShowImageModal(true);
+  };
+
+  const handleNextImage = () => {
+    if (selectedImageIndex < totalImages - 1 && displayData.attachedImages) {
+      const nextIndex = selectedImageIndex + 1;
+      setSelectedImageIndex(nextIndex);
+      setSelectedImageUri(displayData.attachedImages[nextIndex]);
+    }
+  };
+
+  const handlePreviousImage = () => {
+    if (selectedImageIndex > 0 && displayData.attachedImages) {
+      const prevIndex = selectedImageIndex - 1;
+      setSelectedImageIndex(prevIndex);
+      setSelectedImageUri(displayData.attachedImages[prevIndex]);
+    }
   };
 
   const handleViewEarnings = () => {
-    if (!order) return;
+    if (!offer) return;
     setShowEarningsModal(true);
   };
 
   const calculateEarnings = () => {
-    if (!order) return { finalPrice: 0, commission: 0, actualEarnings: 0 };
+    if (!offer) return { finalPrice: 0, commission: 0, actualEarnings: 0 };
     
-    // Extract price from priceRange (e.g., "200,000đ - 500,000đ" -> 500,000)
-    const priceText = order.priceRange;
-    const prices = priceText.match(/[\d,]+/g) || [];
-    const finalPriceText = prices[prices.length - 1] || '0'; // Get higher price
-    const finalPrice = parseInt(finalPriceText.replace(/,/g, ''));
+    // Get final cost from offer
+    const finalPrice = offer.finalCost || offer.estimatedCost || 0;
     
     // Calculate 15% commission deduction
     const commissionRate = 0.15;
@@ -480,6 +871,8 @@ function TechnicianOrderTracking() {
   };
 
   const handleFinalPriceConfirmation = () => {
+    const defaultValue = displayData.quoteAmount ? displayData.quoteAmount.replace(/[^\d]/g, '') : '';
+    
     Alert.prompt(
       'Xác nhận giá cuối cùng',
       'Nhập giá cuối cùng sau khi kiểm tra thực tế:',
@@ -508,7 +901,7 @@ function TechnicianOrderTracking() {
         }
       ],
       'plain-text',
-      quoteAmount && typeof quoteAmount === 'string' ? quoteAmount.replace(/[^\d]/g, '') : ''
+      defaultValue
     );
   };
 
@@ -702,16 +1095,62 @@ function TechnicianOrderTracking() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
           
-          {/* Service Card */}
+          {/* Service Card - Redesigned */}
           <View style={styles.serviceCard}>
-            <View style={styles.serviceHeader}>
-              <View style={styles.serviceIcon}>
-                <Ionicons name="construct" size={24} color="#609CEF" />
+            <LinearGradient 
+              colors={['#609CEF', '#4F8BE8']} 
+              style={styles.serviceCardGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={styles.serviceCardContent}>
+                <View style={styles.serviceIconCircle}>
+                  <Ionicons name="construct" size={28} color="#FFFFFF" />
+                </View>
+                <View style={styles.serviceDetailsContainer}>
+                  <Text style={styles.serviceLabel}>Dịch vụ đã chọn</Text>
+                  <Text style={styles.serviceName}>{displayData.serviceName}</Text>
+                </View>
               </View>
-              <View style={styles.serviceInfo}>
-                <Text style={styles.serviceName}>{order.serviceName}</Text>
-                <Text style={styles.servicePrice}>{order.priceRange}</Text>
+            </LinearGradient>
+            
+            <View style={styles.servicePriceContainer}>
+              <View style={styles.priceRow}>
+                <View style={styles.priceMainInfo}>
+                  <Text style={styles.priceLabelText}>Giá trị đơn hàng</Text>
+                  <Text style={styles.servicePriceValue}>{displayData.priceRange}</Text>
+                </View>
+                <View style={[
+                  styles.priceTypeBadge,
+                  { backgroundColor: displayData.quoteType === 'estimated' ? '#FFFBEB' : '#ECFDF5',
+                    borderColor: displayData.quoteType === 'estimated' ? '#FCD34D' : '#A7F3D0' }
+                ]}>
+                  <Ionicons 
+                    name={displayData.quoteType === 'estimated' ? "time-outline" : "checkmark-circle"} 
+                    size={16} 
+                    color={displayData.quoteType === 'estimated' ? '#F59E0B' : '#10B981'} 
+                  />
+                  <Text style={[
+                    styles.priceTypeBadgeText,
+                    { color: displayData.quoteType === 'estimated' ? '#F59E0B' : '#10B981' }
+                  ]}>
+                    {displayData.quoteType === 'estimated' ? 'GIÁ DỰ KIẾN' : 'GIÁ CHỐT'}
+                  </Text>
+                </View>
               </View>
+              
+              {displayData.quoteType === 'estimated' && (
+                <View style={styles.priceNoteBox}>
+                  <Ionicons name="information-circle" size={16} color="#F59E0B" />
+                  <Text style={styles.priceNoteText}>Có thể điều chỉnh sau khi kiểm tra thực tế</Text>
+                </View>
+              )}
+              {displayData.quoteType === 'final' && (
+                <View style={[styles.priceNoteBox, { backgroundColor: '#ECFDF5' }]}>
+                  <Ionicons name="lock-closed" size={16} color="#10B981" />
+                  <Text style={[styles.priceNoteText, { color: '#10B981' }]}>Giá đã được xác nhận và không thay đổi</Text>
+                </View>
+              )}
             </View>
           </View>
           
@@ -723,7 +1162,7 @@ function TechnicianOrderTracking() {
               </View>
               <View style={styles.customerInfo}>
                 <Text style={styles.customerLabel}>Khách hàng</Text>
-                <Text style={styles.customerName}>{order.customerName}</Text>
+                <Text style={styles.customerName}>{displayData.customerName}</Text>
               </View>
               <View style={styles.quickActionsGroup}>
                 <TouchableOpacity style={styles.quickCallButton} onPress={handleContactCustomer}>
@@ -736,7 +1175,17 @@ function TechnicianOrderTracking() {
             </View>
             <View style={styles.customerPhoneSection}>
               <Ionicons name="call-outline" size={16} color="#9CA3AF" />
-              <Text style={styles.customerPhoneText}>{order.phone}</Text>
+              <Text style={styles.customerPhoneText}>{displayData.phoneNumber}</Text>
+            </View>
+            {/* Address Section */}
+            <View style={styles.customerAddressSection}>
+              <Ionicons name="location-outline" size={16} color="#9CA3AF" />
+              <View style={styles.addressTextContainer}>
+                <Text style={styles.customerAddressText}>{displayData.address}</Text>
+                {displayData.addressNote && (
+                  <Text style={styles.addressNoteText}>Ghi chú: {displayData.addressNote}</Text>
+                )}
+              </View>
             </View>
           </View>
           
@@ -754,12 +1203,12 @@ function TechnicianOrderTracking() {
             <View style={styles.appointmentTimeContainer}>
               <View style={styles.appointmentDateBox}>
                 <Text style={styles.appointmentDateLabel}>Ngày</Text>
-                <Text style={styles.appointmentDateValue}>{order.appointmentDate}</Text>
+                <Text style={styles.appointmentDateValue}>{displayData.appointmentDate}</Text>
               </View>
               <View style={styles.appointmentTimeDivider} />
               <View style={styles.appointmentTimeBox}>
                 <Text style={styles.appointmentTimeLabel}>Giờ</Text>
-                <Text style={styles.appointmentTimeValue}>{order.appointmentTime}</Text>
+                <Text style={styles.appointmentTimeValue}>{displayData.appointmentTime}</Text>
               </View>
             </View>
             <View style={styles.appointmentAlert}>
@@ -775,28 +1224,28 @@ function TechnicianOrderTracking() {
               <Text style={styles.cardTitle}>Mô tả sự cố</Text>
             </View>
             <View style={styles.cardContent}>
-              <Text style={styles.descriptionText}>{order.description}</Text>
+              <Text style={styles.descriptionText}>{displayData.description}</Text>
             </View>
           </View>
 
           {/* Attached Images Card */}
-          {order.attachedImages && order.attachedImages.length > 0 && (
+          {displayData.attachedImages && displayData.attachedImages.length > 0 && (
             <View style={styles.imagesCard}>
               <View style={styles.cardHeader}>
                 <Ionicons name="images" size={24} color="#609CEF" />
-                <Text style={styles.cardTitle}>Hình ảnh đính kèm ({order.attachedImages.length})</Text>
+                <Text style={styles.cardTitle}>Hình ảnh đính kèm ({displayData.attachedImages.length})</Text>
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScrollView}>
                 <View style={styles.imagesContainer}>
-                  {order.attachedImages.map((imageUri, index) => (
+                  {displayData.attachedImages.map((imageUri: string, index: number) => (
                     <TouchableOpacity
                       key={index}
                       style={styles.imageWrapper}
-                      onPress={() => handleViewImage(imageUri, index, order.attachedImages!.length)}
+                      onPress={() => handleViewImage(imageUri, index, displayData.attachedImages.length)}
                     >
                       <Image source={{ uri: imageUri }} style={styles.attachedImage} />
                       <View style={styles.imageOverlay}>
-                        <Ionicons name="expand" size={20} color="#FFFFFF" />
+                        <Ionicons name="expand" size={16} color="#FFFFFF" />
                       </View>
                       <View style={styles.imageNumberBadge}>
                         <Text style={styles.imageNumberText}>{index + 1}</Text>
@@ -813,51 +1262,8 @@ function TechnicianOrderTracking() {
           )}
         </View>
 
-        {/* Quote Info */}
-        {quoteType && quoteAmount && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Thông tin báo giá</Text>
-            <View style={[
-              styles.quoteCard,
-              { borderColor: quoteType === 'estimated' ? '#F59E0B' : '#10B981' }
-            ]}>
-              <View style={styles.quoteHeader}>
-                <View style={[
-                  styles.quoteTypeTag,
-                  { backgroundColor: quoteType === 'estimated' ? '#FFFBEB' : '#ECFDF5' }
-                ]}>
-                  <Ionicons 
-                    name={quoteType === 'estimated' ? "calculator" : "checkmark-circle"} 
-                    size={16} 
-                    color={quoteType === 'estimated' ? '#F59E0B' : '#10B981'} 
-                  />
-                  <Text style={[
-                    styles.quoteTypeText,
-                    { color: quoteType === 'estimated' ? '#F59E0B' : '#10B981' }
-                  ]}>
-                    {quoteType === 'estimated' ? 'Báo giá dự kiến' : 'Báo giá chốt'}
-                  </Text>
-                </View>
-              </View>
-              <Text style={[
-                styles.quoteAmount,
-                { color: quoteType === 'estimated' ? '#F59E0B' : '#10B981' }
-              ]}>
-                {quoteAmount} VNĐ
-              </Text>
-              {quoteType === 'estimated' && (
-                <Text style={styles.quoteNote}>
-                  * Giá có thể thay đổi sau khi kiểm tra thực tế
-                </Text>
-              )}
-            </View>
-          </View>
-        )}
-
-
-
         {/* Status-specific Actions */}
-        {currentStatus === 'arrived' && quoteType === 'estimated' && (
+        {currentStatus === 'arrived' && displayData.quoteType === 'estimated' && (
           <View style={styles.statusActionSection}>
             <TouchableOpacity style={styles.statusActionButton} onPress={handleFinalPriceConfirmation}>
               <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.statusActionGradient}>
@@ -867,8 +1273,6 @@ function TechnicianOrderTracking() {
             </TouchableOpacity>
           </View>
         )}
-
-
 
       </ScrollView>
 
@@ -883,6 +1287,63 @@ function TechnicianOrderTracking() {
           />
         </View>
       )}
+
+      {/* Full Screen Image Modal */}
+      <Modal
+        visible={showImageModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowImageModal(false)}
+      >
+        <View style={styles.imageModalOverlay}>
+          {/* Close Button */}
+          <TouchableOpacity
+            style={styles.imageModalCloseButton}
+            onPress={() => setShowImageModal(false)}
+          >
+            <Ionicons name="close" size={32} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          {/* Image Counter */}
+          <View style={styles.imageModalCounter}>
+            <Text style={styles.imageModalCounterText}>
+              {selectedImageIndex + 1} / {totalImages}
+            </Text>
+          </View>
+
+          {/* Image */}
+          <View style={styles.imageModalImageContainer}>
+            <Image
+              source={{ uri: selectedImageUri }}
+              style={styles.imageModalImage}
+              resizeMode="contain"
+            />
+          </View>
+
+          {/* Navigation Buttons */}
+          {totalImages > 1 && (
+            <>
+              {selectedImageIndex > 0 && (
+                <TouchableOpacity
+                  style={[styles.imageModalNavButton, styles.imageModalPrevButton]}
+                  onPress={handlePreviousImage}
+                >
+                  <Ionicons name="chevron-back" size={32} color="#FFFFFF" />
+                </TouchableOpacity>
+              )}
+
+              {selectedImageIndex < totalImages - 1 && (
+                <TouchableOpacity
+                  style={[styles.imageModalNavButton, styles.imageModalNextButton]}
+                  onPress={handleNextImage}
+                >
+                  <Ionicons name="chevron-forward" size={32} color="#FFFFFF" />
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
+      </Modal>
 
       {/* Earnings Modal */}
       <Modal
@@ -968,6 +1429,42 @@ function TechnicianOrderTracking() {
                   </>
                 );
               })()}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Success Popup Modal */}
+      <Modal
+        visible={showSuccessModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowSuccessModal(false)}
+      >
+        <View style={styles.successModalOverlay}>
+          <View style={styles.successModalContainer}>
+            {/* White Background with subtle gradient */}
+            <View style={styles.successModalContent}>
+              {/* Animated Checkmark */}
+              <Animated.View 
+                style={[
+                  styles.successCheckmarkContainer,
+                  checkmarkAnimatedStyle
+                ]}
+              >
+                <View style={styles.successCheckmarkCircle}>
+                  <Ionicons name="checkmark" size={48} color="#FFFFFF" />
+                </View>
+              </Animated.View>
+
+              {/* Success Content */}
+              <View style={styles.successContent}>
+                <Text style={styles.successModalTitle}>{successTitle}</Text>
+                <Text style={styles.successModalMessage}>{successMessage}</Text>
+              </View>
+
+              {/* Accent Bar */}
+              <View style={styles.successAccentBar} />
             </View>
           </View>
         </View>
@@ -1245,20 +1742,109 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
-  // New improved styles
+  // Service Card - Redesigned Styles
   serviceCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 20,
     marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
-    borderLeftWidth: 4,
-    borderLeftColor: '#609CEF',
+    overflow: 'hidden',
   },
+  serviceCardGradient: {
+    padding: 20,
+    paddingVertical: 24,
+  },
+  serviceCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  serviceIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  serviceDetailsContainer: {
+    flex: 1,
+  },
+  serviceLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  serviceName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    lineHeight: 24,
+  },
+  servicePriceContainer: {
+    padding: 20,
+    paddingTop: 16,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  priceMainInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  priceLabelText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  servicePriceValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  priceTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  priceTypeBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  priceNoteBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFFBEB',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#F59E0B',
+  },
+  priceNoteText: {
+    fontSize: 13,
+    color: '#F59E0B',
+    flex: 1,
+    lineHeight: 18,
+  },
+  // Old styles kept for compatibility
   serviceHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1275,16 +1861,32 @@ const styles = StyleSheet.create({
   serviceInfo: {
     flex: 1,
   },
-  serviceName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 4,
+  servicePriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
   },
   servicePrice: {
     fontSize: 16,
     fontWeight: '600',
     color: '#609CEF',
+  },
+  priceTypeTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  priceTypeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  priceNoteContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
   },
   customerCard: {
     backgroundColor: '#FFFFFF',
@@ -1474,11 +2076,12 @@ const styles = StyleSheet.create({
   },
   imageOverlay: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(96, 156, 239, 0.8)',
+    bottom: 8,
+    left: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 20,
+    width: 32,
+    height: 32,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1566,6 +2169,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#4B5563',
     fontWeight: '500',
+  },
+  customerAddressSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 8,
+    marginTop: 8,
+  },
+  addressTextContainer: {
+    flex: 1,
+  },
+  customerAddressText: {
+    fontSize: 15,
+    color: '#4B5563',
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+  addressNoteText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontStyle: 'italic',
+    marginTop: 4,
+    lineHeight: 18,
   },
   customerContactRow: {
     flexDirection: 'row',
@@ -1748,9 +2377,11 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   appointmentDateValue: {
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: '700',
     color: '#1F2937',
+    textAlign: 'center',
+    lineHeight: 20,
   },
   appointmentTimeDivider: {
     width: 2,
@@ -1770,9 +2401,10 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   appointmentTimeValue: {
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '700',
     color: '#609CEF',
+    textAlign: 'center',
   },
   appointmentAlert: {
     flexDirection: 'row',
@@ -1872,6 +2504,68 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
+  },
+  // Image Modal Styles
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalCloseButton: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 30,
+    right: 20,
+    zIndex: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalCounter: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 30,
+    left: 20,
+    zIndex: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  imageModalCounterText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  imageModalImageContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+  },
+  imageModalImage: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+  },
+  imageModalNavButton: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -30,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  imageModalPrevButton: {
+    left: 20,
+  },
+  imageModalNextButton: {
+    right: 20,
   },
   modalContainer: {
     backgroundColor: '#FFFFFF',
@@ -2014,6 +2708,19 @@ const styles = StyleSheet.create({
     opacity: 0.95,
     letterSpacing: 0.3,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    padding: 24,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
   finalEarningsAmount: {
     fontSize: 28,
     fontWeight: '800',
@@ -2064,6 +2771,74 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.3,
+  },
+  
+  // Success Modal Styles - Compact & Clean Design
+  successModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  successModalContainer: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  successModalContent: {
+    backgroundColor: '#FFFFFF',
+    paddingTop: 36,
+    paddingBottom: 32,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  successCheckmarkContainer: {
+    marginBottom: 20,
+  },
+  successCheckmarkCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#10B981',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  successContent: {
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  successModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  successModalMessage: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 20,
+    paddingHorizontal: 8,
+  },
+  successAccentBar: {
+    width: 60,
+    height: 4,
+    backgroundColor: '#609CEF',
+    borderRadius: 2,
+    marginTop: 20,
   },
 });
 

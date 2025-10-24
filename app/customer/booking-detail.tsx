@@ -232,29 +232,29 @@ function BookingDetail() {
       case 'searching':
         return {
           text: 'Đang tìm thợ',
-          color: '#F59E0B',
-          backgroundColor: '#FEF3C7',
+          color: '#609CEF',
+          backgroundColor: '#E5F0FF',
           icon: 'search-outline',
         };
       case 'quoted':
         return {
           text: 'Có báo giá',
-          color: '#3B82F6',
-          backgroundColor: '#DBEAFE',
+          color: '#4F8BE8',
+          backgroundColor: '#E5F0FF',
           icon: 'document-text-outline',
         };
       case 'accepted':
         return {
           text: 'Đã xác nhận',
-          color: '#8B5CF6',
-          backgroundColor: '#EDE9FE',
+          color: '#609CEF',
+          backgroundColor: '#E5F0FF',
           icon: 'checkmark-circle-outline',
         };
       case 'in-progress':
         return {
           text: 'Đang thực hiện',
-          color: '#F59E0B',
-          backgroundColor: '#FEF3C7',
+          color: '#4F8BE8',
+          backgroundColor: '#E5F0FF',
           icon: 'build-outline',
         };
       case 'completed':
@@ -274,8 +274,8 @@ function BookingDetail() {
       default:
         return {
           text: 'Đang xử lý',
-          color: '#6B7280',
-          backgroundColor: '#F3F4F6',
+          color: '#609CEF',
+          backgroundColor: '#E5F0FF',
           icon: 'time-outline',
         };
     }

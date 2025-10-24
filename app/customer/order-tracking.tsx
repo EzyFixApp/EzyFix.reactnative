@@ -395,8 +395,8 @@ function CustomerOrderTracking() {
       case 'searching':
         return {
           text: 'Đang tìm thợ',
-          color: '#F59E0B',
-          backgroundColor: '#FEF3C7',
+          color: '#609CEF',
+          backgroundColor: '#E5F0FF',
           icon: 'search-outline',
           step: 1,
           totalSteps: 5,
@@ -404,8 +404,8 @@ function CustomerOrderTracking() {
       case 'quoted':
         return {
           text: 'Có báo giá',
-          color: '#3B82F6',
-          backgroundColor: '#DBEAFE',
+          color: '#4F8BE8',
+          backgroundColor: '#E5F0FF',
           icon: 'document-text-outline',
           step: 2,
           totalSteps: 5,
@@ -413,8 +413,8 @@ function CustomerOrderTracking() {
       case 'accepted':
         return {
           text: 'Đã xác nhận',
-          color: '#8B5CF6',
-          backgroundColor: '#EDE9FE',
+          color: '#609CEF',
+          backgroundColor: '#E5F0FF',
           icon: 'checkmark-circle-outline',
           step: 3,
           totalSteps: 5,
@@ -422,8 +422,8 @@ function CustomerOrderTracking() {
       case 'in-progress':
         return {
           text: 'Đang thực hiện',
-          color: '#F59E0B',
-          backgroundColor: '#FEF3C7',
+          color: '#4F8BE8',
+          backgroundColor: '#E5F0FF',
           icon: 'build-outline',
           step: 4,
           totalSteps: 5,
@@ -722,11 +722,11 @@ function CustomerOrderTracking() {
                     {new Date(order.createdAt).toLocaleString('vi-VN')}
                   </Text>
                 </View>
-                {order.requestedDate && (
+                {order.expectedStartTime && (
                   <View style={styles.infoRow}>
                     <Text style={styles.infoLabel}>Ngày yêu cầu:</Text>
                     <Text style={styles.infoValue}>
-                      {new Date(order.requestedDate).toLocaleDateString('vi-VN')}
+                      {new Date(order.expectedStartTime).toLocaleDateString('vi-VN')}
                     </Text>
                   </View>
                 )}

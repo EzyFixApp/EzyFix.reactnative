@@ -22,6 +22,7 @@ function BookingConfirmation() {
   // Extract booking details from params
   const serviceName = params.serviceName as string || 'Dịch vụ';
   const customerName = params.customerName as string || 'Khách hàng';
+  const phoneNumber = params.phoneNumber as string || '';
   const requestId = params.requestId as string || '';
   const imageCount = parseInt(params.imageCount as string || '0');
   const requestedDate = params.requestedDate as string || '';
@@ -29,7 +30,7 @@ function BookingConfirmation() {
   const addressNote = params.addressNote as string || '';
   const serviceDescription = params.serviceDescription as string || '';
   
-  // Format date for display
+  // Format date for display (from UTC ISO string)
   const formatDate = (dateString: string) => {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -41,9 +42,10 @@ function BookingConfirmation() {
     });
   };
 
-  // Format time for display
+  // Format time for display (HH:mm format)
   const formatTime = (timeString: string) => {
     if (!timeString) return '';
+    // timeString already in HH:mm format from select-schedule
     return timeString;
   };
   
@@ -162,10 +164,24 @@ function BookingConfirmation() {
             <Text style={styles.infoValue}>{customerName}</Text>
           </View>
           
+          {phoneNumber && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Số điện thoại:</Text>
+              <Text style={styles.infoValue}>{phoneNumber}</Text>
+            </View>
+          )}
+          
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Dịch vụ:</Text>
             <Text style={styles.infoValue}>{serviceName}</Text>
           </View>
+
+          {serviceDescription && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Mô tả:</Text>
+              <Text style={styles.infoValue}>{serviceDescription}</Text>
+            </View>
+          )}
 
           {requestedDate && (
             <View style={styles.infoRow}>

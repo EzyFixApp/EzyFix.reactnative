@@ -145,7 +145,7 @@ export class BaseApiService {
   /**
    * Handle response and parse data
    */
-  private async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
+  private async handleResponse<T>(response: Response, skipAutoLogoutOn401: boolean = false): Promise<ApiResponse<T>> {
     const contentType = response.headers.get('content-type');
     
     let data: any;
@@ -159,12 +159,14 @@ export class BaseApiService {
       const error = this.createApiError(response.status, data);
       
       // Handle 401 Unauthorized - session expired
-      if (response.status === 401) {
+      if (response.status === 401 && !skipAutoLogoutOn401) {
         logger.warn('🔒 Session expired (401) - triggering logout');
         // Clear tokens and trigger global logout - DON'T AWAIT to avoid blocking the error throw
         this.handleSessionExpired().catch(err => {
           logger.error('Error handling session expired:', err);
         });
+      } else if (response.status === 401 && skipAutoLogoutOn401) {
+        logger.warn('🔒 Got 401 but skipAutoLogoutOn401=true - not triggering logout');
       }
       
       throw error;
@@ -213,7 +215,7 @@ export class BaseApiService {
     config: RequestConfig, 
     options: RequestOptions = {}
   ): Promise<ApiResponse<T>> {
-    const { requireAuth = false, retryOnUnauthorized = true } = options;
+    const { requireAuth = false, retryOnUnauthorized = true, skipAutoLogoutOn401 = false } = options;
     
     try {
       // Build headers
@@ -248,7 +250,7 @@ export class BaseApiService {
       // Make request with timeout
       const fetchPromise = fetch(url, fetchOptions);
       const response = await Promise.race([fetchPromise, timeoutPromise]) as Response;
-      return await this.handleResponse<T>(response);
+      return await this.handleResponse<T>(response, skipAutoLogoutOn401);
 
     } catch (error: any) {
       // Handle specific error types
@@ -313,6 +315,21 @@ export class BaseApiService {
     return this.request<T>({
       url: endpoint,
       method: 'PUT',
+      data
+    }, options);
+  }
+
+  /**
+   * PATCH request
+   */
+  public async patch<T>(
+    endpoint: string, 
+    data?: any, 
+    options?: RequestOptions
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>({
+      url: endpoint,
+      method: 'PATCH',
       data
     }, options);
   }

@@ -45,6 +45,8 @@ interface OrderItem {
   appointmentTime: string;
   addressNote?: string;
   paymentMethod?: 'prepaid' | 'cash' | 'card';
+  serviceRequestId: string; // API requestID
+  offerId?: string; // Offer ID if exists
 }
 
 const STORAGE_KEY_ACTIVATED = '@technician_orders_activated';
@@ -411,6 +413,7 @@ const transformApiResponseToOrderItem = async (
   // Fetch offer to get price information
   let priceRange = '200,000 - 500,000đ'; // Default fallback
   let priceLabel: string | undefined = undefined;
+  let offerId: string | undefined = undefined;
   
   try {
     const offers = await serviceDeliveryOffersService.getAllOffers(apiResponse.requestID);
@@ -418,17 +421,18 @@ const transformApiResponseToOrderItem = async (
     if (offers && offers.length > 0) {
       // Get the first offer (should be technician's own offer)
       const offer = offers[0];
+      offerId = offer.offerId; // Save offerId for navigation
       
       if (offer.finalCost && offer.finalCost > 0) {
         // Final cost is set - this is confirmed price
         priceRange = formatPrice(offer.finalCost);
         priceLabel = 'Giá đã chốt';
-        if (__DEV__) console.log(`💰 Order ${apiResponse.requestID}: Final cost ${priceRange}`);
+        if (__DEV__) console.log(`💰 Order ${apiResponse.requestID}: Final cost ${priceRange}, offerId: ${offerId}`);
       } else if (offer.estimatedCost && offer.estimatedCost > 0) {
         // Only estimated cost - this is quote
         priceRange = formatPrice(offer.estimatedCost);
         priceLabel = 'Giá dự kiến';
-        if (__DEV__) console.log(`💰 Order ${apiResponse.requestID}: Estimated cost ${priceRange}`);
+        if (__DEV__) console.log(`💰 Order ${apiResponse.requestID}: Estimated cost ${priceRange}, offerId: ${offerId}`);
       }
     }
   } catch (error) {
@@ -454,7 +458,9 @@ const transformApiResponseToOrderItem = async (
     appointmentDate: formatDate(apiResponse.expectedStartTime), // Use expectedStartTime for appointment date (when to do the service)
     appointmentTime: formattedTime || 'Chưa xác định', // Show "Chưa xác định" if no specific time
     addressNote: apiResponse.addressNote || undefined,
-    paymentMethod: undefined
+    paymentMethod: undefined,
+    serviceRequestId: apiResponse.requestID, // For navigation
+    offerId: offerId // For navigation to tracking page
   };
 };
 
@@ -874,9 +880,22 @@ function TechnicianOrders() {
 
     if (status === 'accepted' || status === 'in-progress' || status === 'completed') {
       // Navigate to technician order tracking for accepted orders
+      if (!order) {
+        Alert.alert('Lỗi', 'Không tìm thấy thông tin đơn hàng');
+        return;
+      }
+
+      if (!order.offerId) {
+        Alert.alert('Lỗi', 'Không tìm thấy thông tin báo giá');
+        return;
+      }
+
       router.push({
         pathname: './technician-order-tracking',
-        params: { orderId }
+        params: { 
+          serviceRequestId: order.serviceRequestId,
+          offerId: order.offerId
+        }
       } as any);
     } else {
       // Navigate to quote selection for pending orders (to send quote)

@@ -149,15 +149,15 @@ const getStatusColor = (status: string) => {
     case 'quote_sent':
       return '#609CEF';
     case 'quote_accepted':
-      return '#3B82F6';
+      return '#4F8BE8';
     case 'on_the_way':
-      return '#F59E0B';
+      return '#609CEF';
     case 'arrived':
-      return '#8B5CF6';
+      return '#4F8BE8';
     case 'repairing':
-      return '#EC4899';
+      return '#609CEF';
     default:
-      return '#6B7280';
+      return '#609CEF';
   }
 };
 

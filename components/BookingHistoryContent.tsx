@@ -148,63 +148,95 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
           
           // Check for pending quotes
           let pendingQuote = undefined;
+          let quotePrice = undefined;
+          
           try {
-            const pendingOffers = await serviceDeliveryOffersService.getPendingOffers(request.requestID);
-            
-            if (__DEV__) {
-              console.log(`📋 [Customer] Request ${request.requestID} - Status: ${request.status}, Pending Offers: ${pendingOffers.length}`);
-            }
-            
-            if (pendingOffers.length > 0) {
-              // Take the first pending offer (most recent)
-              const offer = pendingOffers[0];
-              pendingQuote = {
-                offerID: offer.offerId, // Backend uses lowercase 'offerId'
-                estimatedCost: offer.estimatedCost,
-                finalCost: offer.finalCost,
-                notes: offer.notes,
-              };
+            // For 'accepted' status, fetch the accepted quote to display price
+            if (request.status.toLowerCase() === 'quote_accepted' || request.status.toLowerCase() === 'accepted') {
+              // Get all offers and filter for accepted ones
+              const allOffers = await serviceDeliveryOffersService.getAllOffers(request.requestID);
+              const acceptedOffers = allOffers.filter(offer => 
+                offer.status.toLowerCase() === 'accepted' || 
+                offer.status.toLowerCase() === 'quote_accepted'
+              );
+              
+              if (acceptedOffers.length > 0) {
+                const offer = acceptedOffers[0];
+                const price = offer.finalCost || offer.estimatedCost || 0;
+                const isEstimated = !offer.finalCost && !!offer.estimatedCost;
+                
+                quotePrice = new Intl.NumberFormat('vi-VN', {
+                  style: 'currency',
+                  currency: 'VND',
+                }).format(price) + (isEstimated ? ' (Dự kiến)' : ' (Đã chốt)');
+                
+                if (__DEV__) {
+                  console.log(`💰 [Customer] Accepted quote for ${request.requestID}:`, {
+                    offerID: offer.offerId,
+                    price,
+                    isEstimated
+                  });
+                }
+              }
+            } else {
+              // For other statuses, check for pending quotes
+              const pendingOffers = await serviceDeliveryOffersService.getPendingOffers(request.requestID);
               
               if (__DEV__) {
-                console.log(`💰 [Customer] Found quote for ${request.requestID}:`, {
-                  offerID: offer.offerId,
-                  estimatedCost: offer.estimatedCost,
-                  finalCost: offer.finalCost
-                });
+                console.log(`📋 [Customer] Request ${request.requestID} - Status: ${request.status}, Pending Offers: ${pendingOffers.length}`);
               }
-
-              // Send notification if this is a NEW quote (not checked before)
-              if (!lastCheckedQuotes.has(offer.offerId)) {
-                const amount = offer.estimatedCost || offer.finalCost || 0;
-                await notifyNewQuote({
-                  type: 'new_quote',
-                  quoteId: offer.offerId,
-                  serviceRequestId: request.requestID,
-                  serviceName,
-                  technicianName: offer.technicianId, // TODO: Get technician name
-                  amount,
-                  isEstimated: !!offer.estimatedCost,
+              
+              if (pendingOffers.length > 0) {
+                // Take the first pending offer (most recent)
+                const offer = pendingOffers[0];
+                pendingQuote = {
+                  offerID: offer.offerId, // Backend uses lowercase 'offerId'
+                  estimatedCost: offer.estimatedCost,
+                  finalCost: offer.finalCost,
                   notes: offer.notes,
-                });
+                };
+                
+                if (__DEV__) {
+                  console.log(`💰 [Customer] Found quote for ${request.requestID}:`, {
+                    offerID: offer.offerId,
+                    estimatedCost: offer.estimatedCost,
+                    finalCost: offer.finalCost
+                  });
+                }
 
-                // Mark this quote as checked
-                setLastCheckedQuotes(prev => new Set(prev).add(offer.offerId));
+                // Send notification if this is a NEW quote (not checked before)
+                if (!lastCheckedQuotes.has(offer.offerId)) {
+                  const amount = offer.estimatedCost || offer.finalCost || 0;
+                  await notifyNewQuote({
+                    type: 'new_quote',
+                    quoteId: offer.offerId,
+                    serviceRequestId: request.requestID,
+                    serviceName,
+                    technicianName: offer.technicianId, // TODO: Get technician name
+                    amount,
+                    isEstimated: !!offer.estimatedCost,
+                    notes: offer.notes,
+                  });
+
+                  // Mark this quote as checked
+                  setLastCheckedQuotes(prev => new Set(prev).add(offer.offerId));
+                }
               }
             }
           } catch (error) {
-            if (__DEV__) console.warn(`[Customer] Could not fetch pending quotes for ${request.requestID}`);
+            if (__DEV__) console.warn(`[Customer] Could not fetch quotes for ${request.requestID}:`, error);
           }
 
           const mappedStatus = mapApiStatus(request.status);
           
           if (__DEV__) {
-            console.log(`📦 [Customer] Booking ${request.requestID}: API Status="${request.status}" → UI Status="${mappedStatus}", Has Quote: ${!!pendingQuote}`);
+            console.log(`📦 [Customer] Booking ${request.requestID}: API Status="${request.status}" → UI Status="${mappedStatus}", Has Quote: ${!!pendingQuote}, Quote Price: ${quotePrice || 'N/A'}`);
           }
           
           return {
             id: request.requestID || `booking-${Date.now()}-${Math.random()}`,
             serviceName,
-            servicePrice: 'Đang cập nhật',
+            servicePrice: quotePrice || 'Đang cập nhật', // Use quotePrice if available
             customerName: request.fullName || user?.firstName || '',
             phoneNumber: request.phoneNumber || user?.email || '',
             address: addressText,
@@ -272,35 +304,35 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
     }
   });
 
-  // Get status info (color, text, icon)
+  // Get status info (color, text, icon) - Using primary brand color with variations
   const getStatusInfo = (status: BookingItem['status']) => {
     switch (status) {
       case 'searching':
         return {
           text: 'Đang tìm thợ',
-          color: '#F59E0B',
-          backgroundColor: '#FEF3C7',
+          color: '#609CEF',
+          backgroundColor: '#E5F0FF',
           icon: 'search' as const,
         };
       case 'quoted':
         return {
           text: 'Có báo giá',
-          color: '#3B82F6',
-          backgroundColor: '#DBEAFE',
+          color: '#4F8BE8',
+          backgroundColor: '#E5F0FF',
           icon: 'document-text' as const,
         };
       case 'accepted':
         return {
           text: 'Đã chấp nhận',
-          color: '#8B5CF6',
-          backgroundColor: '#EDE9FE',
+          color: '#609CEF',
+          backgroundColor: '#E5F0FF',
           icon: 'checkmark-circle' as const,
         };
       case 'in-progress':
         return {
           text: 'Đang thực hiện',
-          color: '#06B6D4',
-          backgroundColor: '#CFFAFE',
+          color: '#4F8BE8',
+          backgroundColor: '#E5F0FF',
           icon: 'construct' as const,
         };
       case 'completed':
@@ -320,8 +352,8 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
       default:
         return {
           text: 'Đang xử lý',
-          color: '#6B7280',
-          backgroundColor: '#F3F4F6',
+          color: '#609CEF',
+          backgroundColor: '#E5F0FF',
           icon: 'time' as const,
         };
     }

@@ -8,7 +8,6 @@ import {
   TextInput, 
   Image,
   Alert,
-  Platform,
   ActivityIndicator,
   Modal
 } from 'react-native';
@@ -16,13 +15,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../store/authStore';
-import { serviceRequestService, addressService } from '../../lib/api';
+import { addressService } from '../../lib/api';
 import { mediaService, MediaType } from '../../lib/api/media';
-import { locationService } from '../../lib/api/location';
 import * as ImagePicker from 'expo-image-picker';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import AddressSearchInput from '../../components/AddressSearchInput';
-import type { BookingFormData, ServiceRequestData, Address } from '../../types/api';
+import type { BookingFormData, Address } from '../../types/api';
 import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
 // Interface for tracking uploaded media
@@ -42,32 +38,6 @@ function BookService() {
   // Get user data from auth
   const { user } = useAuth();
 
-  // Helper function to get current Vietnam time (UTC+7)
-  const getVietnamDate = () => {
-    const now = new Date();
-    const vietnamTime = new Date(now.getTime() + (7 * 60 * 60 * 1000)); // UTC+7
-    return vietnamTime;
-  };
-
-  // Helper function to create Date from time string in Vietnam timezone
-  const createDateFromTime = (timeString: string) => {
-    try {
-      const [hours, minutes] = timeString.split(':');
-      const hoursNum = parseInt(hours) || 9; // Default to 9 if invalid
-      const minutesNum = parseInt(minutes) || 0; // Default to 0 if invalid
-      
-      const date = new Date(); // Use current local time
-      date.setHours(hoursNum, minutesNum, 0, 0);
-      console.log('createDateFromTime:', timeString, '->', date.getHours(), date.getMinutes());
-      return date;
-    } catch (error) {
-      console.error('Error creating date from time:', error);
-      const fallbackDate = new Date();
-      fallbackDate.setHours(9, 0, 0, 0);
-      return fallbackDate;
-    }
-  };
-
   const [formData, setFormData] = useState<BookingFormData>({
     customerName: user?.fullName || '',
     phoneNumber: user?.phoneNumber || '', // Get phone number from auth
@@ -82,10 +52,6 @@ function BookService() {
     expectedStartTime: '09:00',
     images: [] // Keep for backward compatibility (display only)
   });
-  
-  // Separate state for picker values to prevent re-render issues
-  const [pickerTimeValue, setPickerTimeValue] = useState<Date>(() => createDateFromTime('09:00'));
-  const [pickerDateValue, setPickerDateValue] = useState<Date>(() => new Date());
 
   // NEW: Track uploaded media with backend IDs and URLs
   const [uploadedMedia, setUploadedMedia] = useState<UploadedMedia[]>([]);
@@ -93,8 +59,6 @@ function BookService() {
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
   const [loadingAddresses, setLoadingAddresses] = useState(false);
@@ -110,64 +74,6 @@ function BookService() {
     longitude?: number;
     components?: any;
   }>({});
-
-  // Time slots data
-  const timeSlots = [
-    { value: '08:00', display: '8:00', period: 'Sáng', available: true },
-    { value: '09:00', display: '9:00', period: 'Sáng', available: true },
-    { value: '10:00', display: '10:00', period: 'Sáng', available: true },
-    { value: '11:00', display: '11:00', period: 'Sáng', available: true },
-    { value: '13:00', display: '1:00', period: 'Chiều', available: true },
-    { value: '14:00', display: '2:00', period: 'Chiều', available: true },
-    { value: '15:00', display: '3:00', period: 'Chiều', available: true },
-    { value: '16:00', display: '4:00', period: 'Chiều', available: true },
-    { value: '17:00', display: '5:00', period: 'Chiều', available: false }, // Example unavailable
-    { value: '18:00', display: '6:00', period: 'Tối', available: true },
-  ];
-
-  // Date helper functions
-  const isToday = (dateString: string) => {
-    const today = new Date();
-    const date = new Date(dateString);
-    return date.toDateString() === today.toDateString();
-  };
-
-  const isTomorrow = (dateString: string) => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const date = new Date(dateString);
-    return date.toDateString() === tomorrow.toDateString();
-  };
-
-  const formatQuickDate = (type: 'today' | 'tomorrow') => {
-    const date = new Date();
-    if (type === 'tomorrow') {
-      date.setDate(date.getDate() + 1);
-    }
-    
-    const weekdays = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
-    const day = date.getDate();
-    const month = date.getMonth() + 1;
-    const weekday = weekdays[date.getDay()];
-    
-    return `${day}/${month} (${weekday})`;
-  };
-
-  // Quick date selection handler
-  const handleQuickDateSelect = (type: 'today' | 'tomorrow') => {
-    const date = new Date();
-    if (type === 'tomorrow') {
-      date.setDate(date.getDate() + 1);
-    }
-    
-    const dateString = date.toISOString().split('T')[0];
-    handleInputChange('requestedDate', dateString);
-  };
-
-  // Time slot selection handler
-  const handleTimeSlotSelect = (time: string) => {
-    handleInputChange('expectedStartTime', time);
-  };
 
   // Load user data when component mounts
   useEffect(() => {
@@ -221,14 +127,6 @@ function BookService() {
       newErrors.serviceId = 'Vui lòng chọn dịch vụ';
     }
 
-    if (!formData.requestedDate) {
-      newErrors.requestedDate = 'Vui lòng chọn ngày yêu cầu';
-    }
-
-    if (!formData.expectedStartTime) {
-      newErrors.expectedStartTime = 'Vui lòng chọn thời gian bắt đầu';
-    }
-
     if (!formData.serviceDescription.trim()) {
       newErrors.serviceDescription = 'Vui lòng mô tả chi tiết vấn đề cần sửa chữa';
     }
@@ -242,148 +140,6 @@ function BookService() {
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
-  };
-
-  // Date/Time picker handlers
-  const handleDateSelect = (date: Date) => {
-    const formattedDate = date.toISOString().split('T')[0]; // YYYY-MM-DD format
-    setFormData(prev => ({ ...prev, requestedDate: formattedDate }));
-    if (errors.requestedDate) {
-      setErrors(prev => ({ ...prev, requestedDate: '' }));
-    }
-    setShowDatePicker(false);
-  };
-
-  const formatDisplayDate = (dateString: string) => {
-    if (!dateString) return 'Chọn ngày';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('vi-VN');
-  };
-
-  const formatDisplayTime = (timeString: string) => {
-    if (!timeString) return 'Chọn giờ';
-    return timeString;
-  };
-
-  // Professional date/time formatting functions
-  const formatProfessionalDate = (dateString: string) => {
-    if (!dateString) return 'Chọn ngày';
-    
-    const date = new Date(dateString);
-    const today = new Date();
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    
-    if (date.toDateString() === today.toDateString()) {
-      return 'Hôm nay';
-    } else if (date.toDateString() === tomorrow.toDateString()) {
-      return 'Ngày mai';
-    } else {
-      const weekdays = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
-      const day = date.getDate();
-      const month = date.getMonth() + 1;
-      const weekday = weekdays[date.getDay()];
-      return `${weekday}, ${day}/${month}`;
-    }
-  };
-
-  const formatProfessionalTime = (timeString: string) => {
-    if (!timeString) return 'Chọn giờ';
-    
-    const [hours, minutes] = timeString.split(':');
-    const hour = parseInt(hours);
-    const period = hour < 12 ? 'SA' : 'CH';
-    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-    
-    return `${displayHour}:${minutes} ${period}`;
-  };
-
-  // Date/Time picker handlers
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    const currentDate = selectedDate || new Date(formData.requestedDate);
-    
-    if (Platform.OS === 'android') {
-      setShowDatePicker(false);
-      if (event.type === 'set' && selectedDate) {
-        setPickerDateValue(selectedDate);
-        const dateString = selectedDate.toISOString().split('T')[0];
-        handleInputChange('requestedDate', dateString);
-      }
-    } else {
-      // iOS: update immediately while picker is open
-      if (selectedDate) {
-        setPickerDateValue(selectedDate);
-        const dateString = selectedDate.toISOString().split('T')[0];
-        handleInputChange('requestedDate', dateString);
-      }
-    }
-  };
-
-  const handleTimeChange = (event: any, selectedTime?: Date) => {
-    if (!selectedTime) return;
-    
-    console.log('Time changed:', selectedTime.getHours(), selectedTime.getMinutes());
-    
-    // Update picker value immediately for smooth scrolling
-    setPickerTimeValue(selectedTime);
-    
-    if (Platform.OS === 'android') {
-      setShowTimePicker(false);
-      if (event.type === 'set') {
-        const hours = selectedTime.getHours().toString().padStart(2, '0');
-        const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
-        const timeString = `${hours}:${minutes}`;
-        console.log('Android time string:', timeString);
-        handleInputChange('expectedStartTime', timeString);
-      }
-    } else {
-      // iOS: update form data immediately while picker is open
-      const hours = selectedTime.getHours().toString().padStart(2, '0');
-      const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
-      const timeString = `${hours}:${minutes}`;
-      console.log('iOS time string:', timeString);
-      handleInputChange('expectedStartTime', timeString);
-    }
-  };
-
-  const handleCloseDatePicker = () => {
-    setShowDatePicker(false);
-  };
-
-  const handleCloseTimePicker = () => {
-    setShowTimePicker(false);
-  };
-  
-  // Sync picker values with form data
-  useEffect(() => {
-    const timeDate = createDateFromTime(formData.expectedStartTime);
-    setPickerTimeValue(timeDate);
-  }, [formData.expectedStartTime]);
-  
-  useEffect(() => {
-    const date = formData.requestedDate ? new Date(formData.requestedDate) : new Date();
-    setPickerDateValue(date);
-  }, [formData.requestedDate]);
-  
-  // Update picker values when opening pickers
-  const handleOpenDatePicker = () => {
-    const date = formData.requestedDate ? new Date(formData.requestedDate) : getVietnamDate();
-    setPickerDateValue(date);
-    setShowDatePicker(true);
-  };
-  
-  const handleOpenTimePicker = () => {
-    console.log('Opening time picker with expectedStartTime:', formData.expectedStartTime);
-    
-    // Force create a fresh Date object
-    const currentTime = formData.expectedStartTime || '09:00';
-    const [hours, minutes] = currentTime.split(':');
-    const timeDate = new Date();
-    timeDate.setHours(parseInt(hours) || 9, parseInt(minutes) || 0, 0, 0);
-    
-    console.log('Created time date:', timeDate.toString(), 'Hours:', timeDate.getHours(), 'Minutes:', timeDate.getMinutes());
-    setPickerTimeValue(timeDate);
-    setShowTimePicker(true);
   };
 
   // Load saved addresses
@@ -700,144 +456,60 @@ function BookService() {
     });
   };
 
-  const createServiceRequest = async () => {
-    try {
-      setLoading(true);
-
-      // Validate required fields
-      if (!formData.addressID) {
-        Alert.alert('Lỗi', 'Vui lòng chọn địa chỉ');
-        setLoading(false);
-        return;
-      }
-
-      // Validate fullName and phoneNumber before creating request
-      if (!formData.customerName || !formData.customerName.trim()) {
-        Alert.alert('Lỗi', 'Vui lòng nhập tên khách hàng');
-        setLoading(false);
-        return;
-      }
-
-      if (!formData.phoneNumber || !formData.phoneNumber.trim()) {
-        Alert.alert('Lỗi', 'Vui lòng nhập số điện thoại');
-        setLoading(false);
-        return;
-      }
-
-      // Check if any images are still uploading
-      const hasUploadingImages = uploadedMedia.some(media => media.isUploading);
-      if (hasUploadingImages) {
-        Alert.alert(
-          'Vui lòng đợi',
-          'Đang tải ảnh lên. Vui lòng đợi quá trình tải hoàn tất.',
-          [{ text: 'OK' }]
-        );
-        setLoading(false);
-        return;
-      }
-
-      // Helper to create Vietnam timezone datetime (UTC+7)
-      const createVietnamDateTime = (dateString: string, timeString?: string) => {
-        // Parse date components
-        const [year, month, day] = dateString.split('-').map(Number);
-        
-        // Parse time components (default to 00:00 if not provided)
-        let hours = 0, minutes = 0;
-        if (timeString) {
-          [hours, minutes] = timeString.split(':').map(Number);
-        }
-        
-        // Create UTC date and manually adjust for Vietnam timezone (UTC+7)
-        // Vietnam time = UTC + 7 hours, so we subtract 7 hours to get UTC
-        const date = new Date(Date.UTC(year, month - 1, day, hours - 7, minutes, 0, 0));
-        
-        return date.toISOString();
-      };
-
-      // Extract fileURLs from uploaded media (images already uploaded)
-      const mediaUrls = uploadedMedia
-        .filter(media => !media.isUploading && media.fileURL) // Only include successfully uploaded
-        .map(media => media.fileURL);
-
-      // Create the service request with pre-uploaded media URLs
-      const requestData: ServiceRequestData = {
-        addressID: formData.addressID,           // ID của địa chỉ đã lưu (for reference)
-        serviceId: formData.serviceId,           // ID dịch vụ
-        serviceDescription: formData.serviceDescription, // Mô tả vấn đề
-        fullName: formData.customerName.trim(),  // Tên khách hàng (editable)
-        phoneNumber: formData.phoneNumber.trim(), // SĐT khách hàng (editable)
-        addressNote: formData.addressNote || '', // Ghi chú địa chỉ
-        requestedDate: createVietnamDateTime(formData.requestedDate), // Ngày đặt (00:00 giờ VN)
-        expectedStartTime: createVietnamDateTime(formData.requestedDate, formData.expectedStartTime), // Giờ hẹn (VN timezone)
-        mediaUrls: mediaUrls // Use pre-uploaded fileURLs
-      };
-
-      if (__DEV__) {
-        console.log('📤 Creating service request with data:', {
-          addressID: requestData.addressID,
-          serviceId: requestData.serviceId,
-          fullName: requestData.fullName,
-          phoneNumber: requestData.phoneNumber,
-          hasDescription: !!requestData.serviceDescription,
-          mediaUrlsCount: mediaUrls.length,
-          mediaUrls: mediaUrls
-        });
-      }
-
-      const response = await serviceRequestService.createServiceRequest(requestData);
-      const requestID = response.requestID;
-
-      if (__DEV__) {
-        console.log('✅ Service request created successfully:', {
-          requestID,
-          mediaCount: mediaUrls.length
-        });
-      }
-
-      // Navigate to confirmation page with booking details
-      const imageCount = uploadedMedia.length;
-      router.push({
-        pathname: '/customer/booking-confirmation' as any,
-        params: {
-          serviceName: formData.serviceName,
-          customerName: formData.customerName,
-          requestId: requestID,
-          imageCount: imageCount.toString(),
-          requestedDate: formData.requestedDate,
-          expectedStartTime: formData.expectedStartTime,
-          addressNote: formData.addressNote || '',
-          serviceDescription: formData.serviceDescription
-        }
-      });
-    } catch (error: any) {
-      Alert.alert(
-        'Lỗi đặt lịch ❌',
-        error.message || 'Có lỗi xảy ra khi đặt lịch. Vui lòng thử lại.',
-        [{ text: 'Đóng' }]
-      );
-    } finally {
-      setLoading(false);
+  // Navigate to schedule selection page
+  const handleContinueToSchedule = () => {
+    if (!validateForm()) {
+      return;
     }
-  };
 
-  const handleSubmit = () => {
-    if (validateForm()) {
-      const imageCount = uploadedMedia.length;
-      const imageText = imageCount > 0 ? `\nSố ảnh: ${imageCount} ảnh` : '\nKhông có ảnh đính kèm';
-      
+    // Check if any images are still uploading
+    const hasUploadingImages = uploadedMedia.some(media => media.isUploading);
+    if (hasUploadingImages) {
       Alert.alert(
-        'Xác nhận đặt lịch 📅',
-        `Dịch vụ: ${formData.serviceName}\nVấn đề: ${formData.serviceDescription}\nNgày: ${formatDisplayDate(formData.requestedDate)}\nGiờ: ${formData.expectedStartTime}\nĐịa chỉ: ${formData.address}${imageText}\n\nXác nhận đặt lịch?`,
-        [
-          { text: 'Hủy', style: 'cancel' },
-          { 
-            text: 'Xác nhận đặt lịch', 
-            style: 'default',
-            onPress: createServiceRequest
-          }
-        ]
+        'Vui lòng đợi',
+        'Đang tải ảnh lên. Vui lòng đợi quá trình tải hoàn tất.',
+        [{ text: 'OK' }]
       );
+      return;
     }
+
+    // Validate fullName and phoneNumber before continuing
+    if (!formData.customerName || !formData.customerName.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập tên khách hàng');
+      return;
+    }
+
+    if (!formData.phoneNumber || !formData.phoneNumber.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập số điện thoại');
+      return;
+    }
+
+    if (!formData.addressID) {
+      Alert.alert('Lỗi', 'Vui lòng chọn địa chỉ');
+      return;
+    }
+
+    // Extract fileURLs from uploaded media
+    const mediaUrls = uploadedMedia
+      .filter(media => !media.isUploading && media.fileURL)
+      .map(media => media.fileURL);
+
+    // Navigate to select-schedule page with all booking data
+    router.push({
+      pathname: '/customer/select-schedule',
+      params: {
+        customerName: formData.customerName.trim(),
+        phoneNumber: formData.phoneNumber.trim(),
+        serviceName: formData.serviceName,
+        serviceId: formData.serviceId,
+        servicePrice: formData.servicePrice,
+        serviceDescription: formData.serviceDescription,
+        address: formData.address,
+        addressID: formData.addressID,
+        addressNote: formData.addressNote || '',
+        mediaUrls: JSON.stringify(mediaUrls)
+      }
+    });
   };
 
   return (
@@ -1038,67 +710,6 @@ function BookService() {
             )}
           </View>
 
-          {/* Date and Time Selection - Professional Design */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Thời gian thực hiện</Text>
-            
-            <View style={styles.professionalDateTimeContainer}>
-              {/* Date Selection */}
-              <View style={styles.professionalDateTimeItem}>
-                <Text style={styles.professionalLabel}>
-                  Ngày yêu cầu <Text style={styles.required}>*</Text>
-                </Text>
-                <TouchableOpacity 
-                  style={[styles.professionalDateTimeCard, errors.requestedDate && styles.inputError]}
-                  onPress={handleOpenDatePicker}
-                >
-                  <View style={styles.professionalDateTimeContent}>
-                    <View style={styles.professionalIconContainer}>
-                      <Ionicons name="calendar-outline" size={20} color="#609CEF" />
-                    </View>
-                    <View style={styles.professionalDateTimeInfo}>
-                      <Text style={styles.professionalDateTimeLabel}>Ngày</Text>
-                      <Text style={styles.professionalDateTimeValue}>
-                        {formatProfessionalDate(formData.requestedDate)}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
-                  </View>
-                </TouchableOpacity>
-                {errors.requestedDate && (
-                  <Text style={styles.errorText}>{errors.requestedDate}</Text>
-                )}
-              </View>
-
-              {/* Time Selection */}
-              <View style={styles.professionalDateTimeItem}>
-                <Text style={styles.professionalLabel}>
-                  Giờ bắt đầu <Text style={styles.required}>*</Text>
-                </Text>
-                <TouchableOpacity 
-                  style={[styles.professionalDateTimeCard, errors.expectedStartTime && styles.inputError]}
-                  onPress={handleOpenTimePicker}
-                >
-                  <View style={styles.professionalDateTimeContent}>
-                    <View style={styles.professionalIconContainer}>
-                      <Ionicons name="time-outline" size={20} color="#609CEF" />
-                    </View>
-                    <View style={styles.professionalDateTimeInfo}>
-                      <Text style={styles.professionalDateTimeLabel}>Thời gian</Text>
-                      <Text style={styles.professionalDateTimeValue}>
-                        {formatProfessionalTime(formData.expectedStartTime)}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
-                  </View>
-                </TouchableOpacity>
-                {errors.expectedStartTime && (
-                  <Text style={styles.errorText}>{errors.expectedStartTime}</Text>
-                )}
-              </View>
-            </View>
-          </View>
-
           {/* Images */}
           <View style={styles.section}>
             <Text style={styles.label}>Ảnh mô tả vấn đề (Tối đa 4 ảnh)</Text>
@@ -1158,7 +769,7 @@ function BookService() {
         <View style={styles.submitContainer}>
           <TouchableOpacity 
             style={[styles.submitButton, loading && styles.submitButtonDisabled]} 
-            onPress={handleSubmit}
+            onPress={handleContinueToSchedule}
             disabled={loading}
           >
             <LinearGradient
@@ -1167,95 +778,13 @@ function BookService() {
               end={{ x: 1, y: 0 }}
               style={styles.submitGradient}
             >
-              {loading ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator color="white" size="small" />
-                  <Text style={styles.submitText}>Đang đặt lịch...</Text>
-                </View>
-              ) : (
-                <Text style={styles.submitText}>Đặt lịch ngay</Text>
-              )}
+              <View style={styles.buttonContent}>
+                <Text style={styles.submitText}>Tiếp theo</Text>
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              </View>
             </LinearGradient>
           </TouchableOpacity>
         </View>
-
-        {/* Native Date & Time Pickers */}
-        {showDatePicker && Platform.OS === 'ios' && (
-          <Modal visible={showDatePicker} transparent animationType="slide">
-            <View style={styles.pickerModalOverlay}>
-              <View style={styles.pickerModalContent}>
-                <View style={styles.pickerHeader}>
-                  <TouchableOpacity onPress={handleCloseDatePicker}>
-                    <Text style={styles.pickerHeaderButton}>Xong</Text>
-                  </TouchableOpacity>
-                </View>
-                <DateTimePicker
-                  value={pickerDateValue}
-                  mode="date"
-                  display="spinner"
-                  onChange={handleDateChange}
-                  minimumDate={new Date()}
-                  maximumDate={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)}
-                  textColor="#1F2937"
-                  style={styles.iosPicker}
-                  locale="vi-VN"
-                />
-              </View>
-            </View>
-          </Modal>
-        )}
-
-        {showDatePicker && Platform.OS === 'android' && (
-          <DateTimePicker
-            value={pickerDateValue}
-            mode="date"
-            display="default"
-            onChange={handleDateChange}
-            minimumDate={new Date()}
-            maximumDate={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)}
-          />
-        )}
-
-        {showTimePicker && Platform.OS === 'ios' && (
-          <Modal visible={showTimePicker} transparent animationType="slide">
-            <TouchableOpacity 
-              style={styles.pickerModalOverlay}
-              activeOpacity={1}
-              onPress={handleCloseTimePicker}
-            >
-              <TouchableOpacity 
-                style={styles.pickerModalContent}
-                activeOpacity={1}
-                onPress={() => {}} // Prevent modal close when touching content
-              >
-                <View style={styles.pickerHeader}>
-                  <TouchableOpacity onPress={handleCloseTimePicker}>
-                    <Text style={styles.pickerHeaderButton}>Xong</Text>
-                  </TouchableOpacity>
-                </View>
-                <DateTimePicker
-                  value={pickerTimeValue}
-                  mode="time"
-                  display="spinner"
-                  onChange={handleTimeChange}
-                  textColor="#1F2937"
-                  style={styles.iosPicker}
-                  locale="vi-VN"
-                  is24Hour={true}
-                />
-              </TouchableOpacity>
-            </TouchableOpacity>
-          </Modal>
-        )}
-
-        {showTimePicker && Platform.OS === 'android' && (
-          <DateTimePicker
-            value={pickerTimeValue}
-            mode="time"
-            display="default"
-            onChange={handleTimeChange}
-          />
-        )}
 
         {/* Address Selection Modal */}
         <Modal visible={showAddressModal} transparent animationType="fade">
@@ -1636,7 +1165,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 12,
+    paddingBottom: 34, // Bottom safe area
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
   },
@@ -1656,6 +1185,12 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
   submitText: {
     fontSize: 18,

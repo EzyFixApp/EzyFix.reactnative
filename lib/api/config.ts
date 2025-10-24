@@ -91,6 +91,14 @@ export const API_ENDPOINTS = {
     ACCEPT: (id: string) => `/api/v1/serviceDeliveryOffers/${id}/accept`,
     REJECT: (id: string) => `/api/v1/serviceDeliveryOffers/${id}/reject`,
   },
+
+  // Appointments endpoints
+  APPOINTMENTS: {
+    BASE: '/api/v1/appointments',
+    CREATE: '/api/v1/appointments',
+    GET_BY_ID: (id: string) => `/api/v1/appointments/${id}`,
+    UPDATE_STATUS: (id: string) => `/api/v1/appointments/${id}`,
+  },
 } as const;
 
 // HTTP Methods

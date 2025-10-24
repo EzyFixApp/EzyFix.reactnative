@@ -90,14 +90,14 @@ export default function TechnicianActivityContent() {
   const getStatusColor = (status: string) => {
     const upperStatus = status.toUpperCase();
     switch (upperStatus) {
-      case 'PENDING': return '#F59E0B';
+      case 'PENDING': return '#609CEF';
       case 'ACCEPTED': return '#609CEF';
-      case 'QUOTED': return '#8B5CF6';
+      case 'QUOTED': return '#4F8BE8';
       case 'QUOTE_ACCEPTED': return '#10B981';
-      case 'IN_PROGRESS': return '#3B82F6';
+      case 'IN_PROGRESS': return '#4F8BE8';
       case 'COMPLETED': return '#10B981';
       case 'CANCELLED': return '#EF4444';
-      default: return '#94A3B8';
+      default: return '#609CEF';
     }
   };
 

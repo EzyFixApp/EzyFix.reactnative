@@ -280,6 +280,7 @@ export interface RequestConfig {
 export interface RequestOptions {
   requireAuth?: boolean;
   retryOnUnauthorized?: boolean;
+  skipAutoLogoutOn401?: boolean; // Skip auto-logout on 401 error (for special cases like cached appointmentId)
 }
 
 // ============= Form Validation Types =============

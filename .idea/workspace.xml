@@ -5,37 +5,22 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="868f0766-2637-44bf-ae60-358902ea7db5" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/_layout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/_layout.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/add-address.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/add-address.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/customer/book-service.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/book-service.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/booking-confirmation.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/booking-confirmation.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/customer/booking-detail.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/booking-detail.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/booking-history.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/booking-history.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/booking-history.tsx.bak" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/app/customer/order-tracking.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/order-tracking.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/profile.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/profile.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/technician/dashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/dashboard.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/technician/order-details.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/order-details.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/technician/order-history-detail.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/order-history-detail.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/technician/orders.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/orders.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/technician/profile.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/profile.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/technician/quote-selection.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/quote-selection.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/ActiveOrdersSection.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/ActiveOrdersSection.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/AddressSearchModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/AddressSearchModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/technician/technician-order-tracking.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/technician-order-tracking.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/BookingHistoryContent.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/BookingHistoryContent.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/hooks/useCustomerAuth.ts" beforeDir="false" afterPath="$PROJECT_DIR$/hooks/useCustomerAuth.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api/auth.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/auth.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/OrderTrackingScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/OrderTrackingScreen.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/TechnicianActivityContent.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/TechnicianActivityContent.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/lib/api/base.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/base.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/lib/api/config.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/config.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/lib/api/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/index.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api/location.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/location.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api/media.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/media.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api/serviceRequests.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/serviceRequests.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/auth/withCustomerAuth.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/lib/auth/withCustomerAuth.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/auth/withTechnicianAuth.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/lib/auth/withTechnicianAuth.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/store/authStore.ts" beforeDir="false" afterPath="$PROJECT_DIR$/store/authStore.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/store/bookingStore.ts" beforeDir="false" afterPath="$PROJECT_DIR$/store/bookingStore.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/api/serviceDeliveryOffers.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/serviceDeliveryOffers.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/types/api.ts" beforeDir="false" afterPath="$PROJECT_DIR$/types/api.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -58,21 +43,21 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
-    &quot;cf.first.check.clang-format&quot;: &quot;false&quot;,
-    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/học đại/ki 8/exe2/EzyFix.reactnative&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;device.mirroring&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "cf.first.check.clang-format": "false",
+    "cidr.known.project.marker": "true",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "D:/EXE202/EzyFix/EzyFix.reactnative",
+    "settings.editor.selected.configurable": "device.mirroring"
   }
-}</component>
+}]]></component>
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
       <changelist id="868f0766-2637-44bf-ae60-358902ea7db5" name="Changes" comment="" />

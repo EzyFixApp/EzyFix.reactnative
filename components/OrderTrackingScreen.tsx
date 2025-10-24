@@ -269,50 +269,50 @@ export default function OrderTrackingScreen({
       case 'pending':
         return {
           text: 'Đang chờ thợ',
-          color: '#F59E0B',
-          backgroundColor: '#FEF3C7',
+          color: '#609CEF',
+          backgroundColor: '#E5F0FF',
           icon: 'search-outline',
         };
       case 'quoted':
         return {
           text: 'Có báo giá',
-          color: '#3B82F6',
-          backgroundColor: '#DBEAFE',
+          color: '#4F8BE8',
+          backgroundColor: '#E5F0FF',
           icon: 'document-text-outline',
         };
       case 'accepted':
         return {
           text: 'Đã xác nhận',
-          color: '#10B981',
-          backgroundColor: '#D1FAE5',
+          color: '#609CEF',
+          backgroundColor: '#E5F0FF',
           icon: 'checkmark-circle-outline',
         };
       case 'technician-coming':
         return {
           text: 'Thợ đang đến',
-          color: '#8B5CF6',
-          backgroundColor: '#EDE9FE',
+          color: '#4F8BE8',
+          backgroundColor: '#E5F0FF',
           icon: 'car-outline',
         };
       case 'technician-arrived':
         return {
           text: 'Thợ đã đến',
-          color: '#059669',
-          backgroundColor: '#ECFDF5',
+          color: '#609CEF',
+          backgroundColor: '#E5F0FF',
           icon: 'location-outline',
         };
       case 'in-progress':
         return {
           text: 'Đang sửa chữa',
-          color: '#DC2626',
-          backgroundColor: '#FEF2F2',
+          color: '#4F8BE8',
+          backgroundColor: '#E5F0FF',
           icon: 'construct-outline',
         };
       case 'payment':
         return {
           text: 'Thanh toán',
-          color: '#7C3AED',
-          backgroundColor: '#F3E8FF',
+          color: '#609CEF',
+          backgroundColor: '#E5F0FF',
           icon: 'card-outline',
         };
       case 'completed':
