@@ -33,13 +33,18 @@ export interface CreateAppointmentResponse {
   scheduledDate: string;
 }
 
+export interface MediaItem {
+  url: string;
+  mediaType: string;
+}
+
 export interface UpdateAppointmentRequest {
   status: AppointmentStatus;
   lat?: number | null;
   lng?: number | null;
   timestamp?: string | null;
   note?: string | null;
-  media?: string[];
+  media?: MediaItem[];
 }
 
 export interface UpdateAppointmentResponse {

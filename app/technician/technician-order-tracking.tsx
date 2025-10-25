@@ -13,11 +13,13 @@ import {
   Modal,
   ActivityIndicator,
   Linking,
+  TextInput,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 import { STANDARD_HEADER_STYLE, STANDARD_BACK_BUTTON_STYLE } from '../../constants/HeaderConstants';
 import { serviceRequestService } from '../../lib/api/serviceRequests';
@@ -25,8 +27,10 @@ import { serviceDeliveryOffersService } from '../../lib/api/serviceDeliveryOffer
 import { appointmentsService, AppointmentStatus, type AppointmentData } from '../../lib/api/appointments';
 import { servicesService } from '../../lib/api/services';
 import { authService } from '../../lib/api/auth';
+import { mediaService } from '../../lib/api/media';
 import { useAuthStore } from '../../store/authStore';
 import { useLocation } from '../../hooks/useLocation';
+import TechnicianMapView from '../../components/TechnicianMapView';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -147,6 +151,14 @@ const SwipeButton: React.FC<{
   );
 };
 
+// Interface for tracking uploaded media (matching book-service.tsx)
+interface UploadedMedia {
+  mediaID: string;      // ID from backend
+  fileURL: string;      // Backend URL for submission
+  localUri: string;     // Local URI for display
+  isUploading?: boolean; // Upload in progress
+}
+
 function TechnicianOrderTracking() {
   const { serviceRequestId, offerId } = useLocalSearchParams();
   const { user } = useAuthStore();
@@ -169,11 +181,25 @@ function TechnicianOrderTracking() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showMapView, setShowMapView] = useState(false); // Map view state
   
   // Success popup state
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successTitle, setSuccessTitle] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  
+  // Photo upload state (CHECKING status) - Using UploadedMedia interface
+  const [uploadedMedia, setUploadedMedia] = useState<UploadedMedia[]>([]);
+  const [initialNotes, setInitialNotes] = useState<string>('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  
+  // Photo upload state (REPAIRING status) - For final photos
+  const [finalMedia, setFinalMedia] = useState<UploadedMedia[]>([]);
+  const [finalNotes, setFinalNotes] = useState<string>('');
+  const [isUploadingFinalImage, setIsUploadingFinalImage] = useState(false);
+  
+  // Issue photos (ISSUE type) - Attached images from customer
+  const [issueMedia, setIssueMedia] = useState<string[]>([]);
   
   // Success checkmark animation
   const checkmarkScale = useSharedValue(0);
@@ -196,6 +222,75 @@ function TechnicianOrderTracking() {
       setLoading(false);
     }
   }, [serviceRequestId, offerId]);
+  
+  // Fetch media when status changes to REPAIRING or later
+  useEffect(() => {
+    const fetchMedia = async () => {
+      if (!serviceRequestId) return;
+      
+      try {
+        console.log('📸 Fetching media for request:', serviceRequestId);
+        
+        // Fetch all media for this request (works even without appointmentId)
+        const mediaData = await mediaService.getMediaByRequest(
+          serviceRequestId as string,
+          appointment?.id
+        );
+        
+        console.log('✅ Media fetched via mediaService:', mediaData);
+        
+        // Filter ISSUE type media (attached images from customer)
+        const issueMediaUrls = mediaData
+          .filter(m => m.mediaType === 'ISSUE')
+          .map(m => m.fileURL);
+        
+        if (issueMediaUrls.length > 0) {
+          setIssueMedia(issueMediaUrls);
+          console.log('✅ Loaded ISSUE photos:', issueMediaUrls.length);
+        }
+        
+        // Only fetch INITIAL and FINAL media after CHECKING status (when appointment exists)
+        if (appointment?.id && (currentStatus === AppointmentStatus.REPAIRING || 
+            currentStatus === AppointmentStatus.REPAIRED || 
+            currentStatus === 'completed')) {
+          
+          // Filter INITIAL type media and convert to UploadedMedia
+          const initialMedia = mediaData
+            .filter(m => m.mediaType === 'INITIAL')
+            .map(m => ({
+              mediaID: m.mediaID,
+              fileURL: m.fileURL,
+              localUri: m.fileURL, // Use fileURL for display
+              isUploading: false,
+            }));
+          
+          if (initialMedia.length > 0) {
+            setUploadedMedia(initialMedia);
+            console.log('✅ Loaded initial photos:', initialMedia.length);
+          }
+          
+          // Filter FINAL type media and convert to UploadedMedia
+          const finalMediaItems = mediaData
+            .filter(m => m.mediaType === 'FINAL')
+            .map(m => ({
+              mediaID: m.mediaID,
+              fileURL: m.fileURL,
+              localUri: m.fileURL, // Use fileURL for display
+              isUploading: false,
+            }));
+          
+          if (finalMediaItems.length > 0) {
+            setFinalMedia(finalMediaItems);
+            console.log('✅ Loaded final photos:', finalMediaItems.length);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error fetching media:', error);
+      }
+    };
+    
+    fetchMedia();
+  }, [currentStatus, appointment?.id, serviceRequestId]);
 
   const fetchOrderData = async () => {
     try {
@@ -204,7 +299,18 @@ function TechnicianOrderTracking() {
 
       // Fetch service request
       const requestData = await serviceRequestService.getServiceRequestById(serviceRequestId as string);
+      console.log('📦 Service Request Data:', {
+        requestID: requestData.requestID,
+        requestAddress: requestData.requestAddress,
+        addressID: requestData.addressID,
+        allKeys: Object.keys(requestData)
+      });
       setServiceRequest(requestData);
+      
+      // Validation: Ensure serviceRequest has requestID
+      if (!requestData.requestID) {
+        console.error('⚠️ WARNING: serviceRequest.requestID is missing!', requestData);
+      }
 
       // Fetch service name
       if (requestData.serviceId) {
@@ -325,6 +431,7 @@ function TechnicianOrderTracking() {
     const quoteAmount = (finalCost > 0 ? finalCost : estimatedCost).toLocaleString('vi-VN') + 'đ';
     const quoteType = finalCost > 0 ? 'final' : 'estimated';
     const priceRange = quoteAmount; // Same as quote amount for display
+    
 
     return {
       serviceName: serviceName, // From state (fetched from services API)
@@ -338,7 +445,7 @@ function TechnicianOrderTracking() {
       priceRange,
       quoteAmount,
       quoteType,
-      attachedImages: serviceRequest.mediaUrls || []
+      attachedImages: issueMedia // Use issueMedia (ISSUE type only) instead of serviceRequest.mediaUrls
     };
   };
 
@@ -632,6 +739,12 @@ function TechnicianOrderTracking() {
         
         await fetchOrderData();
         showSuccessPopup(successTitle, successMessage);
+        
+        // Auto-open map view after 3 seconds
+        setTimeout(() => {
+          setShowMapView(true);
+        }, 3000);
+        
         return;
       }
 
@@ -696,17 +809,44 @@ function TechnicianOrderTracking() {
         return;
       }
 
-      // Case 5: CHECKING → REPAIRING
+      // Case 5: CHECKING → REPAIRING (with photo + notes validation)
       if (appointment && currentStatus === AppointmentStatus.CHECKING) {
+        // Validation: Must have at least 1 photo
+        if (uploadedMedia.length === 0) {
+          Alert.alert('Thiếu ảnh', 'Vui lòng chụp ít nhất 1 ảnh tình trạng ban đầu trước khi tiếp tục');
+          return;
+        }
+        
+        // Validation: Must have notes
+        if (!initialNotes.trim()) {
+          Alert.alert('Thiếu ghi chú', 'Vui lòng nhập ghi chú về tình trạng thiết bị trước khi tiếp tục');
+          return;
+        }
+        
+        // Validation: No photos still uploading
+        if (uploadedMedia.some(m => m.isUploading)) {
+          Alert.alert('Đang tải ảnh', 'Vui lòng đợi các ảnh tải xong trước khi tiếp tục');
+          return;
+        }
+        
+        // PATCH /api/v1/appointments/{id} with MediaItem objects
+        const mediaItems = uploadedMedia.map(m => ({
+          url: m.fileURL,
+          mediaType: 'INITIAL'
+        }));
+        console.log('📸 Sending media items to PATCH:', mediaItems);
+        
         const updateData = await appointmentsService.updateAppointmentStatus(
           appointment.id,
           {
             status: AppointmentStatus.REPAIRING,
+            media: mediaItems,
+            note: initialNotes.trim(),
             timestamp: new Date().toISOString()
           }
         );
 
-        console.log('✅ Updated to REPAIRING:', updateData);
+        console.log('✅ Updated to REPAIRING with media:', updateData);
         
         setAppointment(updateData as any);
         setCurrentStatus(updateData.status); // Use status from API response
@@ -718,17 +858,44 @@ function TechnicianOrderTracking() {
         return;
       }
 
-      // Case 6: REPAIRING → REPAIRED
+      // Case 6: REPAIRING → REPAIRED (with photo + notes validation)
       if (appointment && currentStatus === AppointmentStatus.REPAIRING) {
+        // Validation: Must have at least 1 photo
+        if (finalMedia.length === 0) {
+          Alert.alert('Thiếu ảnh', 'Vui lòng chụp ít nhất 1 ảnh kết quả sau sửa chữa trước khi tiếp tục');
+          return;
+        }
+        
+        // Validation: Must have notes
+        if (!finalNotes.trim()) {
+          Alert.alert('Thiếu ghi chú', 'Vui lòng nhập ghi chú về kết quả sửa chữa trước khi tiếp tục');
+          return;
+        }
+        
+        // Validation: No photos still uploading
+        if (finalMedia.some(m => m.isUploading)) {
+          Alert.alert('Đang tải ảnh', 'Vui lòng đợi các ảnh tải xong trước khi tiếp tục');
+          return;
+        }
+        
+        // PATCH /api/v1/appointments/{id} with MediaItem objects (FINAL type)
+        const mediaItems = finalMedia.map(m => ({
+          url: m.fileURL,
+          mediaType: 'FINAL'
+        }));
+        console.log('📸 Sending final media items to PATCH:', mediaItems);
+        
         const updateData = await appointmentsService.updateAppointmentStatus(
           appointment.id,
           {
             status: AppointmentStatus.REPAIRED,
+            media: mediaItems,
+            note: finalNotes.trim(),
             timestamp: new Date().toISOString()
           }
         );
 
-        console.log('✅ Updated to REPAIRED:', updateData);
+        console.log('✅ Updated to REPAIRED with media:', updateData);
         
         setAppointment(updateData as any);
         setCurrentStatus(updateData.status); // Use status from API response
@@ -905,17 +1072,217 @@ function TechnicianOrderTracking() {
     );
   };
 
-  const handleTakePhoto = (type: 'before' | 'after') => {
+  const handleTakePhoto = async (type: 'before' | 'after') => {
     const title = type === 'before' ? 'Chụp ảnh trước sửa chữa' : 'Chụp ảnh sau sửa chữa';
+    const currentMediaList = type === 'before' ? uploadedMedia : finalMedia;
+    
+    // Check max photos limit (4 images)
+    if (currentMediaList.length >= 4) {
+      Alert.alert('Giới hạn', 'Chỉ được tải tối đa 4 ảnh');
+      return;
+    }
+    
+    // Request camera and media library permissions
+    const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+    const mediaPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    
+    if (!cameraPermission.granted || !mediaPermission.granted) {
+      Alert.alert('Cần quyền truy cập', 'Vui lòng cấp quyền camera và thư viện ảnh để chụp/tải ảnh');
+      return;
+    }
+    
     Alert.alert(
       title,
       'Chọn nguồn ảnh:',
       [
         { text: 'Hủy', style: 'cancel' },
-        { text: 'Camera', onPress: () => Alert.alert('Camera', 'Mở camera...') },
-        { text: 'Thư viện', onPress: () => Alert.alert('Gallery', 'Mở thư viện ảnh...') }
+        { 
+          text: 'Camera', 
+          onPress: async () => {
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              allowsEditing: false,
+              quality: 0.8,
+            });
+            
+            if (!result.canceled) {
+              await uploadImageImmediately(result.assets[0].uri, type);
+            }
+          }
+        },
+        { 
+          text: 'Thư viện', 
+          onPress: async () => {
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              allowsEditing: false,
+              quality: 0.8,
+            });
+            
+            if (!result.canceled) {
+              await uploadImageImmediately(result.assets[0].uri, type);
+            }
+          }
+        }
       ]
     );
+  };
+  
+  // Upload image immediately after selection (using mediaService)
+  const uploadImageImmediately = async (localUri: string, type: 'before' | 'after' = 'before') => {
+    const tempId = `temp-${Date.now()}`;
+    const mediaType = type === 'before' ? 'INITIAL' : 'FINAL';
+    const isInitial = type === 'before';
+    
+    try {
+      // Add placeholder with loading state to appropriate state
+      if (isInitial) {
+        setUploadedMedia(prev => [...prev, {
+          mediaID: tempId,
+          fileURL: '',
+          localUri: localUri,
+          isUploading: true,
+        }]);
+        setIsUploadingImage(true);
+      } else {
+        setFinalMedia(prev => [...prev, {
+          mediaID: tempId,
+          fileURL: '',
+          localUri: localUri,
+          isUploading: true,
+        }]);
+        setIsUploadingFinalImage(true);
+      }
+      
+      // Prepare file object
+      const filename = localUri.split('/').pop() || 'photo.jpg';
+      const match = /\.(\w+)$/.exec(filename);
+      const fileType = match ? `image/${match[1]}` : 'image/jpeg';
+      
+      // Get requestID from serviceRequest object (use requestID property, not id)
+      const requestID = serviceRequest?.requestID || serviceRequestId as string;
+      
+      // Validation: requestID must exist
+      if (!requestID) {
+        console.error('❌ Missing requestID! serviceRequest.requestID:', serviceRequest?.requestID, 'serviceRequestId:', serviceRequestId);
+        Alert.alert('Lỗi', 'Không tìm thấy thông tin yêu cầu dịch vụ. Vui lòng thử lại.');
+        
+        // Remove failed upload
+        if (isInitial) {
+          setUploadedMedia(prev => prev.filter(media => media.mediaID !== tempId));
+          setIsUploadingImage(false);
+        } else {
+          setFinalMedia(prev => prev.filter(media => media.mediaID !== tempId));
+          setIsUploadingFinalImage(false);
+        }
+        return;
+      }
+      
+      console.log(`📸 Uploading ${mediaType} photo via mediaService`);
+      console.log('📋 RequestID:', requestID);
+      console.log('📋 AppointmentID:', appointment?.id);
+      console.log('📋 MediaType:', mediaType);
+      
+      // Use mediaService.uploadMedia (matching book-service.tsx pattern)
+      const uploadedData = await mediaService.uploadMedia({
+        requestID: requestID,
+        appointmentID: appointment?.id,
+        mediaType: mediaType,
+        file: {
+          uri: localUri,
+          type: fileType,
+          name: filename,
+        },
+      });
+      
+      console.log('✅ Photo uploaded successfully via mediaService:', uploadedData);
+      console.log('📸 FileURL:', uploadedData.fileURL);
+      
+      // Update with real data from backend in appropriate state
+      if (isInitial) {
+        setUploadedMedia(prev => prev.map(media => 
+          media.mediaID === tempId ? {
+            mediaID: uploadedData.mediaID,
+            fileURL: uploadedData.fileURL,
+            localUri: localUri,
+            isUploading: false,
+          } : media
+        ));
+      } else {
+        setFinalMedia(prev => prev.map(media => 
+          media.mediaID === tempId ? {
+            mediaID: uploadedData.mediaID,
+            fileURL: uploadedData.fileURL,
+            localUri: localUri,
+            isUploading: false,
+          } : media
+        ));
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Photo upload error:', error);
+      Alert.alert('Lỗi', 'Không thể tải ảnh lên. Vui lòng thử lại.');
+      // Remove failed upload from appropriate state
+      if (isInitial) {
+        setUploadedMedia(prev => prev.filter(media => media.mediaID !== tempId));
+      } else {
+        setFinalMedia(prev => prev.filter(media => media.mediaID !== tempId));
+      }
+    } finally {
+      if (isInitial) {
+        setIsUploadingImage(false);
+      } else {
+        setIsUploadingFinalImage(false);
+      }
+    }
+  };
+  
+  // Delete photo from server (using mediaService)
+  const handleDeletePhoto = async (mediaID: string, type: 'before' | 'after' = 'before') => {
+    Alert.alert(
+      'Xác nhận',
+      'Bạn có chắc muốn xóa ảnh này?',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        { 
+          text: 'Xóa', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Use mediaService.deleteMedia instead of fetch
+              await mediaService.deleteMedia(mediaID);
+              console.log('✅ Photo deleted via mediaService:', mediaID);
+              
+              // Remove from appropriate local state
+              if (type === 'before') {
+                setUploadedMedia(prev => prev.filter(media => media.mediaID !== mediaID));
+              } else {
+                setFinalMedia(prev => prev.filter(media => media.mediaID !== mediaID));
+              }
+              Alert.alert('Thành công', 'Đã xóa ảnh');
+            } catch (error) {
+              console.error('❌ Delete photo error:', error);
+              Alert.alert('Lỗi', 'Không thể xóa ảnh. Vui lòng thử lại.');
+            }
+          }
+        }
+      ]
+    );
+  };
+  
+  // Open image viewer modal
+  const openImageViewer = (imageUri: string, index: number, totalCount: number = uploadedMedia.length) => {
+    setSelectedImageUri(imageUri);
+    setSelectedImageIndex(index);
+    setTotalImages(totalCount);
+    setShowImageModal(true);
+  };
+  
+  // Close image viewer modal
+  const closeImageViewer = () => {
+    setShowImageModal(false);
+    setSelectedImageUri('');
+    setSelectedImageIndex(0);
   };
 
   return (
@@ -1040,6 +1407,182 @@ function TechnicianOrderTracking() {
             </View>
           )}
         </View>
+
+        {/* Map View Button - Show during EN_ROUTE status */}
+        {currentStatus === AppointmentStatus.EN_ROUTE && serviceRequest && (
+          <View style={styles.mapSection}>
+            <TouchableOpacity 
+              style={styles.mapButton}
+              onPress={() => setShowMapView(true)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.mapButtonIcon}>
+                <Ionicons name="map" size={24} color="#609CEF" />
+              </View>
+              <View style={styles.mapButtonContent}>
+                <Text style={styles.mapButtonTitle}>Xem bản đồ chỉ đường</Text>
+                <Text style={styles.mapButtonDescription}>
+                  Theo dõi vị trí và khoảng cách đến khách hàng
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
+        )}
+        
+        {/* Photo Upload Section - Show during CHECKING status */}
+        {currentStatus === AppointmentStatus.CHECKING && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              Hình ảnh tình trạng ban đầu <Text style={styles.required}>*</Text>
+            </Text>
+            <Text style={styles.imageHint}>
+              Chụp ảnh hiện trạng thiết bị trước khi sửa chữa (Tối đa 4 ảnh)
+            </Text>
+            
+            <View style={styles.imageContainer}>
+              {uploadedMedia.map((media, index) => (
+                <View key={media.mediaID} style={styles.imagePreview}>
+                  <TouchableOpacity
+                    style={styles.imagePreviewTouchable}
+                    onPress={() => openImageViewer(media.localUri, index, uploadedMedia.length)}
+                    activeOpacity={0.8}
+                  >
+                    <Image source={{ uri: media.localUri }} style={styles.previewImage} />
+                  </TouchableOpacity>
+                  
+                  {media.isUploading && (
+                    <View style={styles.imageUploadingOverlay}>
+                      <ActivityIndicator size="small" color="#609CEF" />
+                      <Text style={styles.uploadingText}>Đang tải...</Text>
+                    </View>
+                  )}
+                  
+                  {!media.isUploading && (
+                    <TouchableOpacity 
+                      style={styles.removeImageButton}
+                      onPress={() => handleDeletePhoto(media.mediaID, 'before')}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="close" size={16} color="#EF4444" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+              
+              {uploadedMedia.length < 4 && (
+                <TouchableOpacity 
+                  style={styles.addImageButton}
+                  onPress={() => handleTakePhoto('before')}
+                  disabled={isUploadingImage}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons 
+                    name="camera" 
+                    size={28} 
+                    color={isUploadingImage ? "#9CA3AF" : "#609CEF"} 
+                  />
+                  <Text style={styles.addImageText}>
+                    {isUploadingImage ? 'Đang tải...' : 'Thêm ảnh'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            
+            <Text style={styles.sectionTitle}>
+              Ghi chú tình trạng <Text style={styles.required}>*</Text>
+            </Text>
+            <View style={[styles.inputContainer, styles.textAreaContainer]}>
+              <TextInput
+                style={[styles.textInput, styles.textArea]}
+                placeholder="Mô tả chi tiết tình trạng thiết bị, các vấn đề phát hiện được..."
+                value={initialNotes}
+                onChangeText={setInitialNotes}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+          </View>
+        )}
+        
+        {/* Photo Upload Section - Show during REPAIRING status */}
+        {currentStatus === AppointmentStatus.REPAIRING && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              Hình ảnh kết quả sửa chữa <Text style={styles.required}>*</Text>
+            </Text>
+            <Text style={styles.imageHint}>
+              Chụp ảnh thiết bị sau khi sửa chữa hoàn tất (Tối đa 4 ảnh)
+            </Text>
+            
+            <View style={styles.imageContainer}>
+              {finalMedia.map((media, index) => (
+                <View key={media.mediaID} style={styles.imagePreview}>
+                  <TouchableOpacity
+                    style={styles.imagePreviewTouchable}
+                    onPress={() => openImageViewer(media.localUri, index, finalMedia.length)}
+                    activeOpacity={0.8}
+                  >
+                    <Image source={{ uri: media.localUri }} style={styles.previewImage} />
+                  </TouchableOpacity>
+                  
+                  {media.isUploading && (
+                    <View style={styles.imageUploadingOverlay}>
+                      <ActivityIndicator size="small" color="#609CEF" />
+                      <Text style={styles.uploadingText}>Đang tải...</Text>
+                    </View>
+                  )}
+                  
+                  {!media.isUploading && (
+                    <TouchableOpacity 
+                      style={styles.removeImageButton}
+                      onPress={() => handleDeletePhoto(media.mediaID, 'after')}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="close" size={16} color="#EF4444" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+              
+              {finalMedia.length < 4 && (
+                <TouchableOpacity 
+                  style={styles.addImageButton}
+                  onPress={() => handleTakePhoto('after')}
+                  disabled={isUploadingFinalImage}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons 
+                    name="camera" 
+                    size={28} 
+                    color={isUploadingFinalImage ? "#9CA3AF" : "#609CEF"} 
+                  />
+                  <Text style={styles.addImageText}>
+                    {isUploadingFinalImage ? 'Đang tải...' : 'Thêm ảnh'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            
+            <Text style={styles.sectionTitle}>
+              Ghi chú kết quả <Text style={styles.required}>*</Text>
+            </Text>
+            <View style={[styles.inputContainer, styles.textAreaContainer]}>
+              <TextInput
+                style={[styles.textInput, styles.textArea]}
+                placeholder="Mô tả chi tiết công việc đã thực hiện, kết quả sửa chữa..."
+                value={finalNotes}
+                onChangeText={setFinalNotes}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+          </View>
+        )}
 
         {/* Action Buttons - Moved up for better visibility */}
         <View style={styles.actionSection}>
@@ -1260,6 +1803,75 @@ function TechnicianOrderTracking() {
               </View>
             </View>
           )}
+          
+          {/* Initial Photos Card - Show during REPAIRING and later */}
+          {(currentStatus === AppointmentStatus.REPAIRING || 
+            currentStatus === AppointmentStatus.REPAIRED || 
+            currentStatus === 'completed') && uploadedMedia.length > 0 && (
+            <View style={styles.imagesCard}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="camera" size={24} color="#609CEF" />
+                <Text style={styles.cardTitle}>Hình ảnh tình trạng ban đầu ({uploadedMedia.length})</Text>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScrollView}>
+                <View style={styles.imagesContainer}>
+                  {uploadedMedia.map((media, index) => (
+                    <TouchableOpacity
+                      key={media.mediaID}
+                      style={styles.imageWrapper}
+                      onPress={() => openImageViewer(media.localUri, index, uploadedMedia.length)}
+                    >
+                      <Image source={{ uri: media.localUri }} style={styles.attachedImage} />
+                      <View style={styles.imageOverlay}>
+                        <Ionicons name="expand" size={16} color="#FFFFFF" />
+                      </View>
+                      <View style={[styles.imageNumberBadge, { backgroundColor: '#609CEF' }]}>
+                        <Text style={styles.imageNumberText}>{index + 1}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+              <View style={styles.imagesFooter}>
+                <Ionicons name="checkmark-circle" size={16} color="#609CEF" />
+                <Text style={styles.imagesFooterText}>Ảnh đã chụp lúc kiểm tra ban đầu</Text>
+              </View>
+            </View>
+          )}
+          
+          {/* Final Photos Card - Show during REPAIRED and completed */}
+          {(currentStatus === AppointmentStatus.REPAIRED || 
+            currentStatus === 'completed') && finalMedia.length > 0 && (
+            <View style={styles.imagesCard}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="checkmark-done" size={24} color="#609CEF" />
+                <Text style={styles.cardTitle}>Hình ảnh kết quả sửa chữa ({finalMedia.length})</Text>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScrollView}>
+                <View style={styles.imagesContainer}>
+                  {finalMedia.map((media, index) => (
+                    <TouchableOpacity
+                      key={media.mediaID}
+                      style={styles.imageWrapper}
+                      onPress={() => openImageViewer(media.localUri, index, finalMedia.length)}
+                    >
+                      <Image source={{ uri: media.localUri }} style={styles.attachedImage} />
+                      <View style={styles.imageOverlay}>
+                        <Ionicons name="expand" size={16} color="#FFFFFF" />
+                      </View>
+                      <View style={[styles.imageNumberBadge, { backgroundColor: '#609CEF' }]}>
+                        <Text style={styles.imageNumberText}>{index + 1}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+              <View style={styles.imagesFooter}>
+                <Ionicons name="checkmark-circle" size={16} color="#6B7280" />
+                <Text style={styles.imagesFooterText}>Ảnh đã chụp sau khi hoàn thành sửa chữa</Text>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Status-specific Actions */}
@@ -1279,11 +1891,59 @@ function TechnicianOrderTracking() {
       {/* Sticky Swipe Button */}
       {currentStatus !== 'completed' && (
         <View style={styles.swipeSection}>
+          {/* Show hint when EN_ROUTE - must use map button */}
+          {currentStatus === AppointmentStatus.EN_ROUTE && (
+            <View style={styles.enRouteHint}>
+              <Ionicons name="information-circle" size={20} color="#F59E0B" />
+              <Text style={styles.enRouteHintText}>
+                Vui lòng sử dụng "Xem bản đồ chỉ đường" để xác nhận đã đến nơi
+              </Text>
+            </View>
+          )}
+          
+          {/* Show hint when CHECKING - must add photos and notes */}
+          {currentStatus === AppointmentStatus.CHECKING && (uploadedMedia.length === 0 || !initialNotes.trim()) && (
+            <View style={styles.enRouteHint}>
+              <Ionicons name="information-circle" size={20} color="#F59E0B" />
+              <Text style={styles.enRouteHintText}>
+                Vui lòng chụp ảnh và nhập ghi chú về tình trạng thiết bị
+              </Text>
+            </View>
+          )}
+          
+          {/* Show hint when REPAIRING - must add photos and notes */}
+          {currentStatus === AppointmentStatus.REPAIRING && (finalMedia.length === 0 || !finalNotes.trim()) && (
+            <View style={styles.enRouteHint}>
+              <Ionicons name="information-circle" size={20} color="#F59E0B" />
+              <Text style={styles.enRouteHintText}>
+                Vui lòng chụp ảnh và nhập ghi chú về kết quả sửa chữa
+              </Text>
+            </View>
+          )}
+          
           <SwipeButton
-            title="Vuốt để chuyển bước tiếp theo"
-            isEnabled={true}
+            title={
+              currentStatus === AppointmentStatus.EN_ROUTE 
+                ? "Dùng bản đồ để xác nhận đã đến" 
+                : currentStatus === AppointmentStatus.CHECKING && (uploadedMedia.length === 0 || !initialNotes.trim())
+                ? "Cần ảnh và ghi chú để tiếp tục"
+                : currentStatus === AppointmentStatus.REPAIRING && (finalMedia.length === 0 || !finalNotes.trim())
+                ? "Cần ảnh và ghi chú kết quả để hoàn thành"
+                : "Vuốt để tiếp tục bước sau"
+            }
+            isEnabled={
+              currentStatus !== AppointmentStatus.EN_ROUTE && 
+              !(currentStatus === AppointmentStatus.CHECKING && (uploadedMedia.length === 0 || !initialNotes.trim())) &&
+              !(currentStatus === AppointmentStatus.REPAIRING && (finalMedia.length === 0 || !finalNotes.trim()))
+            }
             onSwipeComplete={handleUpdateStatus}
-            backgroundColor="#609CEF"
+            backgroundColor={
+              currentStatus === AppointmentStatus.EN_ROUTE || 
+              (currentStatus === AppointmentStatus.CHECKING && (uploadedMedia.length === 0 || !initialNotes.trim())) ||
+              (currentStatus === AppointmentStatus.REPAIRING && (finalMedia.length === 0 || !finalNotes.trim()))
+                ? "#9CA3AF" 
+                : "#609CEF"
+            }
           />
         </View>
       )}
@@ -1293,55 +1953,54 @@ function TechnicianOrderTracking() {
         visible={showImageModal}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowImageModal(false)}
+        onRequestClose={closeImageViewer}
       >
-        <View style={styles.imageModalOverlay}>
+        <View style={styles.imageViewerOverlay}>
           {/* Close Button */}
           <TouchableOpacity
-            style={styles.imageModalCloseButton}
-            onPress={() => setShowImageModal(false)}
+            style={styles.imageViewerCloseButton}
+            onPress={closeImageViewer}
+            activeOpacity={0.8}
           >
-            <Ionicons name="close" size={32} color="#FFFFFF" />
+            <Ionicons name="close" size={28} color="#FFFFFF" />
           </TouchableOpacity>
 
-          {/* Image Counter */}
-          <View style={styles.imageModalCounter}>
-            <Text style={styles.imageModalCounterText}>
-              {selectedImageIndex + 1} / {totalImages}
+          {/* Touchable Area to Close */}
+          <TouchableOpacity 
+            style={styles.imageViewerCloseArea}
+            activeOpacity={1}
+            onPress={closeImageViewer}
+          >
+            <View style={styles.imageViewerContainer}>
+              <Image
+                source={{ uri: selectedImageUri }}
+                style={styles.fullSizeImage}
+                resizeMode="contain"
+              />
+            </View>
+          </TouchableOpacity>
+
+          {/* Image Info & Delete Button */}
+          <View style={styles.imageViewerInfo}>
+            <Text style={styles.imageViewerText}>
+              Ảnh {selectedImageIndex + 1} / {totalImages}
             </Text>
+            <TouchableOpacity
+              style={styles.imageViewerDeleteButton}
+              onPress={() => {
+                closeImageViewer();
+                // Find media by index
+                const mediaToDelete = uploadedMedia[selectedImageIndex];
+                if (mediaToDelete) {
+                  handleDeletePhoto(mediaToDelete.mediaID);
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="trash" size={20} color="#FFFFFF" />
+              <Text style={styles.imageViewerDeleteText}>Xóa ảnh này</Text>
+            </TouchableOpacity>
           </View>
-
-          {/* Image */}
-          <View style={styles.imageModalImageContainer}>
-            <Image
-              source={{ uri: selectedImageUri }}
-              style={styles.imageModalImage}
-              resizeMode="contain"
-            />
-          </View>
-
-          {/* Navigation Buttons */}
-          {totalImages > 1 && (
-            <>
-              {selectedImageIndex > 0 && (
-                <TouchableOpacity
-                  style={[styles.imageModalNavButton, styles.imageModalPrevButton]}
-                  onPress={handlePreviousImage}
-                >
-                  <Ionicons name="chevron-back" size={32} color="#FFFFFF" />
-                </TouchableOpacity>
-              )}
-
-              {selectedImageIndex < totalImages - 1 && (
-                <TouchableOpacity
-                  style={[styles.imageModalNavButton, styles.imageModalNextButton]}
-                  onPress={handleNextImage}
-                >
-                  <Ionicons name="chevron-forward" size={32} color="#FFFFFF" />
-                </TouchableOpacity>
-              )}
-            </>
-          )}
         </View>
       </Modal>
 
@@ -1434,6 +2093,26 @@ function TechnicianOrderTracking() {
         </View>
       </Modal>
 
+      {/* Map View Modal - Full screen during EN_ROUTE */}
+      {showMapView && serviceRequest && (
+        <Modal
+          visible={showMapView}
+          animationType="slide"
+          presentationStyle="fullScreen"
+          onRequestClose={() => setShowMapView(false)}
+        >
+          <TechnicianMapView
+            customerAddress={serviceRequest.requestAddress || 'Địa chỉ không xác định'}
+            onClose={() => setShowMapView(false)}
+            onArrived={() => {
+              setShowMapView(false);
+              // Trigger swipe to update status to ARRIVED
+              handleUpdateStatus();
+            }}
+          />
+        </Modal>
+      )}
+
       {/* Success Popup Modal */}
       <Modal
         visible={showSuccessModal}
@@ -1506,7 +2185,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   scrollContent: {
-    paddingBottom: 120, // Space for sticky SwipeButton
+    paddingBottom: 240, // Space for sticky SwipeButton
   },
   statusSection: {
     marginTop: 16,
@@ -1559,6 +2238,31 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1F2937',
     marginBottom: 12,
+  },
+  required: {
+    color: '#EF4444',
+  },
+  inputContainer: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  textInput: {
+    fontSize: 16,
+    color: '#1F2937',
+    fontWeight: '500',
+    minHeight: 24,
   },
   infoCard: {
     backgroundColor: '#FFFFFF',
@@ -2105,9 +2809,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    marginHorizontal: -16,
+    paddingHorizontal: 16,
+    paddingTop: 12, 
+    paddingBottom: 12, 
   },
   imagesFooterText: {
     fontSize: 12,
@@ -2252,6 +2957,26 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(0,0,0,0.05)',
   },
+  enRouteHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 12,
+    gap: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
+  },
+  enRouteHintText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#92400E',
+    fontWeight: '600',
+    lineHeight: 20,
+  },
   swipeWrapper: {
     paddingHorizontal: 20,
     alignItems: 'center',
@@ -2276,13 +3001,16 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: 10,
+    marginLeft: 70,  // Space for knob on the left
+    marginRight: 16, // Space for hint icons on the right
+    paddingHorizontal: 8,
   },
   swipeText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
     textAlign: 'center',
+    lineHeight: 18,
   },
   swipeHint: {
     position: 'absolute',
@@ -2839,6 +3567,213 @@ const styles = StyleSheet.create({
     backgroundColor: '#609CEF',
     borderRadius: 2,
     marginTop: 20,
+  },
+  // Map Section Styles
+  mapSection: {
+    marginBottom: 24,
+  },
+  mapButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#E0F2FE',
+  },
+  mapButtonIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#EBF5FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mapButtonContent: {
+    flex: 1,
+  },
+  mapButtonTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  mapButtonDescription: {
+    fontSize: 13,
+    color: '#6B7280',
+    lineHeight: 18,
+  },
+  // Photo Upload Section Styles (Compact version like book-service.tsx)
+  imageHint: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  imageContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginTop: 8,
+    paddingTop: 8,
+    paddingRight: 8,
+    marginBottom: 20,
+  },
+  imagePreview: {
+    width: 80,
+    height: 80,
+    position: 'relative',
+    borderRadius: 12,
+    overflow: 'visible',
+    backgroundColor: '#F3F4F6',
+    marginBottom: 8,
+    marginRight: 8,
+  },
+  imagePreviewTouchable: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
+    resizeMode: 'cover',
+    overflow: 'hidden',
+  },
+  imageUploadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadingText: {
+    fontSize: 10,
+    color: '#609CEF',
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  addImageButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#609CEF',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(96, 156, 239, 0.05)',
+  },
+  addImageText: {
+    fontSize: 11,
+    color: '#609CEF',
+    fontWeight: '600',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  textAreaContainer: {
+    paddingVertical: 16,
+  },
+  textArea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  // Image Viewer Modal Styles
+  imageViewerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageViewerCloseArea: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageViewerContainer: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  imageViewerCloseButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  fullSizeImage: {
+    width: '100%',
+    height: '70%',
+    borderRadius: 10,
+  },
+  imageViewerInfo: {
+    position: 'absolute',
+    bottom: 80,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  imageViewerText: {
+    color: 'white',
+    fontSize: 16,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  imageViewerDeleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  imageViewerDeleteText: {
+    color: 'white',
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
 

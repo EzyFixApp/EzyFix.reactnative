@@ -8,6 +8,16 @@ import { authService } from './auth';
 
 export type MediaType = 'ISSUE' | 'INITIAL' | 'EXCEED' | 'FINAL' | 'PAYMENT' | 'OTHER';
 
+// Map MediaType string to backend enum number
+const MediaTypeEnum: Record<MediaType, number> = {
+  'ISSUE': 0,
+  'INITIAL': 1,
+  'EXCEED': 2,
+  'FINAL': 3,
+  'PAYMENT': 4,
+  'OTHER': 5,
+};
+
 export interface MediaUploadResponse {
   mediaID: string;
   requestID: string;
@@ -49,22 +59,29 @@ export class MediaService {
         throw new Error('No access token available');
       }
 
-      // Create FormData for multipart/form-data
-      const formData = new FormData();
-      formData.append('RequestID', uploadData.requestID);
+      // Build query string for metadata (as backend expects [FromQuery])
+      // Convert MediaType string to enum number for backend
+      const mediaTypeNumber = MediaTypeEnum[uploadData.mediaType];
+      const queryParams = new URLSearchParams();
+      queryParams.append('RequestID', uploadData.requestID);
       if (uploadData.appointmentID) {
-        formData.append('AppointmentID', uploadData.appointmentID);
+        queryParams.append('AppointmentID', uploadData.appointmentID);
       }
-      formData.append('MediaType', uploadData.mediaType);
+      queryParams.append('MediaType', mediaTypeNumber.toString());
       
-      // Append file
+      // Create FormData for file only (as backend expects [FromForm])
+      const formData = new FormData();
       formData.append('File', {
         uri: uploadData.file.uri,
         type: uploadData.file.type,
         name: uploadData.file.name,
       } as any);
 
-      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.MEDIA.UPLOAD}`, {
+      const url = `${API_BASE_URL}${API_ENDPOINTS.MEDIA.UPLOAD}?${queryParams.toString()}`;
+      console.log('📤 Uploading media to:', url);
+      console.log('📸 MediaType:', uploadData.mediaType, '→ Enum:', mediaTypeNumber);
+
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -75,6 +92,7 @@ export class MediaService {
 
       if (!response.ok) {
         const errorData = await response.text();
+        console.error('❌ Upload failed:', errorData);
         throw new Error(`Upload failed: ${response.status} - ${errorData}`);
       }
 
