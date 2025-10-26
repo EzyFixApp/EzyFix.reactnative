@@ -3,7 +3,7 @@
  */
 
 // Base API URL
-export const API_BASE_URL = 'https://ezyfix.up.railway.app';
+export const API_BASE_URL = 'https://thekhiem7-devtunnel.ezyfix.site';
 
 // API Endpoints
 export const API_ENDPOINTS = {

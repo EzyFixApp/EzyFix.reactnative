@@ -29,6 +29,9 @@ export interface ServiceDeliveryOfferResponse {
   technician?: {
     technicianId: string;
     userId: string;
+    technicianName?: string; // NEW: Full name from API
+    technicianAvatar?: string; // NEW: Avatar URL from API
+    technicianRating?: number; // NEW: Rating from API
     firstName?: string;
     lastName?: string;
     user?: {
@@ -350,6 +353,85 @@ export class ServiceDeliveryOffersService {
     } catch (error: any) {
       if (__DEV__) console.error('❌ Get all offers error:', error);
       return [];
+    }
+  }
+
+  /**
+   * Update final cost for an offer (PRICE_REVIEW flow)
+   * PUT /api/v1/serviceDeliveryOffers/{id}/update
+   * 
+   * Backend requires [FromForm] (NOT JSON!):
+   * - ServiceRequestId (Guid)
+   * - FinalCost (decimal, must be > 0)
+   * - Notes (string, optional)
+   */
+  public async updateOfferFinalCost(
+    offerId: string,
+    serviceRequestId: string,
+    finalCost: number,
+    notes?: string
+  ): Promise<ServiceDeliveryOfferResponse> {
+    try {
+      if (__DEV__) console.log('💰 Updating final cost for offer:', {
+        offerId,
+        serviceRequestId,
+        finalCost,
+        notes
+      });
+
+      const token = await authService.getAccessToken();
+      if (!token) {
+        throw new Error('No access token available');
+      }
+
+      // Validate finalCost > 0 (backend requirement)
+      if (finalCost <= 0) {
+        throw new Error('Final cost must be greater than 0');
+      }
+
+      // Backend expects [FromForm] - use FormData, NOT JSON!
+      const formData = new FormData();
+      formData.append('ServiceRequestId', serviceRequestId);
+      formData.append('FinalCost', finalCost.toString()); // Convert to string for FormData
+      if (notes) {
+        formData.append('Notes', notes);
+      }
+
+      if (__DEV__) console.log('📤 Sending FormData to backend:', {
+        ServiceRequestId: serviceRequestId,
+        FinalCost: finalCost,
+        Notes: notes || ''
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/serviceDeliveryOffers/${offerId}/update`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            // Don't set Content-Type - let browser set it with boundary for FormData
+          },
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        if (__DEV__) console.error('❌ Backend error response:', errorData);
+        throw new Error(`Update final cost failed: ${response.status} - ${errorData}`);
+      }
+
+      const result = await response.json();
+
+      if (result.is_success && result.data) {
+        if (__DEV__) console.log('✅ Final cost updated successfully:', result.data);
+        return result.data;
+      } else {
+        throw new Error(result.message || 'Failed to update final cost');
+      }
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ Update final cost error:', error);
+      throw error;
     }
   }
 }

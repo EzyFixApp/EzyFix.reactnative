@@ -5,19 +5,25 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { serviceRequestService } from '../lib/api/serviceRequests';
 import { servicesService } from '../lib/api/services';
+import { serviceDeliveryOffersService } from '../lib/api/serviceDeliveryOffers';
+import { appointmentsService } from '../lib/api/appointments';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../store/authStore';
 
 interface ActiveOrder {
   id: string;
   serviceName: string;
-  status: 'searching' | 'quoted' | 'accepted' | 'in-progress';
+  status: 'searching' | 'quoted' | 'accepted' | 'scheduled' | 'en-route' | 'arrived' | 'in-progress' | 'price-review';
   technicianName?: string;
+  customerName?: string; // For technician view - show customer name
+  customerPhone?: string; // For technician view - show customer contact
   estimatedTime?: string;
   currentStep?: string;
   requestedDate?: string;
   expectedStartTime?: string;
   requestAddress?: string;  // Full address text from backend
+  appointmentStatus?: string; // Raw appointment status
+  finalPrice?: string; // For price-review status
 }
 
 export default function ActiveOrdersSection() {
@@ -26,7 +32,7 @@ export default function ActiveOrdersSection() {
   const { user } = useAuth();
 
   // Auto-refresh interval (30 seconds)
-  const REFRESH_INTERVAL = 30000;
+  const REFRESH_INTERVAL = 5000;
 
   // Animation for loading spinner
   const spinValue = new Animated.Value(0);
@@ -55,35 +61,64 @@ export default function ActiveOrdersSection() {
     outputRange: ['0deg', '360deg'],
   });
 
-  // Helper function to map API status to local status
-  const getStatusFromApiStatus = (apiStatus: string): ActiveOrder['status'] => {
-    switch (apiStatus?.toUpperCase()) {
+  // Helper function to map API status to local status (sync with order-tracking.tsx)
+  const mapApiStatus = (apiStatus: string): ActiveOrder['status'] => {
+    const normalizedStatus = apiStatus?.toUpperCase() || '';
+    
+    switch (normalizedStatus) {
+      // ServiceRequest statuses
       case 'PENDING':
+      case 'WAITING':
         return 'searching';
       case 'QUOTED':
         return 'quoted';
+      case 'QUOTEACCEPTED':
+      case 'QUOTE_ACCEPTED':
+        return 'accepted';
+      
+      // Appointments statuses (priority - most specific)
+      case 'SCHEDULED':
+        return 'scheduled';
+      case 'EN_ROUTE':
+        return 'en-route';
+      case 'ARRIVED':
+        return 'arrived';
+      case 'CHECKING':
+      case 'REPAIRING':
+        return 'in-progress';
+      case 'PRICE_REVIEW':
+        return 'price-review';
+      
+      // ServiceDeliveryOffers statuses
       case 'ACCEPTED':
         return 'accepted';
-      case 'IN_PROGRESS':
-      case 'INPROGRESS':
+      case 'CHECKING_AWAIT':
         return 'in-progress';
+      
       default:
         return 'searching';
     }
   };
 
   // Helper function to get current step description
-  const getStepFromStatus = (apiStatus: string): string => {
-    switch (apiStatus?.toUpperCase()) {
-      case 'PENDING':
+  const getStepFromStatus = (status: ActiveOrder['status']): string => {
+    switch (status) {
+      case 'searching':
         return 'Đang tìm thợ phù hợp';
-      case 'QUOTED':
+      case 'quoted':
         return 'Đang chờ xác nhận báo giá';
-      case 'ACCEPTED':
+      case 'accepted':
         return 'Đã xác nhận, chuẩn bị thực hiện';
-      case 'IN_PROGRESS':
-      case 'INPROGRESS':
+      case 'scheduled':
+        return 'Thợ đã xác nhận lịch hẹn';
+      case 'en-route':
+        return 'Thợ đang trên đường đến';
+      case 'arrived':
+        return 'Thợ đã đến địa điểm';
+      case 'in-progress':
         return 'Đang thực hiện dịch vụ';
+      case 'price-review':
+        return 'Chờ xác nhận giá cuối cùng';
       default:
         return 'Đang tìm thợ phù hợp';
     }
@@ -133,25 +168,30 @@ export default function ActiveOrdersSection() {
         setLoading(true);
       }
       
-      // Only load orders for customers - skip for technicians until API is ready
-      if (user?.userType !== 'customer') {
-        setActiveOrders([]);
-        if (!silent) {
-          setLoading(false);
-        }
-        return;
-      }
-      
-      // Get service requests using the endpoint with customer access support
+      // Get service requests for both customers and technicians
+      // getUserServiceRequests() handles both cases:
+      // - For customers: filters by CustomerId
+      // - For technicians: gets requests where they submitted offers
       const serviceRequests = await serviceRequestService.getUserServiceRequests();
       
-      // Convert service requests to active orders format with service names
+      // Convert service requests to active orders format with data from all 3 APIs
       const orders: ActiveOrder[] = await Promise.all(
         serviceRequests.map(async (request) => {
           let serviceName = 'Dịch vụ'; // Default fallback
+          let technicianName: string | undefined;
+          let customerName: string | undefined;
+          let customerPhone: string | undefined;
+          let actualStatus = request.status; // Will be overridden by appointment status if available
+          let finalPrice: string | undefined;
           
+          // For technician: get customer info from request
+          if (user?.userType === 'technician') {
+            customerName = request.fullName || 'Khách hàng';
+            customerPhone = request.phoneNumber || undefined;
+          }
+          
+          // 1. Get service details from servicesService API
           try {
-            // Try to get service details from API
             const service = await servicesService.getServiceById(request.serviceId);
             serviceName = service.serviceName || service.description || 'Dịch vụ';
             
@@ -168,19 +208,118 @@ export default function ActiveOrdersSection() {
             }
           }
           
+          // 2. Get offer details from serviceDeliveryOffersService API
+          try {
+            const allOffers = await serviceDeliveryOffersService.getAllOffers(request.requestID);
+            
+            if (allOffers && allOffers.length > 0) {
+              // Find ACCEPTED offer first, otherwise take the most recent one
+              let relevantOffer = allOffers.find(
+                (offer: any) => offer.status?.toUpperCase() === 'ACCEPTED'
+              );
+              
+              if (!relevantOffer) {
+                relevantOffer = allOffers[allOffers.length - 1];
+              }
+              
+              // Get technician name from offer
+              if (relevantOffer.technicianId) {
+                try {
+                  // Fetch full offer details to get technician info
+                  const fullOfferDetails = await serviceDeliveryOffersService.getOfferById(relevantOffer.offerId);
+                  
+                  if (fullOfferDetails.technician?.technicianName) {
+                    technicianName = fullOfferDetails.technician.technicianName;
+                  }
+                } catch (offerError) {
+                  if (__DEV__) console.warn('⚠️ [ActiveOrders] Could not fetch full offer details');
+                }
+              }
+              
+              // Get final price if available
+              if (relevantOffer.finalCost && relevantOffer.finalCost > 0) {
+                finalPrice = new Intl.NumberFormat('vi-VN', {
+                  style: 'currency',
+                  currency: 'VND'
+                }).format(relevantOffer.finalCost);
+              }
+            }
+          } catch (error) {
+            if (__DEV__) console.warn('⚠️ [ActiveOrders] Could not fetch offers');
+          }
+          
+          // 3. Get appointment details from appointmentsService API (highest priority)
+          try {
+            const appointments = await appointmentsService.getAppointmentsByServiceRequest(request.requestID);
+            
+            if (appointments.length > 0) {
+              // Take the most recent appointment
+              const appointment = appointments[appointments.length - 1];
+              
+              // Override status with appointment status (highest priority)
+              actualStatus = appointment.status;
+              
+              if (__DEV__) console.log('✅ [ActiveOrders] Appointment status:', {
+                requestId: request.requestID,
+                status: actualStatus
+              });
+            }
+          } catch (error) {
+            if (__DEV__) console.warn('⚠️ [ActiveOrders] Could not fetch appointments');
+          }
+          
+          // Map the final status (using appointment status if available)
+          const mappedStatus = mapApiStatus(actualStatus);
+          
           return {
             id: request.requestID,
             serviceName,
-            status: getStatusFromApiStatus(request.status),
-            currentStep: getStepFromStatus(request.status),
+            status: mappedStatus,
+            currentStep: getStepFromStatus(mappedStatus),
             requestedDate: request.requestedDate,
             expectedStartTime: request.expectedStartTime,
             requestAddress: request.requestAddress || undefined,
+            technicianName,
+            customerName,
+            customerPhone,
+            appointmentStatus: actualStatus,
+            finalPrice,
           };
         })
       );
       
-      setActiveOrders(orders);
+      // Filter to show only active orders
+      // For technicians: show orders with ACCEPTED offers and active appointments
+      // For customers: exclude completed/cancelled orders
+      let activeOnly: ActiveOrder[];
+      
+      if (user?.userType === 'technician') {
+        // For technician: only show orders where they have ACCEPTED offers
+        // and the appointment is in active state (not completed/cancelled)
+        activeOnly = orders.filter(order => {
+          const appointmentStatus = order.appointmentStatus?.toLowerCase() || '';
+          const isActiveAppointment = !['completed', 'cancelled', 'repaired', 'dispute'].includes(appointmentStatus);
+          
+          // Show orders that are scheduled, en-route, arrived, or in-progress
+          const isActiveStatus = [
+            'scheduled', 
+            'en-route', 
+            'arrived', 
+            'in-progress',
+            'price-review'
+          ].includes(order.status);
+          
+          return isActiveAppointment && isActiveStatus;
+        });
+      } else {
+        // For customer: exclude completed/cancelled orders
+        activeOnly = orders.filter(order => 
+          order.status !== 'in-progress' || // Keep in-progress as it might be active
+          !['completed', 'cancelled', 'repaired'].includes(order.appointmentStatus?.toLowerCase() || '')
+        );
+      }
+      
+      setActiveOrders(activeOnly);
     } catch (error: any) {
       // Silent handling for expected errors (403, 404) - these are OK when API is not ready
       if (error.status_code === 403 || error.status_code === 404) {
@@ -210,10 +349,12 @@ export default function ActiveOrdersSection() {
               end={{ x: 1, y: 0 }}
               style={styles.titleIconContainer}
             >
-              <Ionicons name="flash" size={16} color="#FFFFFF" />
-            </LinearGradient>
-            <Text style={styles.sectionTitle}>Đơn đang xử lý</Text>
-            <View style={styles.countBadge}>
+            <Ionicons name="flash" size={16} color="#FFFFFF" />
+          </LinearGradient>
+          <Text style={styles.sectionTitle}>
+            {user?.userType === 'technician' ? 'Đơn đang thực hiện' : 'Đơn đang xử lý'}
+          </Text>
+          <View style={styles.countBadge}>
               <Text style={styles.countText}>0</Text>
             </View>
             <View style={styles.refreshButton}>
@@ -269,7 +410,9 @@ export default function ActiveOrdersSection() {
           >
             <Ionicons name="flash" size={16} color="#FFFFFF" />
           </LinearGradient>
-          <Text style={styles.sectionTitle}>Đơn đang xử lý</Text>
+          <Text style={styles.sectionTitle}>
+            {user?.userType === 'technician' ? 'Đơn đang thực hiện' : 'Đơn đang xử lý'}
+          </Text>
           <View style={styles.countBadge}>
             <Text style={styles.countText}>{activeOrders.length}</Text>
           </View>
@@ -294,10 +437,18 @@ export default function ActiveOrdersSection() {
             key={order.id || index}
             style={styles.orderCard}
             onPress={() => {
-              router.push({
-                pathname: './order-tracking',
-                params: { orderId: order.id }
-              } as any);
+              // Navigate to appropriate tracking screen based on user type
+              if (user?.userType === 'technician') {
+                router.push({
+                  pathname: '/technician/technician-order-tracking',
+                  params: { orderId: order.id }
+                } as any);
+              } else {
+                router.push({
+                  pathname: './order-tracking',
+                  params: { orderId: order.id }
+                } as any);
+              }
             }}
             activeOpacity={0.7}
           >
@@ -334,6 +485,20 @@ export default function ActiveOrdersSection() {
                   </View>
                 </View>
 
+                {/* Show customer/technician name based on user type */}
+                {user?.userType === 'technician' && order.customerName && (
+                  <View style={styles.personInfoContainer}>
+                    <Ionicons name="person-outline" size={12} color="#6B7280" />
+                    <Text style={styles.personInfoText}>{order.customerName}</Text>
+                  </View>
+                )}
+                {user?.userType === 'customer' && order.technicianName && (
+                  <View style={styles.personInfoContainer}>
+                    <Ionicons name="construct-outline" size={12} color="#6B7280" />
+                    <Text style={styles.personInfoText}>Thợ: {order.technicianName}</Text>
+                  </View>
+                )}
+
                 {/* Date and time info */}
                 <View style={styles.dateTimeContainer}>
                   {order.requestedDate && (
@@ -361,10 +526,18 @@ export default function ActiveOrdersSection() {
                 <TouchableOpacity 
                   style={styles.actionButton}
                   onPress={() => {
-                    router.push({
-                      pathname: './order-tracking',
-                      params: { orderId: order.id }
-                    } as any);
+                    // Navigate to appropriate tracking screen based on user type
+                    if (user?.userType === 'technician') {
+                      router.push({
+                        pathname: '/technician/technician-order-tracking',
+                        params: { orderId: order.id }
+                      } as any);
+                    } else {
+                      router.push({
+                        pathname: './order-tracking',
+                        params: { orderId: order.id }
+                      } as any);
+                    }
                   }}
                   activeOpacity={0.7}
                 >
@@ -551,6 +724,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  personInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  personInfoText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
   },
   dateTimeContainer: {
     gap: 6,

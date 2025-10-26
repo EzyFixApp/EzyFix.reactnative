@@ -192,6 +192,7 @@ function TechnicianOrderTracking() {
   const [uploadedMedia, setUploadedMedia] = useState<UploadedMedia[]>([]);
   const [initialNotes, setInitialNotes] = useState<string>('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [finalCostInput, setFinalCostInput] = useState<string>(''); // For PRICE_REVIEW flow
   
   // Photo upload state (REPAIRING status) - For final photos
   const [finalMedia, setFinalMedia] = useState<UploadedMedia[]>([]);
@@ -215,7 +216,7 @@ function TechnicianOrderTracking() {
 
   // Fetch data on mount
   useEffect(() => {
-    if (serviceRequestId && offerId) {
+    if (serviceRequestId) {
       fetchOrderData();
     } else {
       setError('Thiếu thông tin đơn hàng');
@@ -323,8 +324,29 @@ function TechnicianOrderTracking() {
         }
       }
 
+      // Fetch offer - if offerId not provided, try to find it
+      let effectiveOfferId = offerId as string;
+      
+      if (!effectiveOfferId) {
+        console.log('🔍 No offerId provided, fetching offers for request...');
+        try {
+          const offers = await serviceDeliveryOffersService.getAllOffers(requestData.requestID);
+          if (offers && offers.length > 0) {
+            // Find accepted offer or use the latest one
+            const acceptedOffer = offers.find(o => o.status === 'ACCEPTED');
+            effectiveOfferId = acceptedOffer?.offerId || offers[offers.length - 1]?.offerId;
+            console.log('✅ Found offerId:', effectiveOfferId);
+          } else {
+            throw new Error('Không tìm thấy báo giá cho đơn hàng này');
+          }
+        } catch (err) {
+          console.error('❌ Error fetching offers:', err);
+          throw new Error('Không thể tải thông tin báo giá');
+        }
+      }
+
       // Fetch offer
-      const offerData = await serviceDeliveryOffersService.getOfferById(offerId as string);
+      const offerData = await serviceDeliveryOffersService.getOfferById(effectiveOfferId);
       console.log('✅ Fetched offer:', {
         offerId: offerData.offerId,
         status: offerData.status,
@@ -335,7 +357,7 @@ function TechnicianOrderTracking() {
 
       // Check if we have cached appointmentId in AsyncStorage (for when server doesn't sync)
       // Use userId in cache key to avoid conflicts between different users
-      const cacheKey = user?.id ? `appointment_${offerId}_${user.id}` : `appointment_${offerId}`;
+      const cacheKey = user?.id ? `appointment_${effectiveOfferId}_${user.id}` : `appointment_${effectiveOfferId}`;
       const cachedAppointmentId = await AsyncStorage.getItem(cacheKey);
       console.log('💾 Cached appointmentId from storage:', cachedAppointmentId, 'key:', cacheKey);
 
@@ -531,6 +553,12 @@ function TechnicianOrderTracking() {
         color: '#06B6D4',
         icon: 'search'
       },
+      PRICE_REVIEW: {
+        title: 'Chờ xác nhận giá',
+        description: 'Đã gửi báo giá cuối, chờ khách hàng xác nhận',
+        color: '#8B5CF6',
+        icon: 'hourglass'
+      },
       REPAIRING: {
         title: 'Đang sửa chữa',
         description: 'Đang thực hiện sửa chữa thiết bị',
@@ -555,11 +583,17 @@ function TechnicianOrderTracking() {
   };
 
   const getTimeline = () => {
-    // New status flow matching appointment statuses
-    const statusFlow = ['accepted', 'SCHEDULED', 'EN_ROUTE', 'ARRIVED', 'CHECKING', 'REPAIRING', 'REPAIRED', 'completed'];
+    // Check if PRICE_REVIEW is in the flow (offer has estimatedCost but no finalCost initially)
+    const hasPriceReview = offer && offer.estimatedCost && (currentStatus === AppointmentStatus.PRICE_REVIEW || (offer.finalCost && currentStatus !== AppointmentStatus.CHECKING));
+    
+    // Build status flow dynamically
+    const statusFlow = hasPriceReview 
+      ? ['accepted', 'SCHEDULED', 'EN_ROUTE', 'ARRIVED', 'CHECKING', 'PRICE_REVIEW', 'REPAIRING', 'REPAIRED', 'completed']
+      : ['accepted', 'SCHEDULED', 'EN_ROUTE', 'ARRIVED', 'CHECKING', 'REPAIRING', 'REPAIRED', 'completed'];
+    
     const currentIndex = statusFlow.indexOf(currentStatus);
     
-    // Timeline with real appointment statuses
+    // Build timeline data dynamically
     const timelineData = [
       { 
         status: 'accepted', 
@@ -591,25 +625,43 @@ function TechnicianOrderTracking() {
         date: '', 
         completed: currentIndex >= 4 
       },
+    ];
+    
+    // Add PRICE_REVIEW step if applicable
+    if (hasPriceReview) {
+      timelineData.push({ 
+        status: 'PRICE_REVIEW', 
+        time: '', 
+        date: '', 
+        completed: currentIndex >= 5 
+      });
+    }
+    
+    // Add remaining steps with adjusted indices
+    const repairingIndex = hasPriceReview ? 6 : 5;
+    const repairedIndex = hasPriceReview ? 7 : 6;
+    const completedIndex = hasPriceReview ? 8 : 7;
+    
+    timelineData.push(
       { 
         status: 'REPAIRING', 
         time: '', 
         date: '', 
-        completed: currentIndex >= 5 
+        completed: currentIndex >= repairingIndex 
       },
       { 
         status: 'REPAIRED', 
         time: '', 
         date: '', 
-        completed: currentIndex >= 6 
+        completed: currentIndex >= repairedIndex 
       },
       { 
         status: 'completed', 
         time: '', 
         date: '', 
-        completed: currentIndex >= 7 
-      },
-    ];
+        completed: currentIndex >= completedIndex 
+      }
+    );
     
     return timelineData;
   };
@@ -809,7 +861,7 @@ function TechnicianOrderTracking() {
         return;
       }
 
-      // Case 5: CHECKING → REPAIRING (with photo + notes validation)
+      // Case 5: CHECKING → REPAIRING or PRICE_REVIEW (with photo + notes + finalCost validation)
       if (appointment && currentStatus === AppointmentStatus.CHECKING) {
         // Validation: Must have at least 1 photo
         if (uploadedMedia.length === 0) {
@@ -829,7 +881,78 @@ function TechnicianOrderTracking() {
           return;
         }
         
-        // PATCH /api/v1/appointments/{id} with MediaItem objects
+        // Check if offer has estimatedCost but no finalCost → PRICE_REVIEW flow
+        const needsFinalCost = offer && offer.estimatedCost && !offer.finalCost;
+        
+        if (needsFinalCost) {
+          // Validation: Must have finalCost input
+          if (!finalCostInput || !finalCostInput.trim()) {
+            Alert.alert('Thiếu giá cuối cùng', 'Vui lòng nhập giá cuối cùng sau khi kiểm tra');
+            return;
+          }
+          
+          const finalCostValue = parseInt(finalCostInput);
+          if (isNaN(finalCostValue) || finalCostValue <= 0) {
+            Alert.alert('Giá không hợp lệ', 'Vui lòng nhập giá cuối cùng hợp lệ (lớn hơn 0)');
+            return;
+          }
+          
+          // PRICE_REVIEW flow: CHECKING → PRICE_REVIEW
+          console.log('💰 PRICE_REVIEW flow: Updating to PRICE_REVIEW with finalCost:', finalCostValue);
+          
+          // PATCH /api/v1/appointments/{id} with MediaItem objects - Status: PRICE_REVIEW
+          const mediaItems = uploadedMedia.map(m => ({
+            url: m.fileURL,
+            mediaType: 'INITIAL'
+          }));
+          console.log('📸 Sending media items to PATCH (PRICE_REVIEW):', mediaItems);
+          
+          // Step 1: Update appointment to PRICE_REVIEW
+          const updateData = await appointmentsService.updateAppointmentStatus(
+            appointment.id,
+            {
+              status: AppointmentStatus.PRICE_REVIEW,
+              media: mediaItems,
+              note: initialNotes.trim(),
+              timestamp: new Date().toISOString()
+            }
+          );
+
+          console.log('✅ Updated to PRICE_REVIEW:', updateData);
+          
+          // Step 2: Update offer with finalCost (PUT /api/v1/serviceDeliveryOffers/{id}/update)
+          // Backend only needs: ServiceRequestId, FinalCost, Notes (NOT EstimatedCost)
+          try {
+            await serviceDeliveryOffersService.updateOfferFinalCost(
+              offerId as string,
+              serviceRequestId as string,
+              finalCostValue,
+              initialNotes.trim() // Only pass notes, backend doesn't need estimatedCost
+            );
+            console.log('✅ Updated offer finalCost:', finalCostValue);
+            
+            // Update local offer state
+            setOffer({
+              ...offer,
+              finalCost: finalCostValue
+            });
+          } catch (error: any) {
+            console.error('❌ Error updating finalCost:', error);
+            Alert.alert('Lỗi', 'Không thể cập nhật giá cuối cùng. Vui lòng thử lại.');
+            return;
+          }
+          
+          setAppointment(updateData as any);
+          setCurrentStatus(updateData.status);
+          successTitle = 'Đã gửi báo giá cuối cùng';
+          successMessage = 'Đã gửi giá cuối cùng cho khách hàng. Chờ khách hàng xác nhận.';
+          
+          await fetchOrderData();
+          showSuccessPopup(successTitle, successMessage);
+          return;
+        }
+        
+        // Normal flow: CHECKING → REPAIRING (when already has finalCost or no estimatedCost)
         const mediaItems = uploadedMedia.map(m => ({
           url: m.fileURL,
           mediaType: 'INITIAL'
@@ -852,6 +975,28 @@ function TechnicianOrderTracking() {
         setCurrentStatus(updateData.status); // Use status from API response
         successTitle = 'Bắt đầu sửa chữa';
         successMessage = 'Bạn đang tiến hành sửa chữa. Hãy hoàn thành tốt công việc!';
+        
+        await fetchOrderData();
+        showSuccessPopup(successTitle, successMessage);
+        return;
+      }
+
+      // Case 5.5: PRICE_REVIEW → REPAIRING (Customer accepted, just transition)
+      if (appointment && currentStatus === AppointmentStatus.PRICE_REVIEW) {
+        const updateData = await appointmentsService.updateAppointmentStatus(
+          appointment.id,
+          {
+            status: AppointmentStatus.REPAIRING,
+            timestamp: new Date().toISOString()
+          }
+        );
+
+        console.log('✅ Updated from PRICE_REVIEW to REPAIRING:', updateData);
+        
+        setAppointment(updateData as any);
+        setCurrentStatus(updateData.status);
+        successTitle = 'Bắt đầu sửa chữa';
+        successMessage = 'Khách hàng đã chấp nhận giá. Hãy bắt đầu sửa chữa!';
         
         await fetchOrderData();
         showSuccessPopup(successTitle, successMessage);
@@ -1489,6 +1634,38 @@ function TechnicianOrderTracking() {
               )}
             </View>
             
+            {/* Final Cost Input - Only show if offer has estimatedCost but no finalCost */}
+            {offer && offer.estimatedCost && !offer.finalCost && (
+              <>
+                <Text style={styles.sectionTitle}>
+                  Giá cuối cùng <Text style={styles.required}>*</Text>
+                </Text>
+                <Text style={styles.imageHint}>
+                  Nhập giá cuối cùng sau khi kiểm tra thực tế (Giá dự kiến: {offer.estimatedCost.toLocaleString('vi-VN')}đ)
+                </Text>
+                <View style={styles.inputContainer}>
+                  <Ionicons name="cash-outline" size={20} color="#609CEF" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="Nhập giá cuối cùng (VNĐ)"
+                    value={finalCostInput}
+                    onChangeText={(text) => {
+                      // Only allow numbers
+                      const numericValue = text.replace(/[^0-9]/g, '');
+                      setFinalCostInput(numericValue);
+                    }}
+                    keyboardType="numeric"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                </View>
+                {finalCostInput && (
+                  <Text style={styles.pricePreview}>
+                    Giá đã nhập: {parseInt(finalCostInput).toLocaleString('vi-VN')}đ
+                  </Text>
+                )}
+              </>
+            )}
+            
             <Text style={styles.sectionTitle}>
               Ghi chú tình trạng <Text style={styles.required}>*</Text>
             </Text>
@@ -1920,11 +2097,23 @@ function TechnicianOrderTracking() {
               </Text>
             </View>
           )}
+
+          {/* Show waiting message when PRICE_REVIEW - waiting for customer acceptance */}
+          {currentStatus === AppointmentStatus.PRICE_REVIEW && (
+            <View style={[styles.enRouteHint, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+              <Ionicons name="time" size={20} color="#F59E0B" />
+              <Text style={styles.enRouteHintText}>
+                Đang chờ khách hàng xác nhận giá cuối cùng. Vui lòng đợi...
+              </Text>
+            </View>
+          )}
           
           <SwipeButton
             title={
               currentStatus === AppointmentStatus.EN_ROUTE 
                 ? "Dùng bản đồ để xác nhận đã đến" 
+                : currentStatus === AppointmentStatus.PRICE_REVIEW
+                ? "Đang chờ khách hàng xác nhận giá"
                 : currentStatus === AppointmentStatus.CHECKING && (uploadedMedia.length === 0 || !initialNotes.trim())
                 ? "Cần ảnh và ghi chú để tiếp tục"
                 : currentStatus === AppointmentStatus.REPAIRING && (finalMedia.length === 0 || !finalNotes.trim())
@@ -1933,12 +2122,14 @@ function TechnicianOrderTracking() {
             }
             isEnabled={
               currentStatus !== AppointmentStatus.EN_ROUTE && 
+              currentStatus !== AppointmentStatus.PRICE_REVIEW &&
               !(currentStatus === AppointmentStatus.CHECKING && (uploadedMedia.length === 0 || !initialNotes.trim())) &&
               !(currentStatus === AppointmentStatus.REPAIRING && (finalMedia.length === 0 || !finalNotes.trim()))
             }
             onSwipeComplete={handleUpdateStatus}
             backgroundColor={
               currentStatus === AppointmentStatus.EN_ROUTE || 
+              currentStatus === AppointmentStatus.PRICE_REVIEW ||
               (currentStatus === AppointmentStatus.CHECKING && (uploadedMedia.length === 0 || !initialNotes.trim())) ||
               (currentStatus === AppointmentStatus.REPAIRING && (finalMedia.length === 0 || !finalNotes.trim()))
                 ? "#9CA3AF" 
@@ -3774,6 +3965,17 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     fontWeight: '500',
+  },
+  // Final Cost Input Styles
+  inputIcon: {
+    marginRight: 12,
+  },
+  pricePreview: {
+    fontSize: 14,
+    color: '#10B981',
+    fontWeight: '600',
+    marginTop: 8,
+    textAlign: 'center',
   },
 });
 

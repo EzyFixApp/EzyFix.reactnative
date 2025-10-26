@@ -28,7 +28,7 @@ interface BookingDetail {
   customerName: string;
   phoneNumber: string;
   address: string;
-  status: 'searching' | 'quoted' | 'accepted' | 'in-progress' | 'completed' | 'cancelled';
+  status: 'searching' | 'quoted' | 'accepted' | 'in-progress' | 'price-review' | 'payment' | 'completed' | 'cancelled';
   createdAt: string;
   requestedDate?: string;
   expectedStartTime?: string;
@@ -71,10 +71,20 @@ function BookingDetail() {
         return 'accepted';
       case 'IN_PROGRESS':
       case 'INPROGRESS':
+      case 'CHECKING':
+      case 'REPAIRING':
         return 'in-progress';
+      case 'PRICE_REVIEW':
+        return 'price-review';
+      case 'REPAIRED':
+      case 'PAYMENT':
+      case 'AWAITING_PAYMENT':
+        return 'payment';
       case 'COMPLETED':
         return 'completed';
       case 'CANCELLED':
+      case 'DISPUTE':
+      case 'ABSENT':
         return 'cancelled';
       default:
         return 'searching';
@@ -256,6 +266,20 @@ function BookingDetail() {
           color: '#4F8BE8',
           backgroundColor: '#E5F0FF',
           icon: 'build-outline',
+        };
+      case 'price-review':
+        return {
+          text: 'Chờ xác nhận giá',
+          color: '#8B5CF6',
+          backgroundColor: '#F3E8FF',
+          icon: 'cash-outline',
+        };
+      case 'payment':
+        return {
+          text: 'Chờ thanh toán',
+          color: '#F59E0B',
+          backgroundColor: '#FEF3C7',
+          icon: 'card-outline',
         };
       case 'completed':
         return {

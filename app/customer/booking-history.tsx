@@ -40,7 +40,7 @@ interface BookingItem {
   customerName: string;
   phoneNumber: string;
   address: string;
-  status: 'searching' | 'quoted' | 'accepted' | 'in-progress' | 'completed' | 'cancelled';
+  status: 'searching' | 'quoted' | 'accepted' | 'in-progress' | 'price-review' | 'payment' | 'completed' | 'cancelled';
   createdAt: string;
   technicianName?: string;
   quotePrice?: string;
@@ -92,10 +92,21 @@ function BookingHistory() {
         return 'accepted';
       case 'in_progress':
       case 'in-progress':
+      case 'checking':
+      case 'repairing':
         return 'in-progress';
+      case 'price_review':
+      case 'price-review':
+        return 'price-review';
+      case 'repaired':
+      case 'payment':
+      case 'awaiting_payment':
+        return 'payment';
       case 'completed':
         return 'completed';
       case 'cancelled':
+      case 'dispute':
+      case 'absent':
         return 'cancelled';
       default:
         return 'searching';
@@ -103,6 +114,7 @@ function BookingHistory() {
   };
 
   // Check if order is active (not completed or cancelled)
+  // payment status (REPAIRED) is still active - customer needs to see it to pay
   const isActiveOrder = (status: BookingItem['status']): boolean => {
     return status !== 'completed' && status !== 'cancelled';
   };

@@ -12,6 +12,7 @@ export enum AppointmentStatus {
   EN_ROUTE = 'EN_ROUTE',
   ARRIVED = 'ARRIVED',
   CHECKING = 'CHECKING',
+  PRICE_REVIEW = 'PRICE_REVIEW',
   REPAIRING = 'REPAIRING',
   REPAIRED = 'REPAIRED',
   ABSENT = 'ABSENT',
@@ -112,6 +113,31 @@ class AppointmentsService {
     } catch (error: any) {
       console.error('Get appointment error:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Get appointments by serviceRequestId
+   * Query appointments for a specific service request
+   */
+  async getAppointmentsByServiceRequest(serviceRequestId: string): Promise<AppointmentData[]> {
+    try {
+      const response = await apiService.get<AppointmentData[]>(
+        '/api/v1/appointments',
+        { ServiceRequestId: serviceRequestId }, // Backend expects PascalCase
+        { requireAuth: true }
+      );
+
+      if (response.is_success && response.data) {
+        return Array.isArray(response.data) ? response.data : [];
+      } else {
+        // Return empty array if no appointments found
+        return [];
+      }
+    } catch (error: any) {
+      if (__DEV__) console.warn('Get appointments by service request error:', error);
+      // Return empty array on error to prevent crashes
+      return [];
     }
   }
 

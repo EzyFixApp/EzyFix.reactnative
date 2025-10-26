@@ -6,9 +6,17 @@
   <component name="ChangeListManager">
     <list default="true" id="868f0766-2637-44bf-ae60-358902ea7db5" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/booking-detail.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/booking-detail.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/booking-history.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/booking-history.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/order-tracking.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/order-tracking.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/technician/dashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/dashboard.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/technician/technician-order-tracking.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/technician-order-tracking.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ActiveOrdersSection.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/ActiveOrdersSection.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/BookingHistoryContent.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/BookingHistoryContent.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/TechnicianActivityContent.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/TechnicianActivityContent.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/lib/api/appointments.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/appointments.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api/media.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/media.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/api/config.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/config.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/api/serviceDeliveryOffers.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/serviceDeliveryOffers.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

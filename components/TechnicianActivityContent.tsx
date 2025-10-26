@@ -12,20 +12,26 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { serviceRequestService } from '../lib/api/serviceRequests';
+import { servicesService } from '../lib/api/services';
+import { serviceDeliveryOffersService } from '../lib/api/serviceDeliveryOffers';
+import { appointmentsService } from '../lib/api/appointments';
 
 interface ServiceRequest {
   requestID: string;
   serviceDescription: string;
+  serviceName: string; // Fetched from servicesService
   fullName: string | null;
   phoneNumber: string | null;
   requestAddress: string | null;
   requestedDate: string;
-  status: string; // Status from API is string like "PENDING", "ACCEPTED", etc.
+  status: string; // Real-time status from appointments
+  offerId?: string; // Required for navigation
 }
 
 export default function TechnicianActivityContent() {
@@ -41,13 +47,6 @@ export default function TechnicianActivityContent() {
       
       if (__DEV__) {
         console.log(`✅ [TechnicianActivity] Loaded ${response.length} requests`);
-        if (response.length > 0) {
-          console.log('📋 First request sample:', {
-            id: response[0].requestID,
-            description: response[0].serviceDescription,
-            status: response[0].status
-          });
-        }
       }
       
       // Sort by date (newest first)
@@ -55,16 +54,58 @@ export default function TechnicianActivityContent() {
         new Date(b.requestedDate).getTime() - new Date(a.requestedDate).getTime()
       );
       
-      // Map to our interface
-      const mapped: ServiceRequest[] = sorted.map(r => ({
-        requestID: r.requestID,
-        serviceDescription: r.serviceDescription,
-        fullName: r.fullName,
-        phoneNumber: r.phoneNumber,
-        requestAddress: r.requestAddress,
-        requestedDate: r.requestedDate,
-        status: r.status,
-      }));
+      // Fetch complete data for each request (service name, offer, appointment)
+      const mapped: ServiceRequest[] = await Promise.all(
+        sorted.map(async (r) => {
+          let serviceName = r.serviceDescription || 'Dịch vụ';
+          let actualStatus = r.status;
+          let offerId: string | undefined = undefined;
+          
+          // 1. Fetch service name
+          try {
+            if (r.serviceId) {
+              const service = await servicesService.getServiceById(r.serviceId);
+              serviceName = service.serviceName || service.description || r.serviceDescription;
+            }
+          } catch (error) {
+            if (__DEV__) console.warn('Could not fetch service name for:', r.requestID);
+          }
+          
+          // 2. Fetch offer to get offerId
+          try {
+            const offers = await serviceDeliveryOffersService.getAllOffers(r.requestID);
+            if (offers && offers.length > 0) {
+              const acceptedOffer = offers.find(offer => offer.status === 'ACCEPTED');
+              offerId = acceptedOffer?.offerId || offers[offers.length - 1]?.offerId;
+            }
+          } catch (error) {
+            if (__DEV__) console.warn('Could not fetch offer for:', r.requestID);
+          }
+          
+          // 3. Fetch appointment for real-time status (highest priority)
+          try {
+            const appointments = await appointmentsService.getAppointmentsByServiceRequest(r.requestID);
+            if (appointments && appointments.length > 0) {
+              const latestAppointment = appointments[appointments.length - 1];
+              actualStatus = latestAppointment.status; // Override with real-time status
+            }
+          } catch (error) {
+            if (__DEV__) console.warn('Could not fetch appointments for:', r.requestID);
+          }
+          
+          return {
+            requestID: r.requestID,
+            serviceDescription: r.serviceDescription,
+            serviceName: serviceName,
+            fullName: r.fullName,
+            phoneNumber: r.phoneNumber,
+            requestAddress: r.requestAddress,
+            requestedDate: r.requestedDate,
+            status: actualStatus,
+            offerId: offerId,
+          };
+        })
+      );
       
       if (__DEV__) console.log(`📊 [TechnicianActivity] Setting ${mapped.length} requests to state`);
       
@@ -91,10 +132,17 @@ export default function TechnicianActivityContent() {
     const upperStatus = status.toUpperCase();
     switch (upperStatus) {
       case 'PENDING': return '#609CEF';
-      case 'ACCEPTED': return '#609CEF';
-      case 'QUOTED': return '#4F8BE8';
+      case 'QUOTED': return '#F59E0B';
+      case 'ACCEPTED': 
+      case 'QUOTEACCEPTED':
       case 'QUOTE_ACCEPTED': return '#10B981';
-      case 'IN_PROGRESS': return '#4F8BE8';
+      case 'SCHEDULED':
+      case 'EN_ROUTE': return '#3B82F6';
+      case 'ARRIVED': return '#8B5CF6';
+      case 'CHECKING': return '#EC4899';
+      case 'REPAIRING': return '#F97316';
+      case 'PRICE_REVIEW': return '#F59E0B';
+      case 'REPAIRED':
       case 'COMPLETED': return '#10B981';
       case 'CANCELLED': return '#EF4444';
       default: return '#609CEF';
@@ -105,13 +153,41 @@ export default function TechnicianActivityContent() {
     const upperStatus = status.toUpperCase();
     switch (upperStatus) {
       case 'PENDING': return 'time-outline';
-      case 'ACCEPTED': return 'checkmark-circle-outline';
       case 'QUOTED': return 'document-text-outline';
+      case 'ACCEPTED':
+      case 'QUOTEACCEPTED':
       case 'QUOTE_ACCEPTED': return 'checkmark-done-outline';
-      case 'IN_PROGRESS': return 'construct-outline';
+      case 'SCHEDULED': return 'calendar-outline';
+      case 'EN_ROUTE': return 'car-outline';
+      case 'ARRIVED': return 'location-outline';
+      case 'CHECKING': return 'search-outline';
+      case 'REPAIRING': return 'construct-outline';
+      case 'PRICE_REVIEW': return 'cash-outline';
+      case 'REPAIRED':
       case 'COMPLETED': return 'checkmark-circle';
       case 'CANCELLED': return 'close-circle-outline';
       default: return 'help-circle-outline';
+    }
+  };
+
+  const getStatusText = (status: string): string => {
+    const upperStatus = status.toUpperCase();
+    switch (upperStatus) {
+      case 'PENDING': return 'Chờ xử lý';
+      case 'QUOTED': return 'Đã báo giá';
+      case 'ACCEPTED': 
+      case 'QUOTEACCEPTED':
+      case 'QUOTE_ACCEPTED': return 'Đã chấp nhận';
+      case 'SCHEDULED': return 'Đã lên lịch';
+      case 'EN_ROUTE': return 'Đang di chuyển';
+      case 'ARRIVED': return 'Đã đến nơi';
+      case 'CHECKING': return 'Đang kiểm tra';
+      case 'REPAIRING': return 'Đang sửa chữa';
+      case 'PRICE_REVIEW': return 'Chờ xác nhận giá';
+      case 'REPAIRED': return 'Đã sửa xong';
+      case 'COMPLETED': return 'Hoàn thành';
+      case 'CANCELLED': return 'Đã hủy';
+      default: return status;
     }
   };
 
@@ -131,21 +207,34 @@ export default function TechnicianActivityContent() {
   };
 
   const handleRequestPress = (request: ServiceRequest) => {
+    if (__DEV__) {
+      console.log('🔍 [TechnicianActivity] Navigating to tracking:', {
+        serviceRequestId: request.requestID,
+        offerId: request.offerId || 'undefined',
+        status: request.status
+      });
+    }
+    
     const upperStatus = request.status.toUpperCase();
-    // Navigate to order detail/tracking based on status
-    if (upperStatus === 'ACCEPTED' || upperStatus === 'QUOTED') {
-      // ACCEPTED or QUOTED - can submit quote or view quote
+    
+    // For PENDING/QUOTED status - navigate to quote selection to submit or view quote
+    if (upperStatus === 'PENDING' || upperStatus === 'QUOTED') {
       router.push({
         pathname: '/technician/quote-selection',
         params: { orderId: request.requestID }
       });
-    } else {
-      // Other statuses - view order tracking
-      router.push({
-        pathname: '/technician/order-tracking',
-        params: { orderId: request.requestID }
-      });
+      return;
     }
+    
+    // For all accepted/in-progress statuses - navigate to order tracking
+    // Check if offerId exists, if not try to navigate anyway (tracking page will fetch it)
+    router.push({
+      pathname: '/technician/technician-order-tracking',
+      params: { 
+        serviceRequestId: request.requestID,
+        ...(request.offerId && { offerId: request.offerId })
+      }
+    });
   };
 
   if (loading) {
@@ -204,14 +293,20 @@ export default function TechnicianActivityContent() {
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Text style={styles.statValue}>
-              {requests.filter(r => r.status.toUpperCase() === 'IN_PROGRESS').length}
+              {requests.filter(r => {
+                const status = r.status.toUpperCase();
+                return ['SCHEDULED', 'EN_ROUTE', 'ARRIVED', 'CHECKING', 'REPAIRING', 'PRICE_REVIEW'].includes(status);
+              }).length}
             </Text>
             <Text style={styles.statLabel}>Đang thực hiện</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Text style={styles.statValue}>
-              {requests.filter(r => r.status.toUpperCase() === 'COMPLETED').length}
+              {requests.filter(r => {
+                const status = r.status.toUpperCase();
+                return ['COMPLETED', 'REPAIRED'].includes(status);
+              }).length}
             </Text>
             <Text style={styles.statLabel}>Hoàn thành</Text>
           </View>
@@ -236,7 +331,7 @@ export default function TechnicianActivityContent() {
               <View style={styles.requestTitleRow}>
                 <Ionicons name="construct" size={18} color="#609CEF" />
                 <Text style={styles.requestTitle} numberOfLines={1}>
-                  {request.serviceDescription}
+                  {request.serviceName}
                 </Text>
               </View>
               <View
@@ -256,7 +351,7 @@ export default function TechnicianActivityContent() {
                     { color: getStatusColor(request.status) }
                   ]}
                 >
-                  {request.status}
+                  {getStatusText(request.status)}
                 </Text>
               </View>
             </View>

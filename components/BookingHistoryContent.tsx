@@ -29,6 +29,8 @@ import { serviceRequestService } from '../lib/api/serviceRequests';
 import { servicesService } from '../lib/api/services';
 import { addressService } from '../lib/api/addresses';
 import { serviceDeliveryOffersService } from '../lib/api/serviceDeliveryOffers';
+import { appointmentsService } from '../lib/api/appointments';
+import { mediaService } from '../lib/api/media';
 import { ServiceRequestResponse } from '../types/api';
 import { useAuth } from '../store/authStore';
 import QuoteNotificationModal from './QuoteNotificationModal';
@@ -41,7 +43,7 @@ interface BookingItem {
   customerName: string;
   phoneNumber: string;
   address: string;
-  status: 'searching' | 'quoted' | 'accepted' | 'in-progress' | 'completed' | 'cancelled';
+  status: 'searching' | 'quoted' | 'accepted' | 'in-progress' | 'price-review' | 'payment' | 'completed' | 'cancelled';
   createdAt: string;
   technicianName?: string;
   quotePrice?: string;
@@ -49,6 +51,11 @@ interface BookingItem {
   addressNote?: string;
   requestedDate?: string;
   expectedStartTime?: string;
+  technicianNotes?: string;
+  // Media arrays
+  issueMedia?: string[];
+  initialMedia?: string[];
+  finalMedia?: string[];
   // Quote notification fields
   pendingQuote?: {
     offerID: string;
@@ -61,6 +68,7 @@ interface BookingItem {
 type TabType = 'active' | 'history';
 
 // Check if order is active (not completed or cancelled)
+// payment status (REPAIRED) is still active - customer needs to see it to pay
 const isActiveOrder = (status: BookingItem['status']): boolean => {
   return status !== 'completed' && status !== 'cancelled';
 };
@@ -76,6 +84,9 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('active');
   const [lastCheckedQuotes, setLastCheckedQuotes] = useState<Set<string>>(new Set());
+  
+  // Auto-refresh interval (5 seconds for near real-time)
+  const REFRESH_INTERVAL = 30000;
   
   // Quote notification modal state
   const [quoteModalVisible, setQuoteModalVisible] = useState(false);
@@ -102,13 +113,22 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
         return 'quoted';
       case 'quote_accepted':
       case 'accepted':
+      case 'scheduled':
         return 'accepted';
       case 'in_progress':
       case 'in-progress':
+      case 'en_route':
+      case 'arrived':
+      case 'checking':
+      case 'repairing':
         return 'in-progress';
+      case 'price_review':
+        return 'price-review';
+      case 'repaired':
       case 'completed':
         return 'completed';
       case 'cancelled':
+      case 'dispute':
         return 'cancelled';
       default:
         return 'searching';
@@ -146,22 +166,98 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
           // No need to fetch addressID separately
           addressText = request.requestAddress || request.addressNote || 'Địa chỉ chưa cập nhật';
           
-          // Check for pending quotes
+          // Check for pending quotes and actual appointment status
           let pendingQuote = undefined;
           let quotePrice = undefined;
+          let actualStatus = request.status; // Will be overridden by appointment status if available
+          let technicianNotes: string | undefined = undefined;
+          let issueMedia: string[] = [];
+          let initialMedia: string[] = [];
+          let finalMedia: string[] = [];
           
           try {
-            // For 'accepted' status, fetch the accepted quote to display price
-            if (request.status.toLowerCase() === 'quote_accepted' || request.status.toLowerCase() === 'accepted') {
-              // Get all offers and filter for accepted ones
-              const allOffers = await serviceDeliveryOffersService.getAllOffers(request.requestID);
-              const acceptedOffers = allOffers.filter(offer => 
-                offer.status.toLowerCase() === 'accepted' || 
-                offer.status.toLowerCase() === 'quote_accepted'
-              );
+            // Get all offers for this request
+            const allOffers = await serviceDeliveryOffersService.getAllOffers(request.requestID);
+            
+            if (__DEV__) console.log(`📋 Offers:`, allOffers);
+            
+            // Find accepted offer
+            const acceptedOffers = allOffers.filter(offer => 
+              offer.status.toLowerCase() === 'accepted' || 
+              offer.status.toLowerCase() === 'quote_accepted'
+            );
+            
+            if (acceptedOffers.length > 0) {
+              const offer = acceptedOffers[0];
               
-              if (acceptedOffers.length > 0) {
-                const offer = acceptedOffers[0];
+              // Capture technician notes from offer
+              technicianNotes = offer.notes;
+              
+              // IMPORTANT: Backend does NOT return appointmentId in offer response
+              // We need to query appointments by serviceRequestId
+              if (__DEV__) console.log(`🔍 [BookingHistory] Querying appointments for serviceRequestId: ${request.requestID}`);
+              
+              try {
+                // Query appointments for this service request
+                const appointments = await appointmentsService.getAppointmentsByServiceRequest(request.requestID);
+                
+                if (__DEV__) console.log(`📋 [BookingHistory] Found ${appointments.length} appointments for ${request.requestID}`);
+                
+                // Take the most recent appointment (last in array)
+                if (appointments.length > 0) {
+                  const appointment = appointments[appointments.length - 1];
+                  actualStatus = appointment.status; // Override with appointment status (includes PRICE_REVIEW)
+                  
+                  if (__DEV__) console.log(`✅ [BookingHistory] Appointment status for ${request.requestID}:`, {
+                    appointmentId: appointment.id,
+                    status: actualStatus
+                  });
+                  
+                  // Fetch media for this appointment
+                  try {
+                    const mediaData = await mediaService.getMediaByRequest(request.requestID, appointment.id);
+                    
+                    // Filter by MediaType
+                    const issueMediaUrls = mediaData
+                      .filter(m => m.mediaType === 'ISSUE')
+                      .map(m => m.fileURL);
+                    
+                    const initialMediaUrls = mediaData
+                      .filter(m => m.mediaType === 'INITIAL')
+                      .map(m => m.fileURL);
+                    
+                    const finalMediaUrls = mediaData
+                      .filter(m => m.mediaType === 'FINAL')
+                      .map(m => m.fileURL);
+                    
+                    // Store media URLs in booking item
+                    issueMedia = issueMediaUrls;
+                    initialMedia = initialMediaUrls;
+                    finalMedia = finalMediaUrls;
+                    
+                    if (__DEV__) {
+                      console.log(`📷 [BookingHistory] Media for ${request.requestID}:`, {
+                        issue: issueMediaUrls.length,
+                        initial: initialMediaUrls.length,
+                        final: finalMediaUrls.length
+                      });
+                    }
+                  } catch (mediaError) {
+                    if (__DEV__) console.warn(`⚠️ [BookingHistory] Could not fetch media for ${request.requestID}:`, mediaError);
+                  }
+                } else {
+                  if (__DEV__) console.log(`⚠️ [BookingHistory] No appointments found for ${request.requestID}`);
+                }
+              } catch (error) {
+                if (__DEV__) console.warn(`⚠️ [BookingHistory] Could not fetch appointments for ${request.requestID}:`, error);
+              }
+              
+              // Set price display based on actual status
+              if (actualStatus.toUpperCase() === 'PRICE_REVIEW') {
+                // In PRICE_REVIEW: Show "Đang chờ bạn xác nhận"
+                quotePrice = 'Đang chờ bạn xác nhận';
+              } else {
+                // Other statuses: Show actual price
                 const price = offer.finalCost || offer.estimatedCost || 0;
                 const isEstimated = !offer.finalCost && !!offer.estimatedCost;
                 
@@ -169,21 +265,21 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
                   style: 'currency',
                   currency: 'VND',
                 }).format(price) + (isEstimated ? ' (Dự kiến)' : ' (Đã chốt)');
-                
-                if (__DEV__) {
-                  console.log(`💰 [Customer] Accepted quote for ${request.requestID}:`, {
-                    offerID: offer.offerId,
-                    price,
-                    isEstimated
-                  });
-                }
+              }
+              
+              if (__DEV__) {
+                console.log(`💰 [BookingHistory] Accepted quote for ${request.requestID}:`, {
+                  offerID: offer.offerId,
+                  actualStatus,
+                  price: quotePrice
+                });
               }
             } else {
-              // For other statuses, check for pending quotes
+              // No accepted offers - check for pending quotes
               const pendingOffers = await serviceDeliveryOffersService.getPendingOffers(request.requestID);
               
               if (__DEV__) {
-                console.log(`📋 [Customer] Request ${request.requestID} - Status: ${request.status}, Pending Offers: ${pendingOffers.length}`);
+                console.log(`📋 [BookingHistory] Request ${request.requestID} - Status: ${request.status}, Pending Offers: ${pendingOffers.length}`);
               }
               
               if (pendingOffers.length > 0) {
@@ -197,7 +293,7 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
                 };
                 
                 if (__DEV__) {
-                  console.log(`💰 [Customer] Found quote for ${request.requestID}:`, {
+                  console.log(`💰 [BookingHistory] Found quote for ${request.requestID}:`, {
                     offerID: offer.offerId,
                     estimatedCost: offer.estimatedCost,
                     finalCost: offer.finalCost
@@ -224,13 +320,13 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
               }
             }
           } catch (error) {
-            if (__DEV__) console.warn(`[Customer] Could not fetch quotes for ${request.requestID}:`, error);
+            if (__DEV__) console.warn(`[BookingHistory] Could not fetch quotes for ${request.requestID}:`, error);
           }
 
-          const mappedStatus = mapApiStatus(request.status);
+          const mappedStatus = mapApiStatus(actualStatus); // Use actualStatus (from appointment if available)
           
           if (__DEV__) {
-            console.log(`📦 [Customer] Booking ${request.requestID}: API Status="${request.status}" → UI Status="${mappedStatus}", Has Quote: ${!!pendingQuote}, Quote Price: ${quotePrice || 'N/A'}`);
+            console.log(`📦 [BookingHistory] Booking ${request.requestID}: ServiceRequest Status="${request.status}", Actual Status="${actualStatus}" → UI Status="${mappedStatus}", Has Quote: ${!!pendingQuote}, Quote Price: ${quotePrice || 'N/A'}`);
           }
           
           return {
@@ -246,6 +342,10 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
             addressNote: request.addressNote || undefined,
             requestedDate: request.requestedDate,
             expectedStartTime: request.expectedStartTime,
+            technicianNotes: technicianNotes,
+            issueMedia: issueMedia,
+            initialMedia: initialMedia,
+            finalMedia: finalMedia,
             pendingQuote,
           };
         })
@@ -283,6 +383,18 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
     React.useCallback(() => {
       if (isAuthenticated) {
         loadBookings();
+        
+        // Set up auto-refresh interval for real-time updates
+        const interval = setInterval(() => {
+          loadBookings(true); // Silent refresh
+        }, REFRESH_INTERVAL);
+
+        // Cleanup interval when unfocused
+        return () => {
+          if (interval) {
+            clearInterval(interval);
+          }
+        };
       }
     }, [isAuthenticated])
   );
@@ -334,6 +446,20 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
           color: '#4F8BE8',
           backgroundColor: '#E5F0FF',
           icon: 'construct' as const,
+        };
+      case 'price-review':
+        return {
+          text: 'Chờ xác nhận giá',
+          color: '#8B5CF6',
+          backgroundColor: '#F3E8FF',
+          icon: 'cash' as const,
+        };
+      case 'payment':
+        return {
+          text: 'Chờ thanh toán',
+          color: '#F59E0B',
+          backgroundColor: '#FEF3C7',
+          icon: 'card' as const,
         };
       case 'completed':
         return {

@@ -6,7 +6,8 @@ import {
   Text, 
   TouchableOpacity, 
   Dimensions, 
-  StatusBar 
+  StatusBar,
+  Alert
 } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../store/authStore';
@@ -17,6 +18,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import BottomNavigation from '../../components/BottomNavigation';
 import TechnicianHeader from '../../components/TechnicianHeader';
 import TechnicianActivityContent from '../../components/TechnicianActivityContent';
+import { serviceRequestService } from '../../lib/api/serviceRequests';
+import { servicesService } from '../../lib/api/services';
+import { serviceDeliveryOffersService } from '../../lib/api/serviceDeliveryOffers';
+import { appointmentsService } from '../../lib/api/appointments';
 
 interface StatCardProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -57,11 +62,12 @@ interface ActiveOrderProps {
   orderId: string;
   customerName: string;
   service: string;
-  status: 'on_the_way' | 'arrived' | 'repairing' | 'completed';
+  status: 'on_the_way' | 'arrived' | 'repairing' | 'price_review' | 'completed';
   address: string;
   estimatedTime: string;
   priority: 'high' | 'medium' | 'low';
   customerPhone?: string;
+  offerId?: string; // Required for navigation to tracking page
 }
 
 function QuickAction({ icon, title, subtitle, iconBg, onPress }: QuickActionProps) {
@@ -78,7 +84,7 @@ function QuickAction({ icon, title, subtitle, iconBg, onPress }: QuickActionProp
   );
 }
 
-function ActiveOrderCard({ orderId, customerName, service, status, address, estimatedTime, priority, customerPhone }: ActiveOrderProps) {
+function ActiveOrderCard({ orderId, customerName, service, status, address, estimatedTime, priority, customerPhone, offerId }: ActiveOrderProps) {
   const getStatusInfo = (status: string) => {
     switch (status) {
       case 'on_the_way':
@@ -87,6 +93,8 @@ function ActiveOrderCard({ orderId, customerName, service, status, address, esti
         return { text: 'Đã đến nơi', color: '#609CEF', icon: 'location-outline', bgColor: 'rgba(96, 156, 239, 0.1)' };
       case 'repairing':
         return { text: 'Đang sửa chữa', color: '#609CEF', icon: 'build-outline', bgColor: 'rgba(96, 156, 239, 0.1)' };
+      case 'price_review':
+        return { text: 'Chờ xác nhận giá', color: '#609CEF', icon: 'cash-outline', bgColor: 'rgba(96, 156, 239, 0.1)' };
       case 'completed':
         return { text: 'Hoàn thành', color: '#609CEF', icon: 'checkmark-circle-outline', bgColor: 'rgba(96, 156, 239, 0.1)' };
       default:
@@ -113,9 +121,20 @@ function ActiveOrderCard({ orderId, customerName, service, status, address, esti
     <TouchableOpacity 
       style={styles.compactOrderCard}
       onPress={() => {
+        if (__DEV__) {
+          console.log('🔍 [Dashboard] Navigating to tracking:', {
+            serviceRequestId: orderId,
+            offerId: offerId || 'undefined'
+          });
+        }
+        
+        // Navigate with available params (offerId is optional)
         router.push({
           pathname: '/technician/technician-order-tracking',
-          params: { orderId }
+          params: { 
+            serviceRequestId: orderId,
+            ...(offerId && { offerId: offerId })
+          }
         });
       }}
       activeOpacity={0.8}
@@ -180,9 +199,20 @@ function ActiveOrderCard({ orderId, customerName, service, status, address, esti
         <TouchableOpacity 
           style={[styles.quickActionButton, { backgroundColor: statusInfo.color }]}
           onPress={() => {
+            if (__DEV__) {
+              console.log('🔍 [Dashboard] Button - Navigating to tracking:', {
+                serviceRequestId: orderId,
+                offerId: offerId || 'undefined'
+              });
+            }
+            
+            // Navigate with available params (offerId is optional)
             router.push({
               pathname: '/technician/technician-order-tracking',
-              params: { orderId }
+              params: { 
+                serviceRequestId: orderId,
+                ...(offerId && { offerId: offerId })
+              }
             });
           }}
         >
@@ -264,58 +294,11 @@ function Dashboard() {
     totalJobs: 11
   });
 
-  const [activeOrders, setActiveOrders] = useState([
-    {
-      orderId: 'ORD-2024-001',
-      customerName: 'Nguyễn Văn Minh',
-      service: 'Sửa chập điện toàn bộ nhà',
-      status: 'on_the_way' as const,
-      address: '123 Đường Lê Lợi, Quận 1, TP.HCM',
-      estimatedTime: '14:30 - 15:30',
-      priority: 'high' as const,
-      customerPhone: '0901234567'
-    },
-    {
-      orderId: 'ORD-2024-002',
-      customerName: 'Trần Thị Hoa',
-      service: 'Thay công tắc và ổ cắm điện',
-      status: 'arrived' as const,
-      address: '456 Đường Nguyễn Huệ, Quận 3, TP.HCM',
-      estimatedTime: '15:30 - 16:00',
-      priority: 'medium' as const,
-      customerPhone: '0912345678'
-    },
-    {
-      orderId: 'ORD-2024-003',
-      customerName: 'Lê Văn Đức',
-      service: 'Sửa rò rỉ nước máy bơm',
-      status: 'repairing' as const,
-      address: '789 Đường Võ Văn Tần, Quận 10, TP.HCM',
-      estimatedTime: '16:00 - 17:00',
-      priority: 'medium' as const,
-      customerPhone: '0923456789'
-    },
-    {
-      orderId: 'ORD-2024-004',
-      customerName: 'Phạm Thị Lan',
-      service: 'Lắp đặt hệ thống điện mới',
-      status: 'on_the_way' as const,
-      address: '321 Đường Hai Bà Trưng, Quận 1, TP.HCM',
-      estimatedTime: '13:00 - 14:00',
-      priority: 'high' as const,
-      customerPhone: '0934567890'
-    },
-    {
-      orderId: 'ORD-2024-005',
-      customerName: 'Hoàng Văn Nam',
-      service: 'Thông tắc đường ống nước',
-      status: 'arrived' as const,
-      address: '654 Đường Cách Mạng Tháng 8, Quận Tân Bình, TP.HCM',
-      estimatedTime: '17:00 - 18:00',
-      priority: 'high' as const,
-      customerPhone: '0945678901'
-    }
-  ]);
+  const [activeOrders, setActiveOrders] = useState<ActiveOrderProps[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(true);
+  
+  // Auto-refresh interval for orders
+  const REFRESH_INTERVAL = 5000; // 5 seconds
   
   // Check authentication and verification status
   useEffect(() => {
@@ -331,6 +314,142 @@ function Dashboard() {
       return;
     }
   }, [isAuthenticated, user?.isVerify, user?.email]);
+  
+  // Load active orders from API
+  const loadActiveOrders = async (silent = false) => {
+    try {
+      if (!silent) {
+        setLoadingOrders(true);
+      }
+      
+      // Get service requests for technician (automatically filtered by their offers)
+      const serviceRequests = await serviceRequestService.getUserServiceRequests();
+      
+      // Convert service requests to active orders format with data from all 3 APIs
+      const orders: ActiveOrderProps[] = await Promise.all(
+        serviceRequests.map(async (request) => {
+          let serviceName = 'Dịch vụ'; // Default fallback
+          let customerName = request.fullName || 'Khách hàng';
+          let customerPhone = request.phoneNumber || undefined;
+          let actualStatus = request.status;
+          let address = request.requestAddress || 'Chưa có địa chỉ';
+          let estimatedTime = 'Chưa xác định';
+          let offerId: string | undefined = undefined;
+          
+          // 1. Get service details
+          try {
+            const service = await servicesService.getServiceById(request.serviceId);
+            serviceName = service.serviceName || service.description || 'Dịch vụ';
+          } catch (error) {
+            if (request.serviceDescription) {
+              serviceName = request.serviceDescription;
+            }
+          }
+          
+          // 2. Get offer details (required for navigation to tracking page)
+          try {
+            const offers = await serviceDeliveryOffersService.getAllOffers(request.requestID);
+            if (__DEV__) console.log(`📦 [Dashboard] Offers for ${request.requestID}:`, offers?.length || 0);
+            
+            if (offers && offers.length > 0) {
+              // Find the accepted offer or the latest offer from this technician
+              const acceptedOffer = offers.find(offer => offer.status === 'ACCEPTED');
+              offerId = acceptedOffer?.offerId || offers[offers.length - 1]?.offerId;
+              
+              if (__DEV__) {
+                console.log(`✅ [Dashboard] Found offerId: ${offerId} (accepted: ${!!acceptedOffer})`);
+              }
+            } else {
+              if (__DEV__) console.warn(`⚠️ [Dashboard] No offers found for request: ${request.requestID}`);
+            }
+          } catch (error) {
+            if (__DEV__) console.error('❌ [Dashboard] Error fetching offer for request:', request.requestID, error);
+          }
+          
+          // 3. Get appointment details (highest priority for status)
+          try {
+            const appointments = await appointmentsService.getAppointmentsByServiceRequest(request.requestID);
+            
+            if (appointments.length > 0) {
+              const appointment = appointments[appointments.length - 1];
+              actualStatus = appointment.status;
+              
+              // Format time from appointment
+              if (appointment.scheduledDate) {
+                const startTime = new Date(appointment.scheduledDate);
+                const endTime = new Date(startTime.getTime() + 60 * 60 * 1000); // Add 1 hour
+                estimatedTime = `${startTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${endTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
+              }
+            }
+          } catch (error) {
+            if (__DEV__) console.warn('⚠️ [Dashboard] Could not fetch appointments');
+          }
+          
+          // Map API status to UI status
+          const mapStatus = (status: string): ActiveOrderProps['status'] => {
+            const normalized = status?.toUpperCase() || '';
+            switch (normalized) {
+              case 'SCHEDULED':
+              case 'EN_ROUTE':
+                return 'on_the_way';
+              case 'ARRIVED':
+                return 'arrived';
+              case 'CHECKING':
+              case 'REPAIRING':
+                return 'repairing';
+              case 'PRICE_REVIEW':
+                return 'price_review';
+              case 'REPAIRED':
+                return 'completed';
+              default:
+                return 'on_the_way';
+            }
+          };
+          
+          return {
+            orderId: request.requestID,
+            customerName,
+            service: serviceName,
+            status: mapStatus(actualStatus),
+            address,
+            estimatedTime,
+            priority: 'medium' as const, // Default priority
+            customerPhone,
+            offerId, // Required for navigation to tracking page
+          };
+        })
+      );
+      
+      // Filter to show only active orders (not completed)
+      const activeOnly = orders.filter(order => 
+        order.status !== 'completed' &&
+        !['completed', 'cancelled', 'repaired', 'dispute'].includes(order.status)
+      );
+      
+      setActiveOrders(activeOnly);
+    } catch (error: any) {
+      if (__DEV__) console.error('Error loading active orders:', error);
+      setActiveOrders([]);
+    } finally {
+      if (!silent) {
+        setLoadingOrders(false);
+      }
+    }
+  };
+  
+  // Load orders on mount and set up auto-refresh
+  useEffect(() => {
+    if (isAuthenticated && user?.isVerify !== false) {
+      loadActiveOrders();
+      
+      // Set up auto-refresh interval
+      const interval = setInterval(() => {
+        loadActiveOrders(true); // Silent refresh
+      }, REFRESH_INTERVAL);
+      
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, user?.isVerify]);
   
   // Update time every second  
   useEffect(() => {
@@ -507,7 +626,9 @@ const toggleOnlineStatus = () => {
           {/* Welcome Content */}
           <View style={styles.welcomeContent}>
             <View style={styles.welcomeMain}>
-              <Text style={styles.greetingTitle}>Chào, Minh Tuấn!</Text>
+              <Text style={styles.greetingTitle}>
+                Chào, {user?.fullName || 'Thợ'}!
+              </Text>
               <Text style={styles.motivationText}>
                 {isOnline ? 'Sẵn sàng nhận việc mới hôm nay!' : 'Nghỉ ngơi và nạp lại năng lượng nhé!'}
               </Text>
@@ -534,7 +655,17 @@ const toggleOnlineStatus = () => {
           </View>
         </View>
         
-        {activeOrders.length > 0 ? (
+        {loadingOrders ? (
+          <View style={styles.emptyOrdersContainerWithPadding}>
+            <View style={styles.emptyOrdersIcon}>
+              <Ionicons name="hourglass-outline" size={48} color="#609CEF" />
+            </View>
+            <Text style={styles.emptyOrdersTitle}>Đang tải...</Text>
+            <Text style={styles.emptyOrdersSubtitle}>
+              Vui lòng đợi trong giây lát
+            </Text>
+          </View>
+        ) : activeOrders.length > 0 ? (
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={false}
@@ -566,7 +697,7 @@ const toggleOnlineStatus = () => {
             </Text>
             <TouchableOpacity 
               style={styles.refreshButton}
-              onPress={() => {/* Refresh orders functionality */}}
+              onPress={() => loadActiveOrders()}
             >
               <Ionicons name="refresh" size={20} color="#609CEF" />
               <Text style={styles.refreshButtonText}>Làm mới</Text>
