@@ -683,6 +683,7 @@ const toggleOnlineStatus = () => {
                 estimatedTime={order.estimatedTime}
                 priority={order.priority}
                 customerPhone={order.customerPhone}
+                offerId={order.offerId}
               />
             ))}
           </ScrollView>

@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
 import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 import { useAuthStore } from '~/store/authStore';
+import CustomModal from '../../components/CustomModal';
 
 interface ProfileItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -69,38 +70,53 @@ function ProfileItem({ icon, title, subtitle, onPress, showArrow = true, isLogou
 function TechnicianProfile() {
   const { logout } = useAuthStore();
   
+  // Modal state
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState<'success' | 'error' | 'warning' | 'info' | 'confirm'>('info');
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalOnConfirm, setModalOnConfirm] = useState<(() => void) | undefined>(undefined);
+  const [showCancelButton, setShowCancelButton] = useState(false);
+  
+  // Helper function to show modal
+  const showAlertModal = (
+    type: 'success' | 'error' | 'warning' | 'info' | 'confirm',
+    title: string,
+    message: string,
+    onConfirm?: () => void,
+    showCancel = false
+  ) => {
+    setModalType(type);
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalOnConfirm(onConfirm ? () => onConfirm : undefined);
+    setShowCancelButton(showCancel);
+    setShowModal(true);
+  };
+  
   const handleBackPress = () => {
     router.back();
   };
 
   const handleLogout = async () => {
-    Alert.alert(
+    showAlertModal(
+      'confirm',
       'Đăng xuất',
       'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản?',
-      [
-        {
-          text: 'Hủy',
-          style: 'cancel'
-        },
-        {
-          text: 'Đăng xuất',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Properly logout: Clear tokens, call API, clear storage
-              await logout();
-              
-              // Navigate to home screen
-              router.replace('/');
-            } catch (error) {
-              console.error('Logout error:', error);
-              // Still navigate even if logout fails
-              router.replace('/');
-            }
-          }
+      async () => {
+        try {
+          // Properly logout: Clear tokens, call API, clear storage
+          await logout();
+          
+          // Navigate to home screen
+          router.replace('/');
+        } catch (error) {
+          console.error('Logout error:', error);
+          // Still navigate even if logout fails
+          router.replace('/');
         }
-      ],
-      { cancelable: true }
+      },
+      true
     );
   };
 
@@ -313,6 +329,19 @@ function TechnicianProfile() {
           {/* Bottom Spacing */}
           <View style={styles.bottomSpacing} />
         </ScrollView>
+
+        {/* Custom Modal */}
+        <CustomModal
+          visible={showModal}
+          type={modalType}
+          title={modalTitle}
+          message={modalMessage}
+          onClose={() => setShowModal(false)}
+          onConfirm={modalOnConfirm}
+          showCancel={showCancelButton}
+          confirmText="OK"
+          cancelText="Hủy"
+        />
       </View>
     </>
   );

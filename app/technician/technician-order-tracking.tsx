@@ -5,7 +5,6 @@ import {
   StyleSheet,
   StatusBar,
   TouchableOpacity,
-  Alert,
   Platform,
   ScrollView,
   Dimensions,
@@ -14,7 +13,9 @@ import {
   ActivityIndicator,
   Linking,
   TextInput,
+  Alert,
 } from 'react-native';
+import CustomModal from '../../components/CustomModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -28,6 +29,7 @@ import { appointmentsService, AppointmentStatus, type AppointmentData } from '..
 import { servicesService } from '../../lib/api/services';
 import { authService } from '../../lib/api/auth';
 import { mediaService } from '../../lib/api/media';
+import { paymentHub, PaymentUpdatePayload } from '../../lib/signalr/paymentHub';
 import { useAuthStore } from '../../store/authStore';
 import { useLocation } from '../../hooks/useLocation';
 import TechnicianMapView from '../../components/TechnicianMapView';
@@ -194,6 +196,38 @@ function TechnicianOrderTracking() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [finalCostInput, setFinalCostInput] = useState<string>(''); // For PRICE_REVIEW flow
   
+  // Payment notification state
+  const [showPaymentNotification, setShowPaymentNotification] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+
+  // Custom modal states
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState<'success' | 'error' | 'warning' | 'info' | 'confirm'>('info');
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalOnConfirm, setModalOnConfirm] = useState<(() => void) | undefined>();
+  const [showCancelButton, setShowCancelButton] = useState(false);
+  const [modalAutoClose, setModalAutoClose] = useState(false);
+  
+  // Helper function to show modal
+  const showAlertModal = (
+    type: 'success' | 'error' | 'warning' | 'info' | 'confirm',
+    title: string,
+    message: string,
+    onConfirm?: () => void,
+    showCancel = false,
+    autoClose?: boolean
+  ) => {
+    setModalType(type);
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalOnConfirm(onConfirm ? () => onConfirm : undefined);
+    setShowCancelButton(showCancel);
+    // Auto-close for non-confirm modals (unless explicitly set to false)
+    setModalAutoClose(autoClose !== undefined ? autoClose : (type !== 'confirm' && !showCancel));
+    setShowModal(true);
+  };
+  
   // Photo upload state (REPAIRING status) - For final photos
   const [finalMedia, setFinalMedia] = useState<UploadedMedia[]>([]);
   const [finalNotes, setFinalNotes] = useState<string>('');
@@ -223,6 +257,35 @@ function TechnicianOrderTracking() {
       setLoading(false);
     }
   }, [serviceRequestId, offerId]);
+  
+  // SignalR payment notification listener
+  useEffect(() => {
+    if (!appointment?.id) return;
+    
+    const handlePaymentUpdate = (payload: PaymentUpdatePayload) => {
+      console.log('💰 [Technician] Payment update received:', payload);
+      
+      // Only show notification for this appointment
+      if (payload.appointmentId === appointment.id) {
+        setPaymentAmount(payload.amount);
+        setShowPaymentNotification(true);
+        
+        // Auto-reload order data to reflect COMPLETED status
+        fetchOrderData();
+        
+        // Auto-hide notification after 5 seconds
+        setTimeout(() => {
+          setShowPaymentNotification(false);
+        }, 5000);
+      }
+    };
+    
+    // Subscribe to payment updates (returns unsubscribe function)
+    const unsubscribe = paymentHub.subscribe(handlePaymentUpdate);
+    
+    // Cleanup subscription
+    return unsubscribe;
+  }, [appointment?.id]);
   
   // Fetch media when status changes to REPAIRING or later
   useEffect(() => {
@@ -712,7 +775,7 @@ function TechnicianOrderTracking() {
         console.log('📝 Creating new appointment...');
         
         if (!user?.id) {
-          Alert.alert('Lỗi', 'Không tìm thấy thông tin thợ');
+          showAlertModal('error', 'Lỗi', 'Không tìm thấy thông tin thợ');
           return;
         }
 
@@ -761,10 +824,10 @@ function TechnicianOrderTracking() {
         const locationCoords = await requestLocation();
         
         if (!locationCoords) {
-          Alert.alert(
+          showAlertModal(
+            'warning',
             'Cần quyền vị trí',
-            'Vui lòng cấp quyền truy cập vị trí để cập nhật trạng thái xuất phát.',
-            [{ text: 'OK' }]
+            'Vui lòng cấp quyền truy cập vị trí để cập nhật trạng thái xuất phát.'
           );
           return;
         }
@@ -806,10 +869,10 @@ function TechnicianOrderTracking() {
         const locationCoords = await requestLocation();
         
         if (!locationCoords) {
-          Alert.alert(
+          showAlertModal(
+            'warning',
             'Cần quyền vị trí',
-            'Vui lòng cấp quyền truy cập vị trí để xác nhận đã đến nơi.',
-            [{ text: 'OK' }]
+            'Vui lòng cấp quyền truy cập vị trí để xác nhận đã đến nơi.'
           );
           return;
         }
@@ -865,19 +928,19 @@ function TechnicianOrderTracking() {
       if (appointment && currentStatus === AppointmentStatus.CHECKING) {
         // Validation: Must have at least 1 photo
         if (uploadedMedia.length === 0) {
-          Alert.alert('Thiếu ảnh', 'Vui lòng chụp ít nhất 1 ảnh tình trạng ban đầu trước khi tiếp tục');
+          showAlertModal('warning', 'Thiếu ảnh', 'Vui lòng chụp ít nhất 1 ảnh tình trạng ban đầu trước khi tiếp tục');
           return;
         }
         
         // Validation: Must have notes
         if (!initialNotes.trim()) {
-          Alert.alert('Thiếu ghi chú', 'Vui lòng nhập ghi chú về tình trạng thiết bị trước khi tiếp tục');
+          showAlertModal('warning', 'Thiếu ghi chú', 'Vui lòng nhập ghi chú về tình trạng thiết bị trước khi tiếp tục');
           return;
         }
         
         // Validation: No photos still uploading
         if (uploadedMedia.some(m => m.isUploading)) {
-          Alert.alert('Đang tải ảnh', 'Vui lòng đợi các ảnh tải xong trước khi tiếp tục');
+          showAlertModal('info', 'Đang tải ảnh', 'Vui lòng đợi các ảnh tải xong trước khi tiếp tục');
           return;
         }
         
@@ -887,13 +950,13 @@ function TechnicianOrderTracking() {
         if (needsFinalCost) {
           // Validation: Must have finalCost input
           if (!finalCostInput || !finalCostInput.trim()) {
-            Alert.alert('Thiếu giá cuối cùng', 'Vui lòng nhập giá cuối cùng sau khi kiểm tra');
+            showAlertModal('warning', 'Thiếu giá cuối cùng', 'Vui lòng nhập giá cuối cùng sau khi kiểm tra');
             return;
           }
           
           const finalCostValue = parseInt(finalCostInput);
           if (isNaN(finalCostValue) || finalCostValue <= 0) {
-            Alert.alert('Giá không hợp lệ', 'Vui lòng nhập giá cuối cùng hợp lệ (lớn hơn 0)');
+            showAlertModal('error', 'Giá không hợp lệ', 'Vui lòng nhập giá cuối cùng hợp lệ (lớn hơn 0)');
             return;
           }
           
@@ -938,7 +1001,7 @@ function TechnicianOrderTracking() {
             });
           } catch (error: any) {
             console.error('❌ Error updating finalCost:', error);
-            Alert.alert('Lỗi', 'Không thể cập nhật giá cuối cùng. Vui lòng thử lại.');
+            showAlertModal('error', 'Lỗi', 'Không thể cập nhật giá cuối cùng. Vui lòng thử lại.');
             return;
           }
           
@@ -1007,19 +1070,19 @@ function TechnicianOrderTracking() {
       if (appointment && currentStatus === AppointmentStatus.REPAIRING) {
         // Validation: Must have at least 1 photo
         if (finalMedia.length === 0) {
-          Alert.alert('Thiếu ảnh', 'Vui lòng chụp ít nhất 1 ảnh kết quả sau sửa chữa trước khi tiếp tục');
+          showAlertModal('warning', 'Thiếu ảnh', 'Vui lòng chụp ít nhất 1 ảnh kết quả sau sửa chữa trước khi tiếp tục');
           return;
         }
         
         // Validation: Must have notes
         if (!finalNotes.trim()) {
-          Alert.alert('Thiếu ghi chú', 'Vui lòng nhập ghi chú về kết quả sửa chữa trước khi tiếp tục');
+          showAlertModal('warning', 'Thiếu ghi chú', 'Vui lòng nhập ghi chú về kết quả sửa chữa trước khi tiếp tục');
           return;
         }
         
         // Validation: No photos still uploading
         if (finalMedia.some(m => m.isUploading)) {
-          Alert.alert('Đang tải ảnh', 'Vui lòng đợi các ảnh tải xong trước khi tiếp tục');
+          showAlertModal('info', 'Đang tải ảnh', 'Vui lòng đợi các ảnh tải xong trước khi tiếp tục');
           return;
         }
         
@@ -1054,7 +1117,7 @@ function TechnicianOrderTracking() {
 
     } catch (err: any) {
       console.error('Error updating status:', err);
-      Alert.alert('Lỗi', err.message || 'Không thể cập nhật trạng thái');
+      showAlertModal('error', 'Lỗi', err.message || 'Không thể cập nhật trạng thái');
     } finally {
       setUpdating(false);
     }
@@ -1063,19 +1126,20 @@ function TechnicianOrderTracking() {
   const handleContactCustomer = () => {
     if (!serviceRequest) return;
     
-    Alert.alert(
+    showAlertModal(
+      'confirm',
       'Liên hệ khách hàng',
       `Gọi cho ${serviceRequest.customerName || 'khách hàng'}?`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { text: 'Gọi ngay', onPress: () => Alert.alert('Đang gọi...', serviceRequest.phoneNumber) }
-      ]
+      () => {
+        showAlertModal('info', 'Đang gọi...', serviceRequest.phoneNumber);
+      },
+      true
     );
   };
 
   const handleViewLocation = async () => {
     if (!serviceRequest || !serviceRequest.requestAddress) {
-      Alert.alert('Lỗi', 'Không có thông tin địa chỉ');
+      showAlertModal('error', 'Lỗi', 'Không có thông tin địa chỉ');
       return;
     }
     
@@ -1105,29 +1169,30 @@ function TechnicianOrderTracking() {
         if (canOpenFallback) {
           await Linking.openURL(fallbackUrl);
         } else {
-          Alert.alert(
+          showAlertModal(
+            'warning',
             'Không thể mở bản đồ',
-            'Vui lòng cài đặt Google Maps hoặc Apple Maps',
-            [{ text: 'OK' }]
+            'Vui lòng cài đặt Google Maps hoặc Apple Maps'
           );
         }
       }
     } catch (error) {
       console.error('Error opening maps:', error);
-      Alert.alert('Lỗi', 'Không thể mở ứng dụng bản đồ');
+      showAlertModal('error', 'Lỗi', 'Không thể mở ứng dụng bản đồ');
     }
   };
 
   const handleChatCustomer = () => {
     if (!serviceRequest) return;
     
-    Alert.alert(
+    showAlertModal(
+      'confirm',
       'Chat với khách hàng',
       `Mở chat với ${serviceRequest.customerName || 'khách hàng'}?`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { text: 'Mở chat', onPress: () => Alert.alert('Đang mở chat...') }
-      ]
+      () => {
+        showAlertModal('info', 'Đang mở chat...', '');
+      },
+      true
     );
   };
 
@@ -1179,98 +1244,123 @@ function TechnicianOrderTracking() {
 
   const handleConfirmReceived = () => {
     setShowEarningsModal(false);
-    Alert.alert('Thành công', 'Cảm ơn bạn đã hoàn thành công việc!');
+    showAlertModal('success', 'Thành công', 'Cảm ơn bạn đã hoàn thành công việc!');
   };
 
   const handleFinalPriceConfirmation = () => {
-    const defaultValue = displayData.quoteAmount ? displayData.quoteAmount.replace(/[^\d]/g, '') : '';
-    
-    Alert.prompt(
-      'Xác nhận giá cuối cùng',
-      'Nhập giá cuối cùng sau khi kiểm tra thực tế:',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xác nhận',
-          onPress: (finalPrice?: string) => {
-            if (finalPrice) {
-              Alert.alert(
-                'Gửi giá cuối cùng',
-                `Giá cuối cùng: ${finalPrice} VNĐ\n\nGửi cho khách hàng xác nhận?`,
-                [
-                  { text: 'Sửa lại', style: 'cancel' },
-                  {
-                    text: 'Gửi khách hàng',
-                    onPress: () => {
-                      Alert.alert('Thành công', 'Đã gửi giá cuối cùng cho khách hàng');
-                      // Update status to waiting for customer confirmation
-                    }
-                  }
-                ]
-              );
-            }
-          }
-        }
-      ],
-      'plain-text',
-      defaultValue
+    // This function is no longer used since we handle finalCost in the CHECKING step
+    // Kept for backward compatibility but show info modal
+    showAlertModal(
+      'info',
+      'Thông báo',
+      'Vui lòng nhập giá cuối cùng trong bước "Đang kiểm tra"'
     );
   };
 
   const handleTakePhoto = async (type: 'before' | 'after') => {
-    const title = type === 'before' ? 'Chụp ảnh trước sửa chữa' : 'Chụp ảnh sau sửa chữa';
     const currentMediaList = type === 'before' ? uploadedMedia : finalMedia;
     
     // Check max photos limit (4 images)
     if (currentMediaList.length >= 4) {
-      Alert.alert('Giới hạn', 'Chỉ được tải tối đa 4 ảnh');
+      showAlertModal('warning', 'Giới hạn', 'Chỉ được tải tối đa 4 ảnh', undefined, false, true);
       return;
     }
     
-    // Request camera and media library permissions
-    const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
-    const mediaPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    
-    if (!cameraPermission.granted || !mediaPermission.granted) {
-      Alert.alert('Cần quyền truy cập', 'Vui lòng cấp quyền camera và thư viện ảnh để chụp/tải ảnh');
-      return;
-    }
-    
+    // Show Alert.alert for photo picker menu
+    const photoType = type === 'before' ? 'initial' : 'final';
     Alert.alert(
-      title,
-      'Chọn nguồn ảnh:',
+      'Chọn ảnh',
+      'Bạn muốn chụp ảnh mới hay chọn từ thư viện?',
       [
         { text: 'Hủy', style: 'cancel' },
-        { 
-          text: 'Camera', 
-          onPress: async () => {
-            const result = await ImagePicker.launchCameraAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Images,
-              allowsEditing: false,
-              quality: 0.8,
-            });
-            
-            if (!result.canceled) {
-              await uploadImageImmediately(result.assets[0].uri, type);
-            }
-          }
+        {
+          text: '📷 Chụp ảnh',
+          onPress: () => openCameraForType(photoType)
         },
-        { 
-          text: 'Thư viện', 
-          onPress: async () => {
-            const result = await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Images,
-              allowsEditing: false,
-              quality: 0.8,
-            });
-            
-            if (!result.canceled) {
-              await uploadImageImmediately(result.assets[0].uri, type);
-            }
-          }
+        {
+          text: '🖼️ Thư viện',
+          onPress: () => openImageLibraryForType(photoType)
         }
       ]
     );
+  };
+
+  const openCameraForType = async (type: 'initial' | 'final') => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Cần quyền camera',
+          'Vui lòng cấp quyền camera trong Cài đặt để chụp ảnh',
+          [
+            { text: 'Hủy', style: 'cancel' },
+            { 
+              text: 'Mở Cài đặt', 
+              onPress: () => {
+                if (Platform.OS === 'ios') {
+                  Linking.openURL('app-settings:');
+                } else {
+                  Linking.openSettings();
+                }
+              }
+            }
+          ]
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        await uploadImageImmediately(result.assets[0].uri, type === 'initial' ? 'before' : 'after');
+      }
+    } catch (error: any) {
+      console.error('Error taking photo:', error);
+      showAlertModal('error', 'Lỗi', 'Không thể chụp ảnh');
+    }
+  };
+
+  const openImageLibraryForType = async (type: 'initial' | 'final') => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Cần quyền thư viện ảnh',
+          'Vui lòng cấp quyền truy cập thư viện ảnh trong Cài đặt',
+          [
+            { text: 'Hủy', style: 'cancel' },
+            { 
+              text: 'Mở Cài đặt', 
+              onPress: () => {
+                if (Platform.OS === 'ios') {
+                  Linking.openURL('app-settings:');
+                } else {
+                  Linking.openSettings();
+                }
+              }
+            }
+          ]
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        await uploadImageImmediately(result.assets[0].uri, type === 'initial' ? 'before' : 'after');
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      showAlertModal('error', 'Lỗi', 'Không thể chọn ảnh');
+    }
   };
   
   // Upload image immediately after selection (using mediaService)
@@ -1310,7 +1400,7 @@ function TechnicianOrderTracking() {
       // Validation: requestID must exist
       if (!requestID) {
         console.error('❌ Missing requestID! serviceRequest.requestID:', serviceRequest?.requestID, 'serviceRequestId:', serviceRequestId);
-        Alert.alert('Lỗi', 'Không tìm thấy thông tin yêu cầu dịch vụ. Vui lòng thử lại.');
+        showAlertModal('error', 'Lỗi', 'Không tìm thấy thông tin yêu cầu dịch vụ. Vui lòng thử lại.');
         
         // Remove failed upload
         if (isInitial) {
@@ -1366,7 +1456,7 @@ function TechnicianOrderTracking() {
       
     } catch (error: any) {
       console.error('❌ Photo upload error:', error);
-      Alert.alert('Lỗi', 'Không thể tải ảnh lên. Vui lòng thử lại.');
+      showAlertModal('error', 'Lỗi', 'Không thể tải ảnh lên. Vui lòng thử lại.');
       // Remove failed upload from appropriate state
       if (isInitial) {
         setUploadedMedia(prev => prev.filter(media => media.mediaID !== tempId));
@@ -1384,34 +1474,29 @@ function TechnicianOrderTracking() {
   
   // Delete photo from server (using mediaService)
   const handleDeletePhoto = async (mediaID: string, type: 'before' | 'after' = 'before') => {
-    Alert.alert(
+    showAlertModal(
+      'confirm',
       'Xác nhận',
       'Bạn có chắc muốn xóa ảnh này?',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { 
-          text: 'Xóa', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Use mediaService.deleteMedia instead of fetch
-              await mediaService.deleteMedia(mediaID);
-              console.log('✅ Photo deleted via mediaService:', mediaID);
-              
-              // Remove from appropriate local state
-              if (type === 'before') {
-                setUploadedMedia(prev => prev.filter(media => media.mediaID !== mediaID));
-              } else {
-                setFinalMedia(prev => prev.filter(media => media.mediaID !== mediaID));
-              }
-              Alert.alert('Thành công', 'Đã xóa ảnh');
-            } catch (error) {
-              console.error('❌ Delete photo error:', error);
-              Alert.alert('Lỗi', 'Không thể xóa ảnh. Vui lòng thử lại.');
-            }
+      async () => {
+        try {
+          // Use mediaService.deleteMedia instead of fetch
+          await mediaService.deleteMedia(mediaID);
+          console.log('✅ Photo deleted via mediaService:', mediaID);
+          
+          // Remove from appropriate local state
+          if (type === 'before') {
+            setUploadedMedia(prev => prev.filter(media => media.mediaID !== mediaID));
+          } else {
+            setFinalMedia(prev => prev.filter(media => media.mediaID !== mediaID));
           }
+          showAlertModal('success', 'Thành công', 'Đã xóa ảnh');
+        } catch (error) {
+          console.error('❌ Delete photo error:', error);
+          showAlertModal('error', 'Lỗi', 'Không thể xóa ảnh. Vui lòng thử lại.');
         }
-      ]
+      },
+      true
     );
   };
   
@@ -2304,6 +2389,57 @@ function TechnicianOrderTracking() {
         </Modal>
       )}
 
+      {/* Payment Notification Modal */}
+      <Modal
+        visible={showPaymentNotification}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowPaymentNotification(false)}
+      >
+        <View style={styles.paymentNotificationOverlay}>
+          <View style={styles.paymentNotificationContainer}>
+            <LinearGradient
+              colors={['#10B981', '#059669']}
+              style={styles.paymentNotificationGradient}
+            >
+              {/* Success Icon */}
+              <View style={styles.paymentNotificationIconContainer}>
+                <View style={styles.paymentNotificationIconCircle}>
+                  <Ionicons name="checkmark-circle" size={64} color="#FFFFFF" />
+                </View>
+              </View>
+
+              {/* Title */}
+              <Text style={styles.paymentNotificationTitle}>
+                Thanh toán thành công! 💰
+              </Text>
+
+              {/* Amount */}
+              <View style={styles.paymentNotificationAmountContainer}>
+                <Text style={styles.paymentNotificationAmountLabel}>Số tiền:</Text>
+                <Text style={styles.paymentNotificationAmount}>
+                  {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(paymentAmount)}
+                </Text>
+              </View>
+
+              {/* Message */}
+              <Text style={styles.paymentNotificationMessage}>
+                Khách hàng đã hoàn tất thanh toán.{'\n'}
+                Đơn hàng này đã được chuyển sang trạng thái hoàn thành.
+              </Text>
+
+              {/* Close Button */}
+              <TouchableOpacity
+                style={styles.paymentNotificationButton}
+                onPress={() => setShowPaymentNotification(false)}
+              >
+                <Text style={styles.paymentNotificationButtonText}>Đã hiểu</Text>
+              </TouchableOpacity>
+            </LinearGradient>
+          </View>
+        </View>
+      </Modal>
+
       {/* Success Popup Modal */}
       <Modal
         visible={showSuccessModal}
@@ -2339,6 +2475,20 @@ function TechnicianOrderTracking() {
           </View>
         </View>
       </Modal>
+
+      {/* Custom Modal */}
+      <CustomModal
+        visible={showModal}
+        type={modalType}
+        title={modalTitle}
+        message={modalMessage}
+        onClose={() => setShowModal(false)}
+        onConfirm={modalOnConfirm}
+        showCancel={showCancelButton}
+        confirmText="OK"
+        cancelText="Hủy"
+        autoClose={modalAutoClose}
+      />
 
     </View>
   );
@@ -3976,6 +4126,143 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 8,
     textAlign: 'center',
+  },
+  // Payment Notification Modal Styles
+  paymentNotificationOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paymentNotificationContainer: {
+    width: '85%',
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  paymentNotificationGradient: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  paymentNotificationIconContainer: {
+    marginBottom: 24,
+  },
+  paymentNotificationIconCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: 'white',
+  },
+  paymentNotificationTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: 'white',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  paymentNotificationAmountContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    marginBottom: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  paymentNotificationAmountLabel: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: 4,
+  },
+  paymentNotificationAmount: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: 'white',
+    letterSpacing: 0.5,
+  },
+  paymentNotificationMessage: {
+    fontSize: 15,
+    color: 'rgba(255, 255, 255, 0.95)',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 28,
+  },
+  paymentNotificationButton: {
+    backgroundColor: 'white',
+    paddingVertical: 14,
+    paddingHorizontal: 48,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  paymentNotificationButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  // Photo picker action sheet styles
+  photoPickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  photoPickerContainer: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 34,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  photoPickerHeader: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  photoPickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    textAlign: 'center',
+  },
+  photoPickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  photoPickerOptionText: {
+    fontSize: 16,
+    color: '#1F2937',
+    fontWeight: '500',
+  },
+  photoPickerDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginHorizontal: 20,
+  },
+  photoPickerCancelOption: {
+    marginTop: 8,
+  },
+  photoPickerCancelText: {
+    color: '#EF4444',
   },
 });
 

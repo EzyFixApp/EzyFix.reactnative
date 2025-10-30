@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   StatusBar,
   Platform,
@@ -19,6 +18,7 @@ import { serviceRequestService } from '../../lib/api';
 import { useAuth } from '../../store/authStore';
 import type { ServiceRequestData } from '../../types/api';
 import withCustomerAuth from '../../lib/auth/withCustomerAuth';
+import CustomModal from '../../components/CustomModal';
 
 interface DaySlot {
   date: Date;
@@ -63,6 +63,13 @@ function SelectSchedule() {
     date.setHours(9, 0, 0, 0);
     return date;
   });
+  
+  // Custom Modal states
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState<'success' | 'error' | 'warning' | 'info'>('info');
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalAutoClose, setModalAutoClose] = useState(false);
 
   // Get current Vietnam time (UTC+7)
   const getVietnamDate = (): Date => {
@@ -170,9 +177,17 @@ function SelectSchedule() {
     setSelectedTime(''); // Reset time when date changes
   };
 
+  const showAlertModal = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
+    setModalType(type);
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalAutoClose(true); // Always auto-close for non-confirm modals
+    setShowModal(true);
+  };
+
   const handleOpenTimePicker = () => {
     if (!selectedDate) {
-      Alert.alert('Thông báo', 'Vui lòng chọn ngày trước');
+      showAlertModal('info', 'Thông báo', 'Vui lòng chọn ngày trước');
       return;
     }
 
@@ -226,7 +241,7 @@ function SelectSchedule() {
           const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
           setSelectedTime(timeString);
         } else {
-          Alert.alert('Thời gian không khả dụng', 'Vui lòng chọn thời gian ít nhất 1 tiếng kể từ bây giờ');
+          showAlertModal('warning', 'Thời gian không khả dụng', 'Vui lòng chọn thời gian ít nhất 1 tiếng kể từ bây giờ');
         }
       }
     }
@@ -249,7 +264,7 @@ function SelectSchedule() {
     
     // Validate time availability
     if (!isTimeAvailable(hours, minutes)) {
-      Alert.alert('Thời gian không khả dụng', 'Vui lòng chọn thời gian ít nhất 1 tiếng kể từ bây giờ');
+      showAlertModal('warning', 'Thời gian không khả dụng', 'Vui lòng chọn thời gian ít nhất 1 tiếng kể từ bây giờ');
       return;
     }
 
@@ -260,7 +275,7 @@ function SelectSchedule() {
 
   const handleBookNow = async () => {
     if (!selectedDate || !selectedTime) {
-      Alert.alert('Thông báo', 'Vui lòng chọn ngày và giờ làm việc');
+      showAlertModal('info', 'Thông báo', 'Vui lòng chọn ngày và giờ làm việc');
       return;
     }
 
@@ -314,11 +329,7 @@ function SelectSchedule() {
       });
     } catch (error: any) {
       console.error('❌ Service request creation failed:', error);
-      Alert.alert(
-        'Đặt lịch thất bại',
-        error.message || 'Không thể tạo yêu cầu dịch vụ. Vui lòng thử lại.',
-        [{ text: 'OK' }]
-      );
+      showAlertModal('error', 'Đặt lịch thất bại', error.message || 'Không thể tạo yêu cầu dịch vụ. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -528,6 +539,16 @@ function SelectSchedule() {
           </LinearGradient>
         </TouchableOpacity>
       </View>
+
+      {/* Custom Modal */}
+      <CustomModal
+        visible={showModal}
+        type={modalType}
+        title={modalTitle}
+        message={modalMessage}
+        onClose={() => setShowModal(false)}
+        autoClose={modalAutoClose}
+      />
     </View>
   );
 }

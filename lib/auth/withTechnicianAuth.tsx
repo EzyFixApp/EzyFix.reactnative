@@ -166,7 +166,12 @@ export function withTechnicianAuth<P extends object>(
       // Small delay for smooth transition
       setTimeout(() => {
         if (isMountedRef.current) {
-          router.replace('/technician/login');
+          // For role mismatch, redirect to home page
+          if (error === 'ROLE_MISMATCH') {
+            router.replace('/');
+          } else {
+            router.replace('/technician/login');
+          }
         }
       }, 100);
     };
@@ -179,6 +184,14 @@ export function withTechnicianAuth<P extends object>(
       if (!redirectOnError) {
         // If not auto-redirecting, go back
         router.back();
+      } else if (error === 'ROLE_MISMATCH') {
+        // For role mismatch, redirect to home page
+        setHasRedirected(true);
+        setTimeout(() => {
+          if (isMountedRef.current) {
+            router.replace('/');
+          }
+        }, 100);
       }
     };
 

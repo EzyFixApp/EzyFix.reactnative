@@ -37,8 +37,8 @@ const ERROR_CONFIG = {
     icon: 'warning' as const,
     iconColor: '#FF9800',
     title: 'Không có quyền truy cập',
-    message: 'Bạn cần đăng nhập với tài khoản Thợ để sử dụng tính năng này.',
-    buttonText: 'Đăng nhập lại',
+    message: 'Bạn đang đăng nhập với tài khoản không phù hợp với trang này. Vui lòng đăng nhập lại với tài khoản đúng.',
+    buttonText: 'Quay về trang chủ',
   },
   TOKEN_EXPIRED: {
     icon: 'time' as const,

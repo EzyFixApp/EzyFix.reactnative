@@ -13,7 +13,7 @@ import { useAuth } from '../store/authStore';
 interface ActiveOrder {
   id: string;
   serviceName: string;
-  status: 'searching' | 'quoted' | 'accepted' | 'scheduled' | 'en-route' | 'arrived' | 'in-progress' | 'price-review';
+  status: 'searching' | 'quoted' | 'accepted' | 'scheduled' | 'en-route' | 'arrived' | 'in-progress' | 'price-review' | 'payment';
   technicianName?: string;
   customerName?: string; // For technician view - show customer name
   customerPhone?: string; // For technician view - show customer contact
@@ -88,6 +88,10 @@ export default function ActiveOrdersSection() {
         return 'in-progress';
       case 'PRICE_REVIEW':
         return 'price-review';
+      case 'REPAIRED':
+      case 'PAYMENT':
+      case 'AWAITING_PAYMENT':
+        return 'payment';
       
       // ServiceDeliveryOffers statuses
       case 'ACCEPTED':
@@ -119,6 +123,8 @@ export default function ActiveOrdersSection() {
         return 'Đang thực hiện dịch vụ';
       case 'price-review':
         return 'Chờ xác nhận giá cuối cùng';
+      case 'payment':
+        return 'Đã sửa xong, chờ thanh toán';
       default:
         return 'Đang tìm thợ phù hợp';
     }
@@ -268,8 +274,20 @@ export default function ActiveOrdersSection() {
             if (__DEV__) console.warn('⚠️ [ActiveOrders] Could not fetch appointments');
           }
           
-          // Map the final status (using appointment status if available)
-          const mappedStatus = mapApiStatus(actualStatus);
+          // IMPORTANT: ServiceRequest status takes priority over Appointment status
+          // If ServiceRequest is COMPLETED/CANCELLED, use that regardless of Appointment status
+          let finalStatus = actualStatus;
+          const serviceRequestStatus = request.status.toUpperCase();
+          
+          if (serviceRequestStatus === 'COMPLETED' || serviceRequestStatus === 'CANCELLED') {
+            finalStatus = request.status; // Use ServiceRequest status (higher priority)
+            if (__DEV__) {
+              console.log(`⚠️ [ActiveOrders] ServiceRequest ${request.requestID} is ${serviceRequestStatus}, overriding Appointment status`);
+            }
+          }
+          
+          // Map the final status (ServiceRequest takes priority over Appointment)
+          const mappedStatus = mapApiStatus(finalStatus);
           
           return {
             id: request.requestID,
@@ -282,41 +300,50 @@ export default function ActiveOrdersSection() {
             technicianName,
             customerName,
             customerPhone,
-            appointmentStatus: actualStatus,
+            appointmentStatus: finalStatus, // Store final status (ServiceRequest takes priority)
             finalPrice,
           };
         })
       );
       
       // Filter to show only active orders
-      // For technicians: show orders with ACCEPTED offers and active appointments
-      // For customers: exclude completed/cancelled orders
+      // Exclude COMPLETED/CANCELLED ServiceRequests for both customers and technicians
+      // These orders should not appear in "Active Orders" section
       let activeOnly: ActiveOrder[];
       
       if (user?.userType === 'technician') {
         // For technician: only show orders where they have ACCEPTED offers
-        // and the appointment is in active state (not completed/cancelled)
+        // and the appointment is in active state (not completed/cancelled/dispute)
         activeOnly = orders.filter(order => {
           const appointmentStatus = order.appointmentStatus?.toLowerCase() || '';
-          const isActiveAppointment = !['completed', 'cancelled', 'repaired', 'dispute'].includes(appointmentStatus);
           
-          // Show orders that are scheduled, en-route, arrived, or in-progress
+          // Exclude completed/cancelled/dispute status (from ServiceRequest or Appointment)
+          const isActiveAppointment = !['completed', 'cancelled', 'dispute'].includes(appointmentStatus);
+          
+          // Show orders that are scheduled, en-route, arrived, in-progress, price-review, or payment (repaired)
           const isActiveStatus = [
             'scheduled', 
             'en-route', 
             'arrived', 
             'in-progress',
-            'price-review'
+            'price-review',
+            'payment'
           ].includes(order.status);
           
           return isActiveAppointment && isActiveStatus;
         });
       } else {
-        // For customer: exclude completed/cancelled orders
-        activeOnly = orders.filter(order => 
-          order.status !== 'in-progress' || // Keep in-progress as it might be active
-          !['completed', 'cancelled', 'repaired'].includes(order.appointmentStatus?.toLowerCase() || '')
-        );
+        // For customer: exclude completed/cancelled/dispute orders
+        // Since finalStatus now prioritizes ServiceRequest status, 
+        // COMPLETED ServiceRequests will have appointmentStatus='completed'
+        activeOnly = orders.filter(order => {
+          const appointmentStatus = order.appointmentStatus?.toLowerCase() || '';
+          
+          // Exclude completed/cancelled/dispute (these come from ServiceRequest when it's done)
+          const isActive = !['completed', 'cancelled', 'dispute'].includes(appointmentStatus);
+          
+          return isActive;
+        });
       }
       
       setActiveOrders(activeOnly);
@@ -385,8 +412,18 @@ export default function ActiveOrdersSection() {
         return 'document-text-outline';
       case 'accepted':
         return 'checkmark-circle-outline';
+      case 'scheduled':
+        return 'calendar-outline';
+      case 'en-route':
+        return 'car-outline';
+      case 'arrived':
+        return 'location-outline';
       case 'in-progress':
         return 'build-outline';
+      case 'price-review':
+        return 'cash-outline';
+      case 'payment':
+        return 'card-outline';
       default:
         return 'time-outline';
     }
@@ -467,13 +504,6 @@ export default function ActiveOrdersSection() {
                 <View style={styles.cardHeader}>
                   <View style={styles.serviceNameRow}>
                     <Text style={styles.serviceName} numberOfLines={2}>{order.serviceName}</Text>
-                    <View style={styles.statusBadge}>
-                      <Ionicons 
-                        name={getStatusIcon(order.status)} 
-                        size={12} 
-                        color="#FFFFFF" 
-                      />
-                    </View>
                   </View>
                 </View>
 
@@ -484,21 +514,6 @@ export default function ActiveOrdersSection() {
                     <Text style={styles.stepText}>{order.currentStep}</Text>
                   </View>
                 </View>
-
-                {/* Show customer/technician name based on user type */}
-                {user?.userType === 'technician' && order.customerName && (
-                  <View style={styles.personInfoContainer}>
-                    <Ionicons name="person-outline" size={12} color="#6B7280" />
-                    <Text style={styles.personInfoText}>{order.customerName}</Text>
-                  </View>
-                )}
-                {user?.userType === 'customer' && order.technicianName && (
-                  <View style={styles.personInfoContainer}>
-                    <Ionicons name="construct-outline" size={12} color="#6B7280" />
-                    <Text style={styles.personInfoText}>Thợ: {order.technicianName}</Text>
-                  </View>
-                )}
-
                 {/* Date and time info */}
                 <View style={styles.dateTimeContainer}>
                   {order.requestedDate && (

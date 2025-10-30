@@ -11,6 +11,10 @@ import {
   Animated,
   Image,
   Clipboard,
+  Linking,
+  Modal,
+  SafeAreaView,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,9 +25,11 @@ import { serviceDeliveryOffersService } from '../../lib/api/serviceDeliveryOffer
 import { techniciansService } from '../../lib/api/technicians';
 import { appointmentsService, AppointmentStatus } from '../../lib/api/appointments';
 import { mediaService } from '../../lib/api/media';
+import { paymentHub, PaymentUpdatePayload } from '../../lib/signalr/paymentHub';
 import { useAuth } from '../../store/authStore';
 import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 import AuthModal from '../../components/AuthModal';
+import QuoteNotificationModal from '../../components/QuoteNotificationModal';
 
 interface OrderDetail {
   id: string;
@@ -60,10 +66,30 @@ function CustomerOrderTracking() {
   const [issueMedia, setIssueMedia] = useState<string[]>([]); // ISSUE type (customer uploaded)
   const [initialMedia, setInitialMedia] = useState<string[]>([]); // INITIAL type (technician at CHECKING)
   const [finalMedia, setFinalMedia] = useState<string[]>([]); // FINAL type (technician at REPAIRED)
+  
+  // Image viewer state
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [showImageModal, setShowImageModal] = useState(false);
+
+  // Pending quote state
+  const [pendingQuote, setPendingQuote] = useState<{
+    offerID: string;
+    estimatedCost?: number;
+    finalCost?: number;
+    notes?: string;
+    technician?: {
+      technicianId: string;
+      technicianName: string;
+      technicianAvatar?: string;
+      technicianRating?: number;
+    };
+  } | null>(null);
+  const [showQuoteModal, setShowQuoteModal] = useState(false);
 
   // Refs for auto-scroll
   const scrollViewRef = useRef<ScrollView>(null);
   const paymentSectionRef = useRef<View>(null);
+  const priceReviewSectionRef = useRef<View>(null);
 
   // Auto-refresh interval (5 seconds for near real-time)
   const REFRESH_INTERVAL = 5000;
@@ -109,12 +135,30 @@ function CustomerOrderTracking() {
         scrollViewRef.current as any,
         (x, y) => {
           scrollViewRef.current?.scrollTo({
-            y: Math.max(0, y - 40), // Offset 40px để cân đối hiển thị
+            y: Math.max(0, y - 120), // Offset 120px để hiển thị tên dịch vụ + số tiền
             animated: true,
           });
         },
         () => {
           console.log('Failed to measure payment section layout');
+        }
+      );
+    }
+  };
+
+  // Auto-scroll to price review section
+  const scrollToPriceReviewSection = () => {
+    if (priceReviewSectionRef.current && scrollViewRef.current) {
+      priceReviewSectionRef.current.measureLayout(
+        scrollViewRef.current as any,
+        (x, y) => {
+          scrollViewRef.current?.scrollTo({
+            y: Math.max(0, y - 80), // Offset 80px để hiển thị từ "Giá chốt" trở xuống
+            animated: true,
+          });
+        },
+        () => {
+          console.log('Failed to measure price review section layout');
         }
       );
     }
@@ -430,6 +474,18 @@ function CustomerOrderTracking() {
         console.error('❌ [OrderTracking] Error fetching quote details:', error);
       }
       
+      // IMPORTANT: ServiceRequest status takes priority over Appointment status
+      // If ServiceRequest is COMPLETED/CANCELLED, use that regardless of Appointment status
+      let finalStatus = actualStatus;
+      const serviceRequestStatus = serviceRequest.status.toUpperCase();
+      
+      if (serviceRequestStatus === 'COMPLETED' || serviceRequestStatus === 'CANCELLED') {
+        finalStatus = serviceRequest.status; // Use ServiceRequest status (higher priority)
+        if (__DEV__) {
+          console.log(`⚠️ [OrderTracking] ServiceRequest ${serviceRequest.requestID} is ${serviceRequestStatus}, overriding Appointment status`);
+        }
+      }
+      
       // Transform API data to OrderDetail format
       const transformedOrder: OrderDetail = {
         id: serviceRequest.requestID,
@@ -438,7 +494,7 @@ function CustomerOrderTracking() {
         customerName: serviceRequest.fullName || user?.fullName || 'Chưa cập nhật', 
         phoneNumber: serviceRequest.phoneNumber || user?.phoneNumber || 'Chưa cập nhật',
         address: serviceRequest.requestAddress || serviceRequest.addressNote || 'Địa chỉ chưa cập nhật',
-        status: mapApiStatus(actualStatus), // Use actualStatus (from appointment if available)
+        status: mapApiStatus(finalStatus), // Use finalStatus (ServiceRequest takes priority)
         createdAt: serviceRequest.createdDate || serviceRequest.requestedDate,
         requestedDate: serviceRequest.requestedDate,
         expectedStartTime: serviceRequest.expectedStartTime,
@@ -450,7 +506,7 @@ function CustomerOrderTracking() {
         estimatedPrice: estimatedPrice,
         finalPrice: finalPrice,
         appointmentId: appointmentId, // Store for PRICE_REVIEW actions
-        appointmentStatus: actualStatus, // Store raw appointment status for timeline
+        appointmentStatus: finalStatus, // Store final status for timeline (ServiceRequest takes priority)
       };
       
       if (__DEV__) {
@@ -465,11 +521,61 @@ function CustomerOrderTracking() {
       
       setOrder(transformedOrder);
       
-      // Auto-scroll to payment section if status is PRICE_REVIEW
-      if (transformedOrder.status === 'price-review' && !silent) {
-        setTimeout(() => {
-          scrollToPaymentSection();
-        }, 500); // Delay to ensure render is complete
+      // Check for pending quotes (status QUOTED + no accepted offer)
+      if (serviceRequestStatus === 'QUOTED') {
+        try {
+          if (__DEV__) console.log('🔍 [OrderTracking] Checking for pending quotes...');
+          
+          const pendingOffers = await serviceDeliveryOffersService.getPendingOffers(serviceRequest.requestID);
+          
+          if (pendingOffers.length > 0) {
+            if (__DEV__) console.log('✅ [OrderTracking] Found pending offer:', pendingOffers[0].offerId);
+            
+            // Fetch full offer details including technician info
+            const offerDetails = await serviceDeliveryOffersService.getOfferById(pendingOffers[0].offerId);
+            
+            setPendingQuote({
+              offerID: offerDetails.offerId,
+              estimatedCost: offerDetails.estimatedCost,
+              finalCost: offerDetails.finalCost,
+              notes: offerDetails.notes,
+              technician: offerDetails.technician ? {
+                technicianId: offerDetails.technician.technicianId,
+                technicianName: offerDetails.technician.technicianName || 'Thợ',
+                technicianAvatar: offerDetails.technician.technicianAvatar,
+                technicianRating: offerDetails.technician.technicianRating,
+              } : undefined,
+            });
+            
+            if (__DEV__) console.log('✅ [OrderTracking] Pending quote saved:', {
+              offerID: offerDetails.offerId,
+              technician: offerDetails.technician?.technicianName,
+            });
+          } else {
+            if (__DEV__) console.log('⚠️ [OrderTracking] No pending offers found');
+            setPendingQuote(null);
+          }
+        } catch (error) {
+          console.error('❌ [OrderTracking] Error checking pending quotes:', error);
+          setPendingQuote(null);
+        }
+      } else {
+        setPendingQuote(null);
+      }
+      
+      // Auto-scroll to relevant section based on status
+      if (!silent) {
+        if (transformedOrder.status === 'price-review') {
+          // Scroll to price review section (accept/reject buttons)
+          setTimeout(() => {
+            scrollToPriceReviewSection();
+          }, 500); // Delay to ensure render is complete
+        } else if (transformedOrder.status === 'payment') {
+          // Scroll to payment section
+          setTimeout(() => {
+            scrollToPaymentSection();
+          }, 500); // Delay to ensure render is complete
+        }
       }
       
     } catch (error: any) {
@@ -525,6 +631,67 @@ function CustomerOrderTracking() {
       }
     };
   }, [orderId]);
+
+  // SignalR Connection for realtime payment updates
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+
+    const setupSignalR = async () => {
+      try {
+        if (__DEV__) {
+          console.log('🔌 [OrderTracking] Setting up SignalR connection...');
+        }
+
+        // Start SignalR connection
+        await paymentHub.start();
+
+        // Subscribe to payment updates
+        unsubscribe = paymentHub.subscribe((payload: PaymentUpdatePayload) => {
+          if (__DEV__) {
+            console.log('💳 [OrderTracking] Payment update received:', payload);
+          }
+
+          // Check if this update is for current appointment
+          if (order?.appointmentId && payload.appointmentId === order.appointmentId) {
+            if (__DEV__) {
+              console.log('✅ [OrderTracking] Payment update matches current appointment');
+            }
+
+            // Show success alert
+            Alert.alert(
+              'Thanh toán thành công! 🎉',
+              'Cảm ơn bạn đã thanh toán. Đơn hàng đã hoàn tất.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    // Reload to update UI
+                    loadOrderDetail();
+                  }
+                }
+              ]
+            );
+          }
+        });
+
+        if (__DEV__) {
+          console.log('✅ [OrderTracking] SignalR connected and subscribed');
+        }
+      } catch (error) {
+        console.error('❌ [OrderTracking] Failed to setup SignalR:', error);
+      }
+    };
+
+    setupSignalR();
+
+    // Cleanup on unmount
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+      // Note: Don't stop hub here as other screens might be using it
+    };
+  }, [order?.appointmentId]); // Re-run when appointmentId changes
 
   // Start animation when loading starts
   useEffect(() => {
@@ -845,6 +1012,43 @@ function CustomerOrderTracking() {
     }
   };
 
+  // Handle Payment - Navigate to payment summary screen
+  const handlePayment = () => {
+    if (!order?.appointmentId) {
+      Alert.alert('Lỗi', 'Không tìm thấy thông tin lịch hẹn');
+      return;
+    }
+
+    // Validate current status
+    if (order.status !== 'payment' && order.appointmentStatus?.toUpperCase() !== 'REPAIRED') {
+      Alert.alert(
+        'Không thể thanh toán',
+        'Đơn hàng chưa sẵn sàng để thanh toán. Vui lòng đợi thợ hoàn thành sửa chữa.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    if (!order.finalPrice) {
+      Alert.alert('Lỗi', 'Không tìm thấy giá chốt của dịch vụ');
+      return;
+    }
+
+    // Navigate to payment summary screen
+    router.push({
+      pathname: '/customer/payment-summary',
+      params: {
+        appointmentId: order.appointmentId,
+        serviceName: order.serviceName,
+        technicianName: order.technicianName || 'Thợ sửa chữa',
+        address: order.address,
+        finalPrice: order.finalPrice.replace(/[^\d]/g, ''), // Remove formatting, keep only numbers
+      },
+    });
+  };
+
+
+
   // Get status info for UI display
   const getStatusInfo = (status: OrderDetail['status']) => {
     // Check if REPAIRING status came after PRICE_REVIEW
@@ -1035,7 +1239,6 @@ function CustomerOrderTracking() {
                 
                 <View style={styles.customHeaderTitleContainer}>
                   <Text style={styles.customHeaderTitle}>Theo dõi đơn hàng</Text>
-                  <Text style={styles.customHeaderSubtitle}>Lỗi tải dữ liệu</Text>
                 </View>
 
                 <TouchableOpacity 
@@ -1081,7 +1284,6 @@ function CustomerOrderTracking() {
               
               <View style={styles.customHeaderTitleContainer}>
                 <Text style={styles.customHeaderTitle}>Theo dõi đơn hàng</Text>
-                <Text style={styles.customHeaderSubtitle}>Mã đơn #{order.id.padStart(6, '0')}</Text>
               </View>
 
               <TouchableOpacity 
@@ -1294,59 +1496,118 @@ function CustomerOrderTracking() {
                   <Text style={styles.infoValue}>{order.serviceName}</Text>
                 </View>
                 
-                {/* Price information with beautiful design */}
+                {/* Price information - Clean and Simple Design */}
                 {(order.estimatedPrice || order.finalPrice) ? (
                   <View style={styles.priceSection}>
-                    {/* Estimated Price */}
-                    {order.estimatedPrice && (
-                      <View style={styles.priceCard}>
-                        <View style={styles.priceHeader}>
-                          <View style={styles.priceIconContainer}>
-                            <Ionicons name="calculator-outline" size={18} color="#3B82F6" />
+                    {/* Payment Status - Show when ready for payment */}
+                    {order.status === 'payment' && order.finalPrice && (
+                      <View ref={paymentSectionRef} style={styles.paymentStatusCard}>
+                        <View style={styles.paymentStatusHeader}>
+                          <View style={styles.paymentStatusIcon}>
+                            <Ionicons name="checkmark-circle" size={24} color="#10B981" />
                           </View>
-                          <View style={styles.priceLabelContainer}>
-                            <Text style={styles.priceLabel}>Giá dự kiến</Text>
-                            <Text style={styles.priceDescription}>Ước tính ban đầu</Text>
+                          <View style={styles.paymentStatusTextContainer}>
+                            <Text style={styles.paymentStatusTitle}>Sửa chữa hoàn tất</Text>
+                            <Text style={styles.paymentStatusSubtitle}>Vui lòng thanh toán để hoàn thành</Text>
                           </View>
                         </View>
-                        <Text style={styles.estimatedPriceValue}>{order.estimatedPrice}</Text>
+
+                        {/* Price Display */}
+                        <View style={styles.paymentPriceRow}>
+                          <Text style={styles.paymentPriceLabel}>Tổng thanh toán</Text>
+                          <Text style={styles.paymentPriceValue}>{order.finalPrice}</Text>
+                        </View>
+
+                        {/* Completion Photos */}
+                        {finalMedia.length > 0 && (
+                          <View style={styles.paymentPhotosSection}>
+                            <Text style={styles.paymentPhotosLabel}>Ảnh hoàn thành ({finalMedia.length})</Text>
+                            <ScrollView 
+                              horizontal 
+                              showsHorizontalScrollIndicator={false}
+                              style={styles.paymentPhotosScroll}
+                            >
+                              {finalMedia.map((url, index) => (
+                                <TouchableOpacity
+                                  key={index}
+                                  style={styles.paymentPhoto}
+                                  activeOpacity={0.7}
+                                >
+                                  <Image
+                                    source={{ uri: url }}
+                                    style={styles.paymentPhotoImage}
+                                    resizeMode="cover"
+                                  />
+                                </TouchableOpacity>
+                              ))}
+                            </ScrollView>
+                          </View>
+                        )}
+
+                        {/* Payment Button */}
+                        <TouchableOpacity
+                          style={styles.paymentButton}
+                          onPress={handlePayment}
+                          activeOpacity={0.8}
+                        >
+                          <LinearGradient
+                            colors={['#609CEF', '#3B82F6']}
+                            style={styles.paymentButtonGradient}
+                          >
+                            <Ionicons name="card-outline" size={20} color="white" />
+                            <Text style={styles.paymentButtonText}>Thanh toán ngay</Text>
+                            <Ionicons name="arrow-forward" size={20} color="white" />
+                          </LinearGradient>
+                        </TouchableOpacity>
+
+                        {/* Security Note */}
+                        <View style={styles.paymentSecurityNote}>
+                          <Ionicons name="shield-checkmark-outline" size={14} color="#6B7280" />
+                          <Text style={styles.paymentSecurityNoteText}>
+                            Thanh toán bảo mật qua PayOS
+                          </Text>
+                        </View>
                       </View>
                     )}
-                    
-                    {/* Final Price */}
-                    {order.finalPrice && (
-                      <View 
-                        ref={paymentSectionRef}
-                        style={[styles.priceCard, styles.finalPriceCard]}
-                      >
-                        <View style={styles.priceHeader}>
-                          <View style={[styles.priceIconContainer, { backgroundColor: '#D1FAE5' }]}>
-                            <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+
+                    {/* Price Card - Show when NOT payment status */}
+                    {order.status !== 'payment' && (
+                      <>
+                        {order.finalPrice ? (
+                          <View 
+                            ref={order.status === 'price-review' ? priceReviewSectionRef : null}
+                            style={order.status === 'price-review' ? styles.simplePriceCardHighlight : styles.simplePriceCard}
+                          >
+                            <View style={styles.simplePriceRow}>
+                              <View style={styles.simplePriceLeft}>
+                                <Text style={order.status === 'price-review' ? styles.simplePriceLabelHighlight : styles.simplePriceLabel}>
+                                  Giá chốt
+                                </Text>
+                              </View>
+                              <Text style={order.status === 'price-review' ? styles.simplePriceValueHighlight : styles.simplePriceValue}>
+                                {order.finalPrice}
+                              </Text>
+                            </View>
+                            <Text style={styles.simplePriceNote}>
+                              Giá thực tế sau kiểm tra
+                            </Text>
                           </View>
-                          <View style={styles.priceLabelContainer}>
-                            <Text style={[styles.priceLabel, { color: '#10B981' }]}>Giá chốt</Text>
-                            <Text style={styles.priceDescription}>Giá thực tế thanh toán</Text>
+                        ) : order.estimatedPrice && (
+                          <View style={styles.simplePriceCard}>
+                            <View style={styles.simplePriceRow}>
+                              <View style={styles.simplePriceLeft}>
+                                <Ionicons name="calculator-outline" size={20} color="#3B82F6" />
+                                <Text style={styles.simplePriceLabel}>Giá dự kiến</Text>
+                              </View>
+                              <Text style={styles.simplePriceValue}>{order.estimatedPrice}</Text>
+                            </View>
+                            <Text style={styles.simplePriceNote}>
+                              Giá có thể thay đổi sau kiểm tra
+                            </Text>
                           </View>
-                        </View>
-                        <View style={styles.finalPriceContainer}>
-                          <Text style={styles.finalPriceValue}>{order.finalPrice}</Text>
-                          <View style={styles.finalPriceBadge}>
-                            <Text style={styles.finalPriceBadgeText}>CHÍNH THỨC</Text>
-                          </View>
-                        </View>
-                      </View>
+                        )}
+                      </>
                     )}
-                    
-                    {/* Info note */}
-                    <View style={styles.priceNote}>
-                      <Ionicons name="information-circle-outline" size={16} color="#6B7280" />
-                      <Text style={styles.priceNoteText}>
-                        {order.finalPrice 
-                          ? 'Giá chốt là giá cuối cùng bạn cần thanh toán sau khi thợ kiểm tra thực tế'
-                          : 'Giá dự kiến có thể thay đổi sau khi thợ kiểm tra thực tế tại địa điểm'
-                        }
-                      </Text>
-                    </View>
 
                     {/* Technician Notes - Show when finalPrice exists */}
                     {order.finalPrice && order.technicianNotes && (
@@ -1379,64 +1640,26 @@ function CustomerOrderTracking() {
                             <TouchableOpacity
                               key={index}
                               style={styles.photoContainer}
-                              activeOpacity={0.7}
+                              activeOpacity={0.9}
+                              onPress={() => {
+                                setSelectedImage(url);
+                                setShowImageModal(true);
+                              }}
                             >
                               <Image
                                 source={{ uri: url }}
                                 style={styles.photoImage}
                                 resizeMode="cover"
                               />
-                              <View style={styles.photoOverlay}>
-                                <Ionicons name="expand-outline" size={20} color="white" />
-                              </View>
                             </TouchableOpacity>
                           ))}
                         </ScrollView>
                         <Text style={styles.photosDescription}>
-                          Ảnh chụp tại hiện trường sau khi thợ kiểm tra
+                          Ảnh chụp tại hiện trường sau khi thợ kiểm tra • Nhấn để phóng to
                         </Text>
                       </View>
                     )}
 
-                    {/* PRICE_REVIEW Action Buttons - Show when status is price-review */}
-                    {order.status === 'price-review' && order.finalPrice && (
-                      <View style={styles.priceReviewActions}>
-                        <Text style={styles.priceReviewTitle}>
-                          Thợ đã gửi giá cuối cùng. Bạn có chấp nhận không?
-                        </Text>
-                        <View style={styles.priceReviewButtons}>
-                          <TouchableOpacity
-                            style={styles.rejectButton}
-                            onPress={handleRejectFinalPrice}
-                            activeOpacity={0.8}
-                          >
-                            <LinearGradient
-                              colors={['#EF4444', '#DC2626']}
-                              style={styles.actionButtonGradient}
-                            >
-                              <Ionicons name="close-circle-outline" size={20} color="white" />
-                              <Text style={styles.actionButtonText}>Từ chối</Text>
-                            </LinearGradient>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.acceptButton}
-                            onPress={handleAcceptFinalPrice}
-                            activeOpacity={0.8}
-                          >
-                            <LinearGradient
-                              colors={['#10B981', '#059669']}
-                              style={styles.actionButtonGradient}
-                            >
-                              <Ionicons name="checkmark-circle-outline" size={20} color="white" />
-                              <Text style={styles.actionButtonText}>Chấp nhận</Text>
-                            </LinearGradient>
-                          </TouchableOpacity>
-                        </View>
-                        <Text style={styles.priceReviewNote}>
-                          * Sau khi chấp nhận, thợ sẽ bắt đầu sửa chữa ngay
-                        </Text>
-                      </View>
-                    )}
                   </View>
                 ) : (
                   <View style={styles.infoRow}>
@@ -1481,6 +1704,55 @@ function CustomerOrderTracking() {
               </View>
             </View>
           </View>
+
+          {/* Issue Photos - Customer Uploaded (ISSUE type) */}
+          {issueMedia.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Ionicons name="images-outline" size={20} color="#F59E0B" />
+                  <Text style={styles.cardTitle}>Ảnh vấn đề ({issueMedia.length})</Text>
+                </View>
+                <View style={styles.cardContent}>
+                  <View style={styles.photosSection}>
+                    <View style={styles.photosHeader}>
+                      <Ionicons name="camera-outline" size={20} color="#F59E0B" />
+                      <Text style={styles.photosHeaderText}>Ảnh bạn đã gửi</Text>
+                    </View>
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.photosScroll}
+                    >
+                      {issueMedia.map((url, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={styles.photoContainer}
+                          activeOpacity={0.9}
+                          onPress={() => {
+                            setSelectedImage(url);
+                            setShowImageModal(true);
+                          }}
+                        >
+                          <Image
+                            source={{ uri: url }}
+                            style={styles.photoImage}
+                            resizeMode="cover"
+                          />
+                          <View style={styles.photoOverlay}>
+                            <Ionicons name="eye-outline" size={28} color="white" />
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                    <Text style={styles.photosDescription}>
+                      Ảnh bạn đã gửi khi đặt dịch vụ • Nhấn để phóng to
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
 
           {/* Customer Info */}
           <View style={styles.section}>
@@ -1563,11 +1835,145 @@ function CustomerOrderTracking() {
           <View style={styles.bottomSpacing} />
         </ScrollView>
       </View>
-      
+
+      {/* Sticky Footer for PRICE_REVIEW Actions */}
+      {order.status === 'price-review' && order.finalPrice && (
+        <View style={styles.stickyFooter}>
+          <View style={styles.stickyFooterContent}>
+            <Text style={styles.stickyFooterTitle}>
+              Thợ đã gửi giá: <Text style={styles.stickyFooterPrice}>{order.finalPrice}</Text>
+            </Text>
+            <Text style={styles.stickyFooterSubtitle}>
+              Bạn có chấp nhận không?
+            </Text>
+            <View style={styles.stickyFooterButtons}>
+              <TouchableOpacity
+                style={styles.stickyRejectButton}
+                onPress={handleRejectFinalPrice}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={['#EF4444', '#DC2626']}
+                  style={styles.stickyButtonGradient}
+                >
+                  <Ionicons name="close-circle-outline" size={22} color="white" />
+                  <Text style={styles.stickyButtonText}>Từ chối</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.stickyAcceptButton}
+                onPress={handleAcceptFinalPrice}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={['#10B981', '#059669']}
+                  style={styles.stickyButtonGradient}
+                >
+                  <Ionicons name="checkmark-circle-outline" size={22} color="white" />
+                  <Text style={styles.stickyButtonText}>Chấp nhận</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Sticky Footer for QUOTED Status - View Quote */}
+      {order.status === 'quoted' && pendingQuote && (
+        <View style={styles.stickyFooter}>
+          <View style={styles.stickyFooterContent}>
+            <Text style={styles.stickyFooterTitle}>
+              💬 Bạn có báo giá mới từ thợ
+            </Text>
+            <Text style={styles.stickyFooterSubtitle}>
+              {pendingQuote.finalCost 
+                ? `Giá: ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(pendingQuote.finalCost)}`
+                : 'Xem chi tiết báo giá'}
+            </Text>
+            <TouchableOpacity
+              style={styles.viewQuoteButton}
+              onPress={() => setShowQuoteModal(true)}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={['#609CEF', '#3B82F6']}
+                style={styles.viewQuoteButtonGradient}
+              >
+                <Ionicons name="document-text-outline" size={22} color="white" />
+                <Text style={styles.viewQuoteButtonText}>Xem báo giá</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       <AuthModal
         visible={showAuthModal}
         onClose={() => setShowAuthModal(false)}
       />
+
+      {/* Quote Notification Modal */}
+      {pendingQuote && (
+        <QuoteNotificationModal
+          visible={showQuoteModal}
+          quote={{
+            offerID: pendingQuote.offerID,
+            serviceName: order?.serviceName || 'Dịch vụ',
+            technicianName: pendingQuote.technician?.technicianName || 'Thợ',
+            technicianId: pendingQuote.technician?.technicianId,
+            technicianAvatar: pendingQuote.technician?.technicianAvatar,
+            technicianRating: pendingQuote.technician?.technicianRating,
+            estimatedCost: pendingQuote.estimatedCost,
+            finalCost: pendingQuote.finalCost,
+            notes: pendingQuote.notes,
+            serviceRequestId: order?.id || '',
+          }}
+          onClose={() => setShowQuoteModal(false)}
+          onAccepted={async () => {
+            setShowQuoteModal(false);
+            // Reload order to reflect changes
+            await loadOrderDetail(false);
+          }}
+          onRejected={async () => {
+            setShowQuoteModal(false);
+            // Reload order to reflect changes
+            await loadOrderDetail(false);
+          }}
+        />
+      )}
+
+      {/* Image Viewer Modal */}
+      <Modal
+        visible={showImageModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowImageModal(false)}
+      >
+        <View style={styles.imageModalContainer}>
+          <TouchableOpacity
+            style={styles.imageModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowImageModal(false)}
+          >
+            <View style={styles.imageModalHeader}>
+              <TouchableOpacity
+                style={styles.imageModalCloseButton}
+                onPress={() => setShowImageModal(false)}
+              >
+                <Ionicons name="close" size={28} color="white" />
+              </TouchableOpacity>
+            </View>
+            {selectedImage && (
+              <Image
+                source={{ uri: selectedImage }}
+                style={styles.imageModalImage}
+                resizeMode="contain"
+              />
+            )}
+            <Text style={styles.imageModalHint}>Nhấn vào bất kỳ đâu để đóng</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1756,7 +2162,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   bottomSpacing: {
-    height: 100,
+    height: 180, // Increased for sticky footer (was 100)
   },
   // Price section styles
   priceSection: {
@@ -2206,6 +2612,461 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 3,
+  },
+  // Payment Status Card - Clean Design
+  paymentStatusCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  paymentStatusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  paymentStatusIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#D1FAE5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  paymentStatusTextContainer: {
+    flex: 1,
+  },
+  paymentStatusTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  paymentStatusSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  paymentPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  paymentPriceLabel: {
+    fontSize: 15,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  paymentPriceValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#10B981',
+  },
+  paymentPhotosSection: {
+    marginBottom: 16,
+  },
+  paymentPhotosLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4B5563',
+    marginBottom: 12,
+  },
+  paymentPhotosScroll: {
+    marginHorizontal: -4,
+  },
+  paymentPhoto: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    marginHorizontal: 4,
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+  },
+  paymentPhotoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  paymentButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#609CEF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+    marginBottom: 12,
+  },
+  paymentButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  paymentButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: 'white',
+  },
+  paymentSecurityNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  paymentSecurityNoteText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  // Simple Price Card - Normal style
+  simplePriceCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  // Simple Price Card - Highlighted for PRICE_REVIEW
+  simplePriceCardHighlight: {
+    backgroundColor: '#ECFDF5', // Light green background
+    borderRadius: 16,
+    padding: 20,
+    marginTop: 8,
+    marginBottom: 4,
+    borderWidth: 2,
+    borderColor: '#10B981', // Green border to highlight
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  simplePriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  simplePriceLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  simplePriceLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  // Highlighted label for PRICE_REVIEW
+  simplePriceLabelHighlight: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#047857', // Darker green
+    letterSpacing: 0.3,
+  },
+  simplePriceValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1F2937',
+  },
+  // Highlighted value for PRICE_REVIEW
+  simplePriceValueHighlight: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#059669', // Green color
+    letterSpacing: 0.5,
+  },
+  simplePriceNote: {
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+  completionPhotosSection: {
+    marginBottom: 16,
+  },
+  // Payment Modal Styles
+  paymentModalContainer: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  paymentModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  paymentModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  paymentModalCloseButton: {
+    padding: 8,
+  },
+  paymentWebView: {
+    flex: 1,
+  },
+  // Manual Payment Confirmation
+  paymentConfirmContainer: {
+    backgroundColor: '#F9FAFB',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 12,
+  },
+  paymentConfirmNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#F59E0B',
+  },
+  paymentConfirmNoteText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400E',
+    lineHeight: 18,
+  },
+  manualConfirmButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  manualConfirmGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 8,
+  },
+  manualConfirmText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: 'white',
+  },
+  // Success Popup Styles
+  successPopupOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  successPopupContainer: {
+    width: '85%',
+    maxWidth: 400,
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  successPopupGradient: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  successPopupIconContainer: {
+    marginBottom: 20,
+    transform: [{ scale: 1.2 }],
+  },
+  successPopupTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: 'white',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  successPopupMessage: {
+    fontSize: 15,
+    color: 'rgba(255, 255, 255, 0.95)',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  successPopupLoader: {
+    marginTop: 8,
+  },
+  
+  // Sticky Footer for Price Review Actions
+  stickyFooter: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 10,
+    zIndex: 100,
+  },
+  stickyFooterContent: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 16, // Extra padding for iOS home indicator
+  },
+  stickyFooterTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2937',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  stickyFooterPrice: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#059669', // Green color to highlight price
+  },
+  stickyFooterSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  stickyFooterButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  stickyRejectButton: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  stickyAcceptButton: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  stickyButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  stickyButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: 'white',
+  },
+  viewQuoteButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#609CEF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+    marginTop: 8,
+  },
+  viewQuoteButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  viewQuoteButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: 'white',
+  },
+  priceReviewInfo: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
+  },
+  
+  // Image Modal Styles
+  imageModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalBackdrop: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalHeader: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 20,
+    right: 20,
+    zIndex: 10,
+  },
+  imageModalCloseButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalImage: {
+    width: '100%',
+    height: '80%',
+  },
+  imageModalHint: {
+    position: 'absolute',
+    bottom: 40,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });
 

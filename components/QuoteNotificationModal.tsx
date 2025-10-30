@@ -7,9 +7,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
 import { serviceDeliveryOffersService } from '../lib/api';
 
 interface QuoteNotificationModalProps {
@@ -19,6 +21,9 @@ interface QuoteNotificationModalProps {
     offerID: string;
     serviceName: string;
     technicianName: string;
+    technicianId?: string;
+    technicianAvatar?: string;
+    technicianRating?: number;
     estimatedCost?: number;
     finalCost?: number;
     notes?: string;
@@ -37,6 +42,11 @@ export default function QuoteNotificationModal({
 }: QuoteNotificationModalProps) {
   const [loading, setLoading] = useState(false);
   const [actionType, setActionType] = useState<'accept' | 'reject' | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<'accept' | 'reject' | null>(null);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [resultSuccess, setResultSuccess] = useState(false);
+  const [resultMessage, setResultMessage] = useState('');
 
   const isEstimated = !!quote.estimatedCost;
   const amount = quote.estimatedCost || quote.finalCost || 0;
@@ -46,89 +56,53 @@ export default function QuoteNotificationModal({
     return value.toLocaleString('vi-VN') + ' VNĐ';
   };
 
-  const handleAccept = async () => {
-    Alert.alert(
-      'Xác nhận chấp nhận',
-      `Bạn có chắc chắn chấp nhận ${quoteType.toLowerCase()} với giá ${formatCurrency(amount)}?`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Chấp nhận',
-          onPress: async () => {
-            setActionType('accept');
-            setLoading(true);
-            try {
-              await serviceDeliveryOffersService.acceptQuote(quote.offerID);
-              
-              setLoading(false);
-              Alert.alert(
-                '✅ Chấp nhận thành công!',
-                'Bạn đã chấp nhận báo giá. Thợ sẽ nhận được thông báo và bắt đầu chuẩn bị.',
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => {
-                      onClose();
-                      onAccepted?.();
-                    }
-                  }
-                ]
-              );
-            } catch (error: any) {
-              setLoading(false);
-              Alert.alert(
-                'Lỗi',
-                error.message || 'Không thể chấp nhận báo giá. Vui lòng thử lại.',
-                [{ text: 'Đóng' }]
-              );
-            }
-          }
-        }
-      ]
-    );
+  const handleAccept = () => {
+    setConfirmAction('accept');
+    setShowConfirmModal(true);
   };
 
-  const handleReject = async () => {
-    Alert.alert(
-      'Xác nhận từ chối',
-      'Bạn có chắc chắn từ chối báo giá này? Thợ sẽ nhận được thông báo.',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Từ chối',
-          style: 'destructive',
-          onPress: async () => {
-            setActionType('reject');
-            setLoading(true);
-            try {
-              await serviceDeliveryOffersService.rejectQuote(quote.offerID);
-              
-              setLoading(false);
-              Alert.alert(
-                'Đã từ chối báo giá',
-                'Bạn có thể chờ thợ gửi báo giá mới hoặc chọn thợ khác.',
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => {
-                      onClose();
-                      onRejected?.();
-                    }
-                  }
-                ]
-              );
-            } catch (error: any) {
-              setLoading(false);
-              Alert.alert(
-                'Lỗi',
-                error.message || 'Không thể từ chối báo giá. Vui lòng thử lại.',
-                [{ text: 'Đóng' }]
-              );
-            }
-          }
-        }
-      ]
-    );
+  const handleReject = () => {
+    setConfirmAction('reject');
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirm = async () => {
+    setShowConfirmModal(false);
+    setActionType(confirmAction);
+    setLoading(true);
+
+    try {
+      if (confirmAction === 'accept') {
+        await serviceDeliveryOffersService.acceptQuote(quote.offerID);
+        setLoading(false);
+        setResultSuccess(true);
+        setResultMessage('Bạn đã chấp nhận báo giá. Thợ sẽ nhận được thông báo và bắt đầu chuẩn bị.');
+        setShowResultModal(true);
+      } else if (confirmAction === 'reject') {
+        await serviceDeliveryOffersService.rejectQuote(quote.offerID);
+        setLoading(false);
+        setResultSuccess(true);
+        setResultMessage('Bạn có thể chờ thợ gửi báo giá mới hoặc chọn thợ khác.');
+        setShowResultModal(true);
+      }
+    } catch (error: any) {
+      setLoading(false);
+      setResultSuccess(false);
+      setResultMessage(error.message || `Không thể ${confirmAction === 'accept' ? 'chấp nhận' : 'từ chối'} báo giá. Vui lòng thử lại.`);
+      setShowResultModal(true);
+    }
+  };
+
+  const handleResultClose = () => {
+    setShowResultModal(false);
+    if (resultSuccess) {
+      onClose();
+      if (confirmAction === 'accept') {
+        onAccepted?.();
+      } else {
+        onRejected?.();
+      }
+    }
   };
 
   return (
@@ -142,15 +116,48 @@ export default function QuoteNotificationModal({
         <View style={styles.modalContainer}>
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.iconContainer}>
-              <Ionicons 
-                name={isEstimated ? "calculator" : "checkmark-circle"} 
-                size={32} 
-                color={isEstimated ? "#609CEF" : "#10B981"} 
-              />
-            </View>
             <Text style={styles.title}>Báo giá mới từ thợ</Text>
-            <Text style={styles.subtitle}>{quote.technicianName}</Text>
+            
+            {/* Technician Info with Avatar - Clickable */}
+            <TouchableOpacity
+              style={styles.technicianInfo}
+              onPress={() => {
+                if (quote.technicianId) {
+                  onClose();
+                  router.push(`/customer/technician-profile?technicianId=${quote.technicianId}`);
+                }
+              }}
+              activeOpacity={quote.technicianId ? 0.7 : 1}
+              disabled={!quote.technicianId}
+            >
+              {quote.technicianAvatar ? (
+                <Image 
+                  source={{ uri: quote.technicianAvatar }} 
+                  style={styles.technicianAvatar}
+                />
+              ) : (
+                <View style={styles.technicianAvatarPlaceholder}>
+                  <Ionicons name="person" size={24} color="#94A3B8" />
+                </View>
+              )}
+              
+              <View style={styles.technicianDetails}>
+                <Text style={styles.technicianName}>{quote.technicianName}</Text>
+                {quote.technicianRating && (
+                  <View style={styles.ratingContainer}>
+                    <Ionicons name="star" size={16} color="#F59E0B" />
+                    <Text style={styles.ratingText}>{quote.technicianRating.toFixed(1)}</Text>
+                  </View>
+                )}
+              </View>
+              
+              {/* View Profile Icon (visual indicator) */}
+              {quote.technicianId && (
+                <View style={styles.viewProfileButton}>
+                  <Ionicons name="chevron-forward" size={20} color="#3B82F6" />
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
 
           {/* Quote Type Badge */}
@@ -240,7 +247,6 @@ export default function QuoteNotificationModal({
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <>
-                    <Ionicons name="checkmark" size={20} color="#FFFFFF" />
                     <Text style={styles.acceptButtonText}>Chấp nhận</Text>
                   </>
                 )}
@@ -258,6 +264,101 @@ export default function QuoteNotificationModal({
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Confirmation Modal */}
+      <Modal
+        visible={showConfirmModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowConfirmModal(false)}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmContainer}>
+            <View style={styles.confirmIconContainer}>
+              <Ionicons 
+                name={confirmAction === 'accept' ? 'checkmark-circle' : 'close-circle'} 
+                size={48} 
+                color={confirmAction === 'accept' ? '#10B981' : '#EF4444'} 
+              />
+            </View>
+            
+            <Text style={styles.confirmTitle}>
+              {confirmAction === 'accept' ? 'Xác nhận chấp nhận' : 'Xác nhận từ chối'}
+            </Text>
+            
+            <Text style={styles.confirmMessage}>
+              {confirmAction === 'accept' 
+                ? `Bạn có chắc chắn chấp nhận ${quoteType.toLowerCase()} với giá ${formatCurrency(amount)}?`
+                : 'Bạn có chắc chắn từ chối báo giá này? Thợ sẽ nhận được thông báo.'
+              }
+            </Text>
+
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={styles.confirmCancelButton}
+                onPress={() => setShowConfirmModal(false)}
+              >
+                <Text style={styles.confirmCancelText}>Hủy</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.confirmOkButton}
+                onPress={handleConfirm}
+              >
+                <LinearGradient
+                  colors={confirmAction === 'accept' ? ['#10B981', '#059669'] : ['#EF4444', '#DC2626']}
+                  style={styles.confirmOkGradient}
+                >
+                  <Text style={styles.confirmOkText}>
+                    {confirmAction === 'accept' ? 'Chấp nhận' : 'Từ chối'}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Result Modal */}
+      <Modal
+        visible={showResultModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleResultClose}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmContainer}>
+            <View style={styles.confirmIconContainer}>
+              <Ionicons 
+                name={resultSuccess ? 'checkmark-circle' : 'alert-circle'} 
+                size={48} 
+                color={resultSuccess ? '#10B981' : '#EF4444'} 
+              />
+            </View>
+            
+            <Text style={styles.confirmTitle}>
+              {resultSuccess 
+                ? (confirmAction === 'accept' ? 'Chấp nhận thành công!' : 'Đã từ chối báo giá')
+                : 'Lỗi'
+              }
+            </Text>
+            
+            <Text style={styles.confirmMessage}>{resultMessage}</Text>
+
+            <TouchableOpacity
+              style={[styles.confirmOkButton, { width: '100%' }]}
+              onPress={handleResultClose}
+            >
+              <LinearGradient
+                colors={['#609CEF', '#3B82F6']}
+                style={styles.confirmOkGradient}
+              >
+                <Text style={styles.confirmOkText}>OK</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -287,27 +388,67 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 20,
-  },
-  iconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: 12,
   },
   title: {
     fontSize: 22,
     fontWeight: '700',
     color: '#1F2937',
-    marginBottom: 4,
   },
   subtitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#6B7280',
+  },
+  technicianInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
+    padding: 12,
+    marginTop: 16,
+    gap: 12,
+  },
+  technicianAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#E5E7EB',
+  },
+  technicianAvatarPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  technicianDetails: {
+    flex: 1,
+  },
+  technicianName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  ratingText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#F59E0B',
+  },
+  viewProfileButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   quoteTypeBadge: {
     alignSelf: 'center',
@@ -452,5 +593,88 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#9CA3AF',
+  },
+  // Custom Modal Styles
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  confirmContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    width: '90%',
+    maxWidth: 340,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 10,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  confirmIconContainer: {
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  confirmMessage: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+  },
+  confirmCancelButton: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  confirmOkButton: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#609CEF',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  confirmOkGradient: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmOkText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useFocusEffect } from 'expo-router';
@@ -7,6 +7,7 @@ import { addressService } from '../../lib/api';
 import { useAuth } from '../../store/authStore';
 import type { Address } from '../../types/api';
 import withCustomerAuth from '../../lib/auth/withCustomerAuth';
+import CustomModal from '../../components/CustomModal';
 
 interface AddressItemProps {
   addressId: string;
@@ -20,6 +21,7 @@ interface AddressItemProps {
   onDelete: (id: string) => void;
   isDeleting?: boolean;
   index: number; // Add index for numbering
+  onShowDeleteConfirm: (id: string) => void; // Add callback for delete confirmation
 }
 
 function AddressCard({ 
@@ -33,17 +35,11 @@ function AddressCard({
   onEdit,
   onDelete,
   isDeleting = false,
-  index
+  index,
+  onShowDeleteConfirm
 }: AddressItemProps) {
   const handleDelete = () => {
-    Alert.alert(
-      "Xóa địa chỉ",
-      "Bạn có chắc chắn muốn xóa địa chỉ này?",
-      [
-        { text: "Hủy", style: "cancel" },
-        { text: "Xóa", style: "destructive", onPress: () => onDelete(addressId) }
-      ]
-    );
+    onShowDeleteConfirm(addressId);
   };
 
   const handleEdit = () => {
@@ -139,20 +135,46 @@ function SavedAddresses() {
   const [refreshing, setRefreshing] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   
+  // Custom Modal states
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState<'success' | 'error' | 'warning' | 'info' | 'confirm'>('info');
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalOnConfirm, setModalOnConfirm] = useState<(() => void) | undefined>();
+  const [showCancelButton, setShowCancelButton] = useState(false);
+  const [modalAutoClose, setModalAutoClose] = useState(false);
+  
   // Get auth state
   const { isAuthenticated, user } = useAuth();
+  
+  // Helper function to show modal
+  const showAlertModal = (
+    type: 'success' | 'error' | 'warning' | 'info' | 'confirm',
+    title: string,
+    message: string,
+    onConfirm?: () => void,
+    showCancel = false
+  ) => {
+    setModalType(type);
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalOnConfirm(onConfirm ? () => onConfirm : undefined);
+    setShowCancelButton(showCancel);
+    // Auto-close for non-confirm modals
+    setModalAutoClose(type !== 'confirm' && !showCancel);
+    setShowModal(true);
+  };
 
   // Load addresses when component mounts or when focus returns
   useFocusEffect(
     React.useCallback(() => {
       if (!isAuthenticated) {
-        Alert.alert(
+        showAlertModal(
+          'confirm',
           'Chưa đăng nhập',
           'Vui lòng đăng nhập để xem danh sách địa chỉ.',
-          [
-            { text: 'Đăng nhập', onPress: () => router.push('/(auth)/login' as any) },
-            { text: 'Hủy', onPress: () => router.back() }
-          ]
+          () => router.push('/(auth)/login' as any),
+          true
         );
         return;
       }
@@ -175,7 +197,7 @@ function SavedAddresses() {
       const userAddresses = allAddresses.filter(addr => addr.userId === user?.id);
       setAddresses(userAddresses);
     } catch (error: any) {
-      Alert.alert('Lỗi', error.message || 'Không thể tải danh sách địa chỉ');
+      showAlertModal('error', 'Lỗi', error.message || 'Không thể tải danh sách địa chỉ');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -202,38 +224,22 @@ function SavedAddresses() {
 
     // Validate required fields before allowing edit
     if (!address.street || address.street.trim() === '') {
-      Alert.alert(
-        'Lỗi dữ liệu',
-        'Địa chỉ này thiếu thông tin đường. Vui lòng xóa và tạo lại địa chỉ mới.',
-        [{ text: 'OK' }]
-      );
+      showAlertModal('error', 'Lỗi dữ liệu', 'Địa chỉ này thiếu thông tin đường. Vui lòng xóa và tạo lại địa chỉ mới.');
       return;
     }
 
     if (!address.city || address.city.trim() === '') {
-      Alert.alert(
-        'Lỗi dữ liệu',
-        'Địa chỉ này thiếu thông tin thành phố. Vui lòng xóa và tạo lại địa chỉ mới.',
-        [{ text: 'OK' }]
-      );
+      showAlertModal('error', 'Lỗi dữ liệu', 'Địa chỉ này thiếu thông tin thành phố. Vui lòng xóa và tạo lại địa chỉ mới.');
       return;
     }
 
     if (!address.province || address.province.trim() === '') {
-      Alert.alert(
-        'Lỗi dữ liệu',
-        'Địa chỉ này thiếu thông tin tỉnh/quận. Vui lòng xóa và tạo lại địa chỉ mới.',
-        [{ text: 'OK' }]
-      );
+      showAlertModal('error', 'Lỗi dữ liệu', 'Địa chỉ này thiếu thông tin tỉnh/quận. Vui lòng xóa và tạo lại địa chỉ mới.');
       return;
     }
 
     if (!address.postalCode || address.postalCode.trim() === '') {
-      Alert.alert(
-        'Lỗi dữ liệu',
-        'Địa chỉ này thiếu thông tin mã bưu điện. Vui lòng xóa và tạo lại địa chỉ mới.',
-        [{ text: 'OK' }]
-      );
+      showAlertModal('error', 'Lỗi dữ liệu', 'Địa chỉ này thiếu thông tin mã bưu điện. Vui lòng xóa và tạo lại địa chỉ mới.');
       return;
     }
 
@@ -276,16 +282,16 @@ function SavedAddresses() {
       
       if (response.success || response.message?.includes('successfully')) {
         // Success - keep the optimistic update
-        Alert.alert('Thành công', 'Địa chỉ đã được xóa');
+        showAlertModal('success', 'Thành công', 'Địa chỉ đã được xóa');
       } else {
         // API failed but no error thrown - revert optimistic update
         setAddresses(originalAddresses);
-        Alert.alert('Lỗi', response.message || 'Không thể xóa địa chỉ');
+        showAlertModal('error', 'Lỗi', response.message || 'Không thể xóa địa chỉ');
       }
     } catch (error: any) {
       // Network/API error - revert optimistic update
       setAddresses(originalAddresses);
-      Alert.alert('Lỗi', error.message || 'Không thể xóa địa chỉ');
+      showAlertModal('error', 'Lỗi', error.message || 'Không thể xóa địa chỉ');
     } finally {
       // Remove from deleting set
       setDeletingIds(prev => {
@@ -299,6 +305,16 @@ function SavedAddresses() {
   const totalAddresses = useMemo(() => {
     return addresses.length;
   }, [addresses]);
+
+  const handleShowDeleteConfirm = (addressId: string) => {
+    showAlertModal(
+      'confirm',
+      'Xóa địa chỉ',
+      'Bạn có chắc chắn muốn xóa địa chỉ này?',
+      () => handleDeleteAddress(addressId),
+      true
+    );
+  };
 
   return (
     <>
@@ -382,6 +398,7 @@ function SavedAddresses() {
                   longitude={address.longitude}
                   onEdit={handleEditAddress}
                   onDelete={handleDeleteAddress}
+                  onShowDeleteConfirm={handleShowDeleteConfirm}
                   isDeleting={deletingIds.has(address.addressId)}
                   index={index}
                 />
@@ -391,6 +408,20 @@ function SavedAddresses() {
           
           <View style={styles.bottomSpacing} />
         </ScrollView>
+
+        {/* Custom Modal */}
+        <CustomModal
+          visible={showModal}
+          type={modalType}
+          title={modalTitle}
+          message={modalMessage}
+          onClose={() => setShowModal(false)}
+          onConfirm={modalOnConfirm}
+          showCancel={showCancelButton}
+          confirmText={modalType === 'confirm' ? 'Xác nhận' : 'OK'}
+          cancelText="Hủy"
+          autoClose={modalAutoClose}
+        />
       </View>
     </>
   );

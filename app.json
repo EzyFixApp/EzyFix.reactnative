@@ -23,6 +23,13 @@
         {
           "locationAlwaysAndWhenInUsePermission": "This app needs access to location when open and in the background."
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Cho phép EzyFix truy cập thư viện ảnh để chọn ảnh",
+          "cameraPermission": "Cho phép EzyFix truy cập camera để chụp ảnh"
+        }
       ]
     ],
     "experiments": {
@@ -39,13 +46,24 @@
     },
     "assetBundlePatterns": ["**/*"],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Cho phép EzyFix truy cập camera để chụp ảnh",
+        "NSPhotoLibraryUsageDescription": "Cho phép EzyFix truy cập thư viện ảnh để chọn ảnh",
+        "NSPhotoLibraryAddUsageDescription": "Cho phép EzyFix lưu ảnh vào thư viện"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES"
+      ]
     }
   }
 }

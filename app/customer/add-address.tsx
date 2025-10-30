@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
@@ -9,6 +9,7 @@ import { locationService } from '../../lib/api/location';
 import AddressSearchModal from '../../components/AddressSearchModal';
 import type { AddressData, Address } from '../../types/api';
 import withCustomerAuth from '../../lib/auth/withCustomerAuth';
+import CustomModal from '../../components/CustomModal';
 
 interface InputFieldProps {
   label: string;
@@ -107,6 +108,33 @@ function AddAddress() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [showAddressModal, setShowAddressModal] = useState(false);
+  
+  // Custom Modal states
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState<'success' | 'error' | 'warning' | 'info' | 'confirm'>('info');
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalOnConfirm, setModalOnConfirm] = useState<(() => void) | undefined>();
+  const [showCancelButton, setShowCancelButton] = useState(false);
+  const [modalAutoClose, setModalAutoClose] = useState(false);
+  
+  // Helper function to show modal
+  const showAlertModal = (
+    type: 'success' | 'error' | 'warning' | 'info' | 'confirm',
+    title: string,
+    message: string,
+    onConfirm?: () => void,
+    showCancel = false
+  ) => {
+    setModalType(type);
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalOnConfirm(onConfirm ? () => onConfirm : undefined);
+    setShowCancelButton(showCancel);
+    // Auto-close for non-confirm modals
+    setModalAutoClose(type !== 'confirm' && !showCancel);
+    setShowModal(true);
+  };
 
   // Debug: Log params and form data on mount
   useEffect(() => {
@@ -120,19 +148,21 @@ function AddAddress() {
     if (isEditMode) {
       if (!params.street || params.street.trim() === '') {
         console.warn('⚠️ Street is empty in edit mode!');
-        Alert.alert(
+        showAlertModal(
+          'error',
           'Lỗi dữ liệu',
           'Địa chỉ này thiếu thông tin đường. Vui lòng xóa và tạo lại địa chỉ mới.',
-          [{ text: 'OK', onPress: () => router.back() }]
+          () => router.back()
         );
         return;
       }
       if (!params.city || params.city.trim() === '') {
         console.warn('⚠️ City is empty in edit mode!');
-        Alert.alert(
+        showAlertModal(
+          'error',
           'Lỗi dữ liệu',
           'Địa chỉ này thiếu thông tin thành phố. Vui lòng xóa và tạo lại địa chỉ mới.',
-          [{ text: 'OK', onPress: () => router.back() }]
+          () => router.back()
         );
         return;
       }
@@ -194,19 +224,19 @@ function AddAddress() {
 
       // Additional validation to ensure no empty strings are sent
       if (!addressData.street) {
-        Alert.alert('Lỗi', 'Vui lòng nhập địa chỉ đường');
+        showAlertModal('error', 'Lỗi', 'Vui lòng nhập địa chỉ đường');
         return;
       }
       if (!addressData.city) {
-        Alert.alert('Lỗi', 'Vui lòng nhập thành phố');
+        showAlertModal('error', 'Lỗi', 'Vui lòng nhập thành phố');
         return;
       }
       if (!addressData.province) {
-        Alert.alert('Lỗi', 'Vui lòng nhập tỉnh/quận');
+        showAlertModal('error', 'Lỗi', 'Vui lòng nhập tỉnh/quận');
         return;
       }
       if (!addressData.postalCode) {
-        Alert.alert('Lỗi', 'Vui lòng nhập mã bưu điện');
+        showAlertModal('error', 'Lỗi', 'Vui lòng nhập mã bưu điện');
         return;
       }
 
@@ -224,41 +254,33 @@ function AddAddress() {
         response = await addressService.updateAddress(addressId, addressData);
         
         if (response && response.addressId) {
-          Alert.alert(
+          showAlertModal(
+            'success',
             'Thành công',
             'Địa chỉ đã được cập nhật!',
-            [
-              {
-                text: 'OK',
-                onPress: () => router.back()
-              }
-            ]
+            () => router.back()
           );
         } else {
-          Alert.alert('Lỗi', 'Có lỗi xảy ra. Vui lòng thử lại.');
+          showAlertModal('error', 'Lỗi', 'Có lỗi xảy ra. Vui lòng thử lại.');
         }
       } else {
         // Create new address
         response = await addressService.createAddress(addressData);
 
         if (response && response.addressId) {
-          Alert.alert(
+          showAlertModal(
+            'success',
             'Thành công',
             'Địa chỉ đã được thêm mới!',
-            [
-              {
-                text: 'OK',
-                onPress: () => router.back()
-              }
-            ]
+            () => router.back()
           );
         } else {
-          Alert.alert('Lỗi', 'Có lỗi xảy ra. Vui lòng thử lại.');
+          showAlertModal('error', 'Lỗi', 'Có lỗi xảy ra. Vui lòng thử lại.');
         }
       }
     } catch (error: any) {
       console.error('❌ Save address error:', error);
-      Alert.alert('Lỗi', error.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
+      showAlertModal('error', 'Lỗi', error.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -387,7 +409,7 @@ function AddAddress() {
                   // Request location permission
                   const { status } = await Location.requestForegroundPermissionsAsync();
                   if (status !== 'granted') {
-                    Alert.alert('Lỗi', 'Vui lòng cấp quyền truy cập vị trí để sử dụng tính năng này');
+                    showAlertModal('error', 'Lỗi', 'Vui lòng cấp quyền truy cập vị trí để sử dụng tính năng này');
                     setLoading(false);
                     return;
                   }
@@ -414,17 +436,17 @@ function AddAddress() {
                       updateFormData('province', parsed.province);
                       updateFormData('postalCode', parsed.postalCode);
                       
-                      Alert.alert('Thành công', 'Đã lấy vị trí và địa chỉ hiện tại!');
+                      showAlertModal('success', 'Thành công', 'Đã lấy vị trí và địa chỉ hiện tại!');
                     } else {
-                      Alert.alert('Thành công', 'Đã lấy tọa độ. Vui lòng điền thông tin địa chỉ thủ công.');
+                      showAlertModal('success', 'Thành công', 'Đã lấy tọa độ. Vui lòng điền thông tin địa chỉ thủ công.');
                     }
                   } catch (geocodeError) {
                     console.error('Reverse geocode error:', geocodeError);
-                    Alert.alert('Cảnh báo', 'Đã lấy tọa độ nhưng không thể tự động điền địa chỉ. Vui lòng điền thủ công.');
+                    showAlertModal('warning', 'Cảnh báo', 'Đã lấy tọa độ nhưng không thể tự động điền địa chỉ. Vui lòng điền thủ công.');
                   }
                 } catch (error) {
                   console.error('Get location error:', error);
-                  Alert.alert('Lỗi', 'Không thể lấy vị trí hiện tại');
+                  showAlertModal('error', 'Lỗi', 'Không thể lấy vị trí hiện tại');
                 } finally {
                   setLoading(false);
                 }
@@ -495,6 +517,20 @@ function AddAddress() {
           }
         }}
         initialValue={formData.street}
+      />
+
+      {/* Custom Modal */}
+      <CustomModal
+        visible={showModal}
+        type={modalType}
+        title={modalTitle}
+        message={modalMessage}
+        onClose={() => setShowModal(false)}
+        onConfirm={modalOnConfirm}
+        showCancel={showCancelButton}
+        confirmText="OK"
+        cancelText="Hủy"
+        autoClose={modalAutoClose}
       />
     </>
   );

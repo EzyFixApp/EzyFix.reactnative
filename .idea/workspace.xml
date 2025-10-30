@@ -5,18 +5,33 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="868f0766-2637-44bf-ae60-358902ea7db5" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/booking-detail.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/booking-detail.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/booking-history.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/booking-history.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.json" beforeDir="false" afterPath="$PROJECT_DIR$/app.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/add-address.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/add-address.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/book-service.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/book-service.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/customer/order-tracking.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/order-tracking.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/profile.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/profile.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/saved-addresses.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/saved-addresses.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/select-schedule.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/select-schedule.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/technician/dashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/dashboard.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/technician/quote-selection.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/quote-selection.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/technician/technician-order-tracking.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/technician-order-tracking.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/ActiveOrdersSection.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/ActiveOrdersSection.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/AuthErrorModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/AuthErrorModal.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/BookingHistoryContent.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/BookingHistoryContent.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/TechnicianActivityContent.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/TechnicianActivityContent.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api/appointments.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/appointments.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/QuoteNotificationModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/QuoteNotificationModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hooks/useCustomerAuth.ts" beforeDir="false" afterPath="$PROJECT_DIR$/hooks/useCustomerAuth.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hooks/useTechnicianAuth.ts" beforeDir="false" afterPath="$PROJECT_DIR$/hooks/useTechnicianAuth.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/api/auth.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/auth.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/lib/api/config.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/config.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api/serviceDeliveryOffers.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/serviceDeliveryOffers.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/api/tokenManager.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/tokenManager.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/auth/tokenUtils.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/auth/tokenUtils.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/auth/withCustomerAuth.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/lib/auth/withCustomerAuth.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/auth/withTechnicianAuth.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/lib/auth/withTechnicianAuth.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

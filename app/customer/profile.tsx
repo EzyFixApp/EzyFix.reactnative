@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../store/authStore';
 import { serviceRequestService } from '../../lib/api/serviceRequests';
-// import withCustomerAuth from '../../lib/auth/withCustomerAuth'; // REMOVED - causes hooks mismatch
+import withCustomerAuth from '../../lib/auth/withCustomerAuth';
+import CustomModal from '../../components/CustomModal';
 
 interface ProfileItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -71,6 +72,7 @@ function CustomerProfile() {
   const { user, isAuthenticated, logout } = useAuth();
   const [orderCount, setOrderCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   // Load user service requests count
   const loadOrderCount = async () => {
@@ -128,34 +130,22 @@ function CustomerProfile() {
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Đăng xuất',
-      'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản?',
-      [
-        {
-          text: 'Hủy',
-          style: 'cancel'
-        },
-        {
-          text: 'Đăng xuất',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Properly logout: Clear tokens, call API, clear storage
-              await logout();
-              
-              // Navigate to home screen
-              router.replace('/');
-            } catch (error) {
-              console.error('Logout error:', error);
-              // Still navigate even if logout fails
-              router.replace('/');
-            }
-          }
-        }
-      ],
-      { cancelable: true }
-    );
+    setShowLogoutModal(true);
+  };
+
+  const handleConfirmLogout = async () => {
+    setShowLogoutModal(false);
+    try {
+      // Properly logout: Clear tokens, call API, clear storage
+      await logout();
+      
+      // Navigate to home screen
+      router.replace('/');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still navigate even if logout fails
+      router.replace('/');
+    }
   };
 
   const handleItemPress = (item: string) => {
@@ -352,6 +342,19 @@ function CustomerProfile() {
         {/* Bottom Spacing */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      {/* Logout Confirmation Modal */}
+      <CustomModal
+        visible={showLogoutModal}
+        type="confirm"
+        title="Đăng xuất"
+        message="Bạn có chắc chắn muốn đăng xuất khỏi tài khoản?"
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={handleConfirmLogout}
+        confirmText="Đăng xuất"
+        cancelText="Hủy"
+        showCancel={true}
+      />
     </View>
     </>
   );
@@ -578,4 +581,7 @@ const styles = StyleSheet.create({
 
 // Export directly without HOC - HOC causes hooks mismatch during unmount
 // Auth check is handled internally via useEffect
-export default CustomerProfile;
+export default withCustomerAuth(CustomerProfile, {
+  redirectOnError: true,
+  autoCloseSeconds: 3,
+});

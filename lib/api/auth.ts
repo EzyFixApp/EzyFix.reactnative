@@ -196,13 +196,49 @@ export class AuthService {
 
   /**
    * Store authentication data
+   * CRITICAL: Extract role from JWT token, not from parameter
    */
   public async storeAuthData(loginResponse: LoginResponse, userType: UserType): Promise<void> {
     try {
+      // IMPORTANT: Clear any old tokens before storing new ones
+      // This prevents old refresh tokens from interfering with new login
+      await tokenManager.clearTokens();
+      
       const { accessToken, refreshToken } = loginResponse;
       
       // Decode JWT to get user info and verification status
       const jwtPayload = this.decodeJWT(accessToken);
+      
+      if (!jwtPayload) {
+        throw new Error('Invalid JWT token');
+      }
+      
+      // CRITICAL: Extract role from JWT token
+      // JWT payload should contain role field: "Customer" or "Technician"
+      const jwtRole = jwtPayload.role || jwtPayload.Role || jwtPayload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'];
+      
+      // Normalize role from JWT to UserType
+      let roleFromJWT: UserType;
+      if (typeof jwtRole === 'string') {
+        const normalizedRole = jwtRole.toLowerCase();
+        if (normalizedRole === 'customer') {
+          roleFromJWT = 'customer';
+        } else if (normalizedRole === 'technician') {
+          roleFromJWT = 'technician';
+        } else {
+          // Fallback to provided userType if JWT role is invalid
+          roleFromJWT = userType;
+          if (__DEV__) {
+            console.warn(`[AuthService] Invalid role in JWT: "${jwtRole}". Using provided userType: "${userType}"`);
+          }
+        }
+      } else {
+        // Fallback to provided userType if role not found in JWT
+        roleFromJWT = userType;
+        if (__DEV__) {
+          console.warn('[AuthService] Role not found in JWT. Using provided userType:', userType);
+        }
+      }
       
       let isVerify = false;
       if (jwtPayload) {
@@ -213,14 +249,14 @@ export class AuthService {
         }
       }
       
-      // Create user data object
+      // Create user data object with role from JWT
       const userData: UserData = {
         id: loginResponse.id || jwtPayload?.id || '',
         email: loginResponse.email || jwtPayload?.email || '',
         fullName: loginResponse.fullName || jwtPayload?.fullName || '',
         avatarLink: loginResponse.avatarLink || jwtPayload?.avatarLink || null,
         isVerify: isVerify,
-        userType: userType,
+        userType: roleFromJWT, // Use role from JWT
         phoneNumber: loginResponse.phoneNumber || jwtPayload?.phoneNumber || '',
         // Split fullName thành firstName và lastName
         firstName: this.extractFirstName(loginResponse.fullName || jwtPayload?.fullName || ''),
@@ -232,7 +268,7 @@ export class AuthService {
         AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken),
         AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken),
         AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData)),
-        AsyncStorage.setItem(STORAGE_KEYS.USER_TYPE, userType)
+        AsyncStorage.setItem(STORAGE_KEYS.USER_TYPE, roleFromJWT) // Use role from JWT
       ]);
     } catch (error) {
       throw new Error('Failed to store authentication data');

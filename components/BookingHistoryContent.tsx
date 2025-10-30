@@ -62,15 +62,45 @@ interface BookingItem {
     estimatedCost?: number;
     finalCost?: number;
     notes?: string;
+    technician?: {
+      technicianId: string;
+      technicianName: string;
+      technicianAvatar?: string;
+      technicianRating?: number;
+    };
   };
+  // Store actual API status for accurate filtering
+  actualServiceRequestStatus?: string; // ServiceRequest status from API
+  actualAppointmentStatus?: string; // Appointment status from API
+  // Payment information (for REPAIRED status)
+  appointmentId?: string;
+  finalPrice?: number;
 }
 
 type TabType = 'active' | 'history';
 
-// Check if order is active (not completed or cancelled)
-// payment status (REPAIRED) is still active - customer needs to see it to pay
-const isActiveOrder = (status: BookingItem['status']): boolean => {
-  return status !== 'completed' && status !== 'cancelled';
+// Check if order is active based on ACTUAL API statuses
+// Only move to history when:
+// - ServiceRequest status = "Completed" 
+// - OR Appointment status = "COMPLETED", "CANCELLED", "DISPUTE"
+const isActiveOrder = (booking: BookingItem): boolean => {
+  const serviceRequestStatus = booking.actualServiceRequestStatus?.toUpperCase() || '';
+  const appointmentStatus = booking.actualAppointmentStatus?.toUpperCase() || '';
+  
+  // Check ServiceRequest status first
+  if (serviceRequestStatus === 'COMPLETED' || serviceRequestStatus === 'CANCELLED') {
+    return false; // Move to history
+  }
+  
+  // Check Appointment status
+  if (appointmentStatus === 'COMPLETED' || 
+      appointmentStatus === 'CANCELLED' || 
+      appointmentStatus === 'DISPUTE') {
+    return false; // Move to history
+  }
+  
+  // All other statuses (including REPAIRED/payment) are active
+  return true;
 };
 
 interface BookingHistoryContentProps {
@@ -94,6 +124,9 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
     offerID: string;
     serviceName: string;
     technicianName: string;
+    technicianId?: string;
+    technicianAvatar?: string;
+    technicianRating?: number;
     estimatedCost?: number;
     finalCost?: number;
     notes?: string;
@@ -125,6 +158,7 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
       case 'price_review':
         return 'price-review';
       case 'repaired':
+        return 'payment'; // REPAIRED = Chờ thanh toán
       case 'completed':
         return 'completed';
       case 'cancelled':
@@ -136,12 +170,15 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
   };
 
   // Load bookings from API
-  const loadBookings = async (showRefresh = false) => {
+  const loadBookings = async (showRefresh = false, silent = false) => {
     try {
-      if (showRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
+      // Only show loading indicators if not silent refresh
+      if (!silent) {
+        if (showRefresh) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
       }
       
       // Get service requests
@@ -174,6 +211,8 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
           let issueMedia: string[] = [];
           let initialMedia: string[] = [];
           let finalMedia: string[] = [];
+          let appointmentId: string | undefined = undefined;
+          let finalPrice: number | undefined = undefined;
           
           try {
             // Get all offers for this request
@@ -207,10 +246,14 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
                 if (appointments.length > 0) {
                   const appointment = appointments[appointments.length - 1];
                   actualStatus = appointment.status; // Override with appointment status (includes PRICE_REVIEW)
+                  appointmentId = appointment.id; // Store appointment ID for payment navigation
+                  // Store price from offer for payment (finalCost or estimatedCost)
+                  finalPrice = offer.finalCost || offer.estimatedCost;
                   
                   if (__DEV__) console.log(`✅ [BookingHistory] Appointment status for ${request.requestID}:`, {
                     appointmentId: appointment.id,
-                    status: actualStatus
+                    status: actualStatus,
+                    finalPrice: finalPrice
                   });
                   
                   // Fetch media for this appointment
@@ -285,19 +328,41 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
               if (pendingOffers.length > 0) {
                 // Take the first pending offer (most recent)
                 const offer = pendingOffers[0];
-                pendingQuote = {
-                  offerID: offer.offerId, // Backend uses lowercase 'offerId'
-                  estimatedCost: offer.estimatedCost,
-                  finalCost: offer.finalCost,
-                  notes: offer.notes,
-                };
                 
-                if (__DEV__) {
-                  console.log(`💰 [BookingHistory] Found quote for ${request.requestID}:`, {
+                // Fetch full offer details to get technician info
+                try {
+                  const fullOfferDetails = await serviceDeliveryOffersService.getOfferById(offer.offerId);
+                  
+                  pendingQuote = {
+                    offerID: offer.offerId, // Backend uses lowercase 'offerId'
+                    estimatedCost: offer.estimatedCost,
+                    finalCost: offer.finalCost,
+                    notes: offer.notes,
+                    technician: fullOfferDetails.technician ? {
+                      technicianId: fullOfferDetails.technician.technicianId,
+                      technicianName: fullOfferDetails.technician.technicianName || 'Thợ',
+                      technicianAvatar: fullOfferDetails.technician.technicianAvatar,
+                      technicianRating: fullOfferDetails.technician.technicianRating,
+                    } : undefined,
+                  };
+                  
+                  if (__DEV__) {
+                    console.log(`💰 [BookingHistory] Found quote for ${request.requestID}:`, {
+                      offerID: offer.offerId,
+                      estimatedCost: offer.estimatedCost,
+                      finalCost: offer.finalCost,
+                      technician: fullOfferDetails.technician?.technicianName,
+                    });
+                  }
+                } catch (error) {
+                  // Fallback without technician info
+                  if (__DEV__) console.warn('⚠️ Could not fetch full offer details:', error);
+                  pendingQuote = {
                     offerID: offer.offerId,
                     estimatedCost: offer.estimatedCost,
-                    finalCost: offer.finalCost
-                  });
+                    finalCost: offer.finalCost,
+                    notes: offer.notes,
+                  };
                 }
 
                 // Send notification if this is a NEW quote (not checked before)
@@ -323,10 +388,22 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
             if (__DEV__) console.warn(`[BookingHistory] Could not fetch quotes for ${request.requestID}:`, error);
           }
 
-          const mappedStatus = mapApiStatus(actualStatus); // Use actualStatus (from appointment if available)
+          // IMPORTANT: ServiceRequest status takes priority over Appointment status
+          // If ServiceRequest is COMPLETED/CANCELLED, use that regardless of Appointment status
+          let finalStatus = actualStatus;
+          const serviceRequestStatus = request.status.toUpperCase();
+          
+          if (serviceRequestStatus === 'COMPLETED' || serviceRequestStatus === 'CANCELLED') {
+            finalStatus = request.status; // Use ServiceRequest status (higher priority)
+            if (__DEV__) {
+              console.log(`⚠️ [BookingHistory] ServiceRequest ${request.requestID} is ${serviceRequestStatus}, overriding Appointment status`);
+            }
+          }
+
+          const mappedStatus = mapApiStatus(finalStatus);
           
           if (__DEV__) {
-            console.log(`📦 [BookingHistory] Booking ${request.requestID}: ServiceRequest Status="${request.status}", Actual Status="${actualStatus}" → UI Status="${mappedStatus}", Has Quote: ${!!pendingQuote}, Quote Price: ${quotePrice || 'N/A'}`);
+            console.log(`📦 [BookingHistory] Booking ${request.requestID}: ServiceRequest Status="${request.status}", Appointment Status="${actualStatus}", Final Status="${finalStatus}" → UI Status="${mappedStatus}", Has Quote: ${!!pendingQuote}, Quote Price: ${quotePrice || 'N/A'}`);
           }
           
           return {
@@ -347,6 +424,12 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
             initialMedia: initialMedia,
             finalMedia: finalMedia,
             pendingQuote,
+            // Store actual API statuses for accurate filtering
+            actualServiceRequestStatus: request.status,
+            actualAppointmentStatus: finalStatus, // Use final status (ServiceRequest takes priority)
+            // Payment info for REPAIRED status
+            appointmentId: appointmentId,
+            finalPrice: finalPrice,
           };
         })
       );
@@ -382,11 +465,11 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
   useFocusEffect(
     React.useCallback(() => {
       if (isAuthenticated) {
-        loadBookings();
+        loadBookings(); // Initial load with loading indicator
         
-        // Set up auto-refresh interval for real-time updates
+        // Set up auto-refresh interval for real-time updates (silent background refresh)
         const interval = setInterval(() => {
-          loadBookings(true); // Silent refresh
+          loadBookings(false, true); // Silent refresh: no loading indicators
         }, REFRESH_INTERVAL);
 
         // Cleanup interval when unfocused
@@ -399,20 +482,20 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
     }, [isAuthenticated])
   );
 
-  // Handle refresh
+  // Handle refresh (user initiated pull-to-refresh)
   const handleRefresh = () => {
     if (onRefresh) {
       onRefresh();
     }
-    loadBookings(true);
+    loadBookings(true, false); // Show refresh indicator when user manually pulls
   };
 
   // Filter bookings based on active tab
   const filteredBookings = bookings.filter((booking) => {
     if (activeTab === 'active') {
-      return isActiveOrder(booking.status);
+      return isActiveOrder(booking);
     } else {
-      return !isActiveOrder(booking.status);
+      return !isActiveOrder(booking);
     }
   });
 
@@ -488,7 +571,7 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
   // Render booking card
   const renderBookingCard = (booking: BookingItem) => {
     const statusInfo = getStatusInfo(booking.status);
-    const isActive = isActiveOrder(booking.status);
+    const isActive = isActiveOrder(booking);
     
     return (
       <TouchableOpacity
@@ -603,7 +686,10 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
                 setSelectedQuote({
                   offerID: booking.pendingQuote!.offerID,
                   serviceName: booking.serviceName,
-                  technicianName: booking.technicianName || 'Thợ',
+                  technicianName: booking.pendingQuote!.technician?.technicianName || booking.technicianName || 'Thợ',
+                  technicianId: booking.pendingQuote!.technician?.technicianId,
+                  technicianAvatar: booking.pendingQuote!.technician?.technicianAvatar,
+                  technicianRating: booking.pendingQuote!.technician?.technicianRating,
                   estimatedCost: booking.pendingQuote!.estimatedCost,
                   finalCost: booking.pendingQuote!.finalCost,
                   notes: booking.pendingQuote!.notes,
@@ -626,7 +712,37 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
                 </View>
               </LinearGradient>
             </TouchableOpacity>
+          ) : booking.status === 'payment' && booking.appointmentId && booking.finalPrice ? (
+            // Show "Thanh toán" button for REPAIRED status
+            <TouchableOpacity
+              style={styles.trackButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                router.push({
+                  pathname: './payment-summary',
+                  params: {
+                    appointmentId: booking.appointmentId!,
+                    serviceName: booking.serviceName,
+                    technicianName: booking.technicianName || 'Thợ sửa chữa',
+                    address: booking.address,
+                    finalPrice: booking.finalPrice!.toString(),
+                  },
+                } as any);
+              }}
+              activeOpacity={0.7}
+            >
+              <LinearGradient
+                colors={['#F59E0B', '#D97706']}
+                style={styles.trackGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Ionicons name="card" size={16} color="#FFFFFF" />
+                <Text style={styles.trackButtonText}>Thanh toán</Text>
+              </LinearGradient>
+            </TouchableOpacity>
           ) : isActive ? (
+            // Show "Theo dõi" button for other active statuses
             <TouchableOpacity
               style={styles.trackButton}
               onPress={(e) => {

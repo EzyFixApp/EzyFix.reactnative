@@ -5,11 +5,11 @@ import {
   StyleSheet,
   StatusBar,
   TouchableOpacity,
-  Alert,
   Platform,
   TextInput,
   ScrollView,
 } from 'react-native';
+import CustomModal from '../../components/CustomModal';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
@@ -60,6 +60,33 @@ function QuoteSelection() {
   const scrollViewRef = useRef<ScrollView>(null);
   const summaryRef = useRef<View>(null);
 
+  // Custom modal states
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState<'success' | 'error' | 'warning' | 'info' | 'confirm'>('info');
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalOnConfirm, setModalOnConfirm] = useState<(() => void) | undefined>();
+  const [showCancelButton, setShowCancelButton] = useState(false);
+  const [modalAutoClose, setModalAutoClose] = useState(false);
+  
+  // Helper function to show modal
+  const showAlertModal = (
+    type: 'success' | 'error' | 'warning' | 'info' | 'confirm',
+    title: string,
+    message: string,
+    onConfirm?: () => void,
+    showCancel = false
+  ) => {
+    setModalType(type);
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalOnConfirm(onConfirm ? () => onConfirm : undefined);
+    setShowCancelButton(showCancel);
+    // Auto-close for non-confirm modals
+    setModalAutoClose(type !== 'confirm' && !showCancel);
+    setShowModal(true);
+  };
+
   useEffect(() => {
     if (orderId) {
       // Get order from cache (set from orders.tsx)
@@ -106,18 +133,19 @@ function QuoteSelection() {
 
   const handleSendQuote = async () => {
     if (!selectedType) {
-      Alert.alert('Thông báo', 'Vui lòng chọn loại báo giá');
+      showAlertModal('info', 'Thông báo', 'Vui lòng chọn loại báo giá');
       return;
     }
 
     if (!quoteAmount.trim()) {
-      Alert.alert('Thông báo', 'Vui lòng nhập số tiền báo giá');
+      showAlertModal('info', 'Thông báo', 'Vui lòng nhập số tiền báo giá');
       return;
     }
 
     // Validate notes for estimated quotes
     if (selectedType === 'estimated' && !notes.trim()) {
-      Alert.alert(
+      showAlertModal(
+        'warning',
         'Thông báo', 
         'Báo giá dự kiến cần có ghi chú giải thích. Vui lòng thêm ghi chú về lý do giá có thể thay đổi.'
       );
@@ -125,7 +153,7 @@ function QuoteSelection() {
     }
 
     if (!user?.id) {
-      Alert.alert('Lỗi', 'Không tìm thấy thông tin thợ. Vui lòng đăng nhập lại.');
+      showAlertModal('error', 'Lỗi', 'Không tìm thấy thông tin thợ. Vui lòng đăng nhập lại.');
       return;
     }
 
@@ -134,15 +162,11 @@ function QuoteSelection() {
       ? 'Báo giá dự kiến có thể thay đổi sau khi kiểm tra thực tế. Bạn có chắc chắn gửi báo giá này?'
       : 'Báo giá chốt sẽ không thay đổi và khách hàng có thể chấp nhận ngay. Bạn có chắc chắn gửi báo giá này?';
 
-    Alert.alert(
+    showAlertModal(
+      'confirm',
       `Xác nhận báo giá ${quoteTypeText}`,
-      `${confirmMessage}\n\n💰 Số tiền: ${quoteAmount} VNĐ${selectedType === 'estimated' ? `\n📝 Ghi chú: ${notes}` : ''}`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xác nhận gửi',
-          style: 'default',
-          onPress: async () => {
+      `${confirmMessage}\n\nSố tiền: ${quoteAmount} VNĐ${selectedType === 'estimated' ? `\nGhi chú: ${notes}` : ''}`,
+      async () => {
             setLoading(true);
             try {
               // Remove ALL thousand separators (both comma and dot) then parse to number
@@ -152,7 +176,7 @@ function QuoteSelection() {
               // Validate parsed amount
               if (isNaN(amount) || amount <= 0) {
                 setLoading(false);
-                Alert.alert('Lỗi', 'Số tiền không hợp lệ. Vui lòng nhập lại.');
+                showAlertModal('error', 'Lỗi', 'Số tiền không hợp lệ. Vui lòng nhập lại.');
                 return;
               }
 
@@ -182,45 +206,29 @@ function QuoteSelection() {
               setLoading(false);
 
               // Show success alert and navigate to dashboard activity tab
-              Alert.alert(
-                '✅ Gửi báo giá thành công!',
+              showAlertModal(
+                'success',
+                'Gửi báo giá thành công!',
                 `Đã gửi báo giá ${quoteTypeText} với số tiền ${quoteAmount} VNĐ cho khách hàng.\n\nKhách hàng sẽ nhận được thông báo và có thể xem chi tiết báo giá.`,
-                [
-                  {
-                    text: 'Xem đơn hàng',
-                    onPress: () => {
-                      // Navigate to dashboard activity tab
-                      router.push({
-                        pathname: '/technician/dashboard',
-                        params: { tab: 'activity' }
-                      });
-                    }
-                  },
-                  {
-                    text: 'Về trang chủ',
-                    onPress: () => {
-                      // Navigate to dashboard home tab
-                      router.push({
-                        pathname: '/technician/dashboard',
-                        params: { tab: 'dashboard' }
-                      });
-                    },
-                    style: 'cancel'
-                  }
-                ],
-                { cancelable: false }
+                () => {
+                  // Navigate to dashboard activity tab
+                  router.push({
+                    pathname: '/technician/dashboard',
+                    params: { tab: 'activity' }
+                  });
+                },
+                false
               );
             } catch (error: any) {
               setLoading(false);
-              Alert.alert(
+              showAlertModal(
+                'error',
                 'Lỗi gửi báo giá',
-                error.message || 'Không thể gửi báo giá. Vui lòng thử lại.',
-                [{ text: 'Đóng' }]
+                error.message || 'Không thể gửi báo giá. Vui lòng thử lại.'
               );
             }
-          }
-        }
-      ]
+          },
+      true
     );
   };
 
@@ -515,20 +523,17 @@ function QuoteSelection() {
                   <TouchableOpacity
                     style={styles.editTypeButton}
                     onPress={() => {
-                      Alert.alert(
+                      showAlertModal(
+                        'confirm',
                         'Thay đổi loại báo giá',
-                        'Chọn loại báo giá khác (số tiền sẽ được giữ nguyên)',
-                        [
-                          { text: 'Hủy', style: 'cancel' },
-                          {
-                            text: 'Báo giá dự kiến',
-                            onPress: () => setSelectedType('estimated')
-                          },
-                          {
-                            text: 'Báo giá chốt',
-                            onPress: () => setSelectedType('final')
-                          }
-                        ]
+                        `Bạn muốn chuyển sang loại nào?\n\nHiện tại: ${selectedType === 'estimated' ? 'Báo giá dự kiến' : 'Báo giá chốt'}`,
+                        () => {
+                          // Toggle type
+                          const newType = selectedType === 'estimated' ? 'final' : 'estimated';
+                          setSelectedType(newType);
+                          showAlertModal('success', 'Đã thay đổi', `Đã chuyển sang ${newType === 'estimated' ? 'Báo giá dự kiến' : 'Báo giá chốt'}`);
+                        },
+                        true
                       );
                     }}
                   >
@@ -539,20 +544,16 @@ function QuoteSelection() {
                   <TouchableOpacity
                     style={styles.resetButton}
                     onPress={() => {
-                      Alert.alert(
+                      showAlertModal(
+                        'confirm',
                         'Xác nhận',
                         'Bạn có muốn xóa tất cả và bắt đầu lại?',
-                        [
-                          { text: 'Hủy', style: 'cancel' },
-                          {
-                            text: 'Bắt đầu lại',
-                            style: 'destructive',
-                            onPress: () => {
-                              setSelectedType(null);
-                              setQuoteAmount('');
-                            }
-                          }
-                        ]
+                        () => {
+                          setSelectedType(null);
+                          setQuoteAmount('');
+                          setNotes('');
+                        },
+                        true
                       );
                     }}
                   >
@@ -599,6 +600,20 @@ function QuoteSelection() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Custom Modal */}
+      <CustomModal
+        visible={showModal}
+        type={modalType}
+        title={modalTitle}
+        message={modalMessage}
+        onClose={() => setShowModal(false)}
+        onConfirm={modalOnConfirm}
+        showCancel={showCancelButton}
+        confirmText="OK"
+        cancelText="Hủy"
+        autoClose={modalAutoClose}
+      />
     </View>
   );
 }

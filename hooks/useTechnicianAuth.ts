@@ -6,7 +6,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth, useAuthActions } from '../store/authStore';
-import { isTokenExpired } from '../lib/auth/tokenUtils';
+import { isTokenExpired, getRoleFromToken, validateTokenRole } from '../lib/auth/tokenUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../lib/api/config';
 import type { AuthErrorType } from '../components/AuthErrorModal';
@@ -63,31 +63,135 @@ export function useTechnicianAuth(): UseTechnicianAuthReturn {
       if (!isAuthenticated || !user) {
         setError('UNAUTHORIZED');
         setIsAuthorized(false);
+        
+        // Cache error result
+        cachedAuthResult = {
+          isAuthorized: false,
+          error: 'UNAUTHORIZED',
+          timestamp: Date.now(),
+        };
         return;
       }
 
-      // Check 2: User must be technician
-      if (user.userType !== 'technician') {
-        setError('ROLE_MISMATCH');
-        setIsAuthorized(false);
-        return;
-      }
-
-      // Check 3: Token must be valid
-      const token = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      // Check 2: Token must be valid
+      let token = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
       if (!token) {
         setError('UNAUTHORIZED');
         setIsAuthorized(false);
+        
+        // Cache error result
+        cachedAuthResult = {
+          isAuthorized: false,
+          error: 'UNAUTHORIZED',
+          timestamp: Date.now(),
+        };
         return;
       }
 
-      // Check 4: Token must not be expired
+      // Check 3: Token must not be expired - Try to refresh if expired
       if (isTokenExpired(token, 5)) {
-        setError('TOKEN_EXPIRED');
+        if (__DEV__) {
+          console.log('[useTechnicianAuth] Token expired - attempting refresh...');
+        }
+        
+        try {
+          // Try to get a valid token via token manager (auto-refresh)
+          const { tokenManager } = await import('../lib/api/tokenManager');
+          const newToken = await tokenManager.getValidAccessToken();
+          
+          if (!newToken) {
+            // Refresh failed - logout
+            setError('TOKEN_EXPIRED');
+            setIsAuthorized(false);
+            await logout();
+            
+            cachedAuthResult = {
+              isAuthorized: false,
+              error: 'TOKEN_EXPIRED',
+              timestamp: Date.now(),
+            };
+            return;
+          }
+          
+          // Refresh successful - continue with new token
+          if (__DEV__) {
+            console.log('[useTechnicianAuth] Token refresh successful, continuing...');
+          }
+          // Update token variable to use the new one
+          token = newToken;
+        } catch (refreshError) {
+          // Refresh failed - logout
+          if (__DEV__) {
+            console.error('[useTechnicianAuth] Token refresh failed:', refreshError);
+          }
+          setError('TOKEN_EXPIRED');
+          setIsAuthorized(false);
+          await logout();
+          
+          cachedAuthResult = {
+            isAuthorized: false,
+            error: 'TOKEN_EXPIRED',
+            timestamp: Date.now(),
+          };
+          return;
+        }
+      }
+
+      // Check 4: CRITICAL - Validate role from JWT token (not from store)
+      // This prevents role manipulation via AsyncStorage
+      const roleFromToken = getRoleFromToken(token);
+      
+      if (!roleFromToken) {
+        setError('UNAUTHORIZED');
         setIsAuthorized(false);
         
-        // Auto-logout expired session
+        // Auto-logout on invalid token
         await logout();
+        
+        // Cache error result
+        cachedAuthResult = {
+          isAuthorized: false,
+          error: 'UNAUTHORIZED',
+          timestamp: Date.now(),
+        };
+        return;
+      }
+
+      // Check if role from JWT matches technician role
+      if (roleFromToken !== 'technician') {
+        setError('ROLE_MISMATCH');
+        setIsAuthorized(false);
+        
+        // Cache error result WITHOUT auto-logout
+        // Let the component handle the error (e.g., show "not authorized" message)
+        // DON'T auto-logout because user might be on homepage with customer role
+        cachedAuthResult = {
+          isAuthorized: false,
+          error: 'ROLE_MISMATCH',
+          timestamp: Date.now(),
+        };
+        
+        if (__DEV__) {
+          console.warn(`[useTechnicianAuth] Role mismatch: Expected 'technician', got '${roleFromToken}'`);
+        }
+        return;
+      }
+
+      // Additional check: User data should also match (defense in depth)
+      if (user.userType !== 'technician') {
+        setError('ROLE_MISMATCH');
+        setIsAuthorized(false);
+        
+        // Cache error result WITHOUT auto-logout
+        cachedAuthResult = {
+          isAuthorized: false,
+          error: 'ROLE_MISMATCH',
+          timestamp: Date.now(),
+        };
+        
+        if (__DEV__) {
+          console.warn(`[useTechnicianAuth] User data role mismatch: Expected 'technician', got '${user.userType}'`);
+        }
         return;
       }
 

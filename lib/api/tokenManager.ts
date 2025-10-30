@@ -106,8 +106,16 @@ class TokenManager {
         await this.loadAccessToken();
       }
 
+      // If still no token after loading, user is logged out - don't attempt refresh
+      if (!this.accessTokenInfo) {
+        if (__DEV__) {
+          logger.info('⚠️ [TokenManager] No token available - user not authenticated');
+        }
+        return null;
+      }
+
       // Check if token is still valid
-      if (this.accessTokenInfo && !this.isAccessTokenExpired()) {
+      if (!this.isAccessTokenExpired()) {
         if (__DEV__) {
           const timeUntilExpiry = this.accessTokenInfo.expiresAt - Math.floor(Date.now() / 1000);
           console.log(`✅ Token is valid (expires in ${timeUntilExpiry}s)`);
@@ -213,20 +221,33 @@ class TokenManager {
    * Clear tokens from memory and storage
    */
   public async clearTokens(): Promise<void> {
+    // CRITICAL: Cancel any ongoing refresh to prevent orphaned API calls
+    if (this.isRefreshing && this.refreshPromise) {
+      if (__DEV__) {
+        logger.info('⚠️ [TokenManager] Cancelling ongoing token refresh...');
+      }
+    }
+    
+    // Clear all in-memory state first
     this.accessTokenInfo = null;
     this.isRefreshing = false;
     this.refreshPromise = null;
     
     try {
+      // Clear AsyncStorage with all possible keys to ensure clean state
       await AsyncStorage.multiRemove([
         STORAGE_KEYS.ACCESS_TOKEN,
         STORAGE_KEYS.REFRESH_TOKEN,
         STORAGE_KEYS.USER_DATA,
         STORAGE_KEYS.USER_TYPE,
       ]);
-      logger.info('✅ Tokens cleared from storage');
+      
+      if (__DEV__) {
+        logger.info('✅ [TokenManager] All tokens and user data cleared from storage');
+      }
     } catch (error) {
-      logger.error('❌ Error clearing tokens:', error);
+      logger.error('❌ [TokenManager] Error clearing tokens:', error);
+      // Even if storage clear fails, in-memory state is already cleared
     }
   }
 

@@ -97,3 +97,51 @@ export const isTokenValid = (token: string | null): boolean => {
   // Check if expired
   return !isTokenExpired(token, 0); // No buffer for this check
 };
+
+/**
+ * Extract role from JWT token
+ * Supports multiple role claim formats:
+ * - role
+ * - Role
+ * - http://schemas.microsoft.com/ws/2008/06/identity/claims/role
+ * 
+ * @returns 'customer' | 'technician' | null
+ */
+export const getRoleFromToken = (token: string | null): 'customer' | 'technician' | null => {
+  if (!token) return null;
+  
+  const decoded = parseJwt(token);
+  if (!decoded) return null;
+  
+  // Try different role claim formats
+  const roleValue = 
+    decoded.role || 
+    decoded.Role || 
+    decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'];
+  
+  if (!roleValue) return null;
+  
+  // Normalize role string
+  const normalizedRole = String(roleValue).toLowerCase();
+  
+  if (normalizedRole === 'customer') return 'customer';
+  if (normalizedRole === 'technician') return 'technician';
+  
+  return null;
+};
+
+/**
+ * Validate if token contains the expected role
+ * @param token - JWT token string
+ * @param expectedRole - Expected role ('customer' or 'technician')
+ * @returns true if token is valid and contains the expected role
+ */
+export const validateTokenRole = (
+  token: string | null, 
+  expectedRole: 'customer' | 'technician'
+): boolean => {
+  if (!token || !isTokenValid(token)) return false;
+  
+  const roleFromToken = getRoleFromToken(token);
+  return roleFromToken === expectedRole;
+};

@@ -9,7 +9,9 @@ import {
   Image,
   Alert,
   ActivityIndicator,
-  Modal
+  Modal,
+  Platform,
+  Linking
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,6 +22,7 @@ import { mediaService, MediaType } from '../../lib/api/media';
 import * as ImagePicker from 'expo-image-picker';
 import type { BookingFormData, Address } from '../../types/api';
 import withCustomerAuth from '../../lib/auth/withCustomerAuth';
+import CustomModal from '../../components/CustomModal';
 
 // Interface for tracking uploaded media
 interface UploadedMedia {
@@ -67,6 +70,34 @@ function BookService() {
     imageUri: '',
     index: 0
   });
+  
+  // Custom Modal states
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState<'success' | 'error' | 'warning' | 'info' | 'confirm'>('info');
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalOnConfirm, setModalOnConfirm] = useState<(() => void) | undefined>();
+  const [showCancelButton, setShowCancelButton] = useState(false);
+  const [modalAutoClose, setModalAutoClose] = useState(false);
+  
+  // Helper function to show modal
+  const showAlertModal = (
+    type: 'success' | 'error' | 'warning' | 'info' | 'confirm',
+    title: string,
+    message: string,
+    onConfirm?: () => void,
+    showCancel = false,
+    autoClose?: boolean
+  ) => {
+    setModalType(type);
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalOnConfirm(onConfirm ? () => onConfirm : undefined);
+    setShowCancelButton(showCancel);
+    // Auto-close for non-confirm modals (unless explicitly set to false)
+    setModalAutoClose(autoClose !== undefined ? autoClose : (type !== 'confirm' && !showCancel));
+    setShowModal(true);
+  };
   
   // Address coordinates and components for better address handling
   const [addressCoordinates, setAddressCoordinates] = useState<{
@@ -219,10 +250,13 @@ function BookService() {
   const pickImage = async () => {
     // Check if already at max limit
     if (uploadedMedia.length >= 4) {
-      Alert.alert(
+      showAlertModal(
+        'warning',
         'Đã đạt giới hạn',
         'Bạn chỉ có thể thêm tối đa 4 ảnh. Vui lòng xóa ảnh cũ để thêm ảnh mới.',
-        [{ text: 'OK' }]
+        undefined,
+        false,
+        true // auto-close after 3 seconds
       );
       return;
     }
@@ -232,9 +266,21 @@ function BookService() {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert(
-          'Cần quyền truy cập',
-          'Ứng dụng cần quyền truy cập thư viện ảnh để chọn ảnh.',
-          [{ text: 'OK' }]
+          'Cần quyền thư viện ảnh',
+          'Vui lòng cấp quyền truy cập thư viện ảnh trong Cài đặt',
+          [
+            { text: 'Hủy', style: 'cancel' },
+            { 
+              text: 'Mở Cài đặt', 
+              onPress: () => {
+                if (Platform.OS === 'ios') {
+                  Linking.openURL('app-settings:');
+                } else {
+                  Linking.openSettings();
+                }
+              }
+            }
+          ]
         );
         return;
       }
@@ -257,7 +303,7 @@ function BookService() {
       );
     } catch (error) {
       console.error('Error requesting permission:', error);
-      Alert.alert('Lỗi', 'Không thể truy cập thư viện ảnh.');
+      showAlertModal('error', 'Lỗi', 'Không thể truy cập thư viện ảnh.');
     }
   };
 
@@ -268,8 +314,20 @@ function BookService() {
       if (status !== 'granted') {
         Alert.alert(
           'Cần quyền camera',
-          'Ứng dụng cần quyền truy cập camera để chụp ảnh.',
-          [{ text: 'OK' }]
+          'Vui lòng cấp quyền camera trong Cài đặt để chụp ảnh',
+          [
+            { text: 'Hủy', style: 'cancel' },
+            { 
+              text: 'Mở Cài đặt', 
+              onPress: () => {
+                if (Platform.OS === 'ios') {
+                  Linking.openURL('app-settings:');
+                } else {
+                  Linking.openSettings();
+                }
+              }
+            }
+          ]
         );
         return;
       }
@@ -286,7 +344,7 @@ function BookService() {
       }
     } catch (error) {
       console.error('Error taking photo:', error);
-      Alert.alert('Lỗi', 'Không thể chụp ảnh.');
+      showAlertModal('error', 'Lỗi', 'Không thể chụp ảnh.');
     }
   };
 
@@ -305,7 +363,7 @@ function BookService() {
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Lỗi', 'Không thể chọn ảnh.');
+      showAlertModal('error', 'Lỗi', 'Không thể chọn ảnh.');
     }
   };
 
@@ -376,10 +434,10 @@ function BookService() {
       // Remove temporary placeholder on error
       setUploadedMedia(prev => prev.filter(media => media.mediaID !== tempId));
       
-      Alert.alert(
+      showAlertModal(
+        'error',
         'Lỗi tải ảnh',
-        error.message || 'Không thể tải ảnh lên. Vui lòng thử lại.',
-        [{ text: 'OK' }]
+        error.message || 'Không thể tải ảnh lên. Vui lòng thử lại.'
       );
     } finally {
       setIsUploadingImage(false);
@@ -395,45 +453,40 @@ function BookService() {
         return;
       }
 
-      // Show confirmation dialog
-      Alert.alert(
+      // Show confirmation dialog using CustomModal
+      showAlertModal(
+        'confirm',
         'Xóa ảnh',
         'Bạn có chắc muốn xóa ảnh này?',
-        [
-          { text: 'Hủy', style: 'cancel' },
-          {
-            text: 'Xóa',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                // Only call DELETE API if upload was successful (not temp ID)
-                if (mediaToDelete.mediaID && !mediaToDelete.mediaID.startsWith('temp-')) {
-                  await mediaService.deleteMedia(mediaToDelete.mediaID);
-                  
-                  if (__DEV__) {
-                    console.log('✅ Image deleted from server:', mediaToDelete.mediaID);
-                  }
-                }
-
-                // Remove from state
-                setUploadedMedia(prev => prev.filter((_, i) => i !== index));
-                
-                // Also update formData.images for backward compatibility
-                setFormData(prev => ({
-                  ...prev,
-                  images: prev.images.filter((_, i) => i !== index)
-                }));
-              } catch (error: any) {
-                console.error('❌ Image delete failed:', error);
-                Alert.alert(
-                  'Lỗi xóa ảnh',
-                  error.message || 'Không thể xóa ảnh. Vui lòng thử lại.',
-                  [{ text: 'OK' }]
-                );
+        async () => {
+          try {
+            // Only call DELETE API if upload was successful (not temp ID)
+            if (mediaToDelete.mediaID && !mediaToDelete.mediaID.startsWith('temp-')) {
+              await mediaService.deleteMedia(mediaToDelete.mediaID);
+              
+              if (__DEV__) {
+                console.log('✅ Image deleted from server:', mediaToDelete.mediaID);
               }
             }
+
+            // Remove from state
+            setUploadedMedia(prev => prev.filter((_, i) => i !== index));
+            
+            // Also update formData.images for backward compatibility
+            setFormData(prev => ({
+              ...prev,
+              images: prev.images.filter((_, i) => i !== index)
+            }));
+          } catch (error: any) {
+            console.error('❌ Image delete failed:', error);
+            showAlertModal(
+              'error',
+              'Lỗi xóa ảnh',
+              error.message || 'Không thể xóa ảnh. Vui lòng thử lại.'
+            );
           }
-        ]
+        },
+        true // showCancel
       );
     } catch (error) {
       console.error('Error removing image:', error);
@@ -465,27 +518,27 @@ function BookService() {
     // Check if any images are still uploading
     const hasUploadingImages = uploadedMedia.some(media => media.isUploading);
     if (hasUploadingImages) {
-      Alert.alert(
+      showAlertModal(
+        'info',
         'Vui lòng đợi',
-        'Đang tải ảnh lên. Vui lòng đợi quá trình tải hoàn tất.',
-        [{ text: 'OK' }]
+        'Đang tải ảnh lên. Vui lòng đợi quá trình tải hoàn tất.'
       );
       return;
     }
 
     // Validate fullName and phoneNumber before continuing
     if (!formData.customerName || !formData.customerName.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập tên khách hàng');
+      showAlertModal('error', 'Lỗi', 'Vui lòng nhập tên khách hàng');
       return;
     }
 
     if (!formData.phoneNumber || !formData.phoneNumber.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập số điện thoại');
+      showAlertModal('error', 'Lỗi', 'Vui lòng nhập số điện thoại');
       return;
     }
 
     if (!formData.addressID) {
-      Alert.alert('Lỗi', 'Vui lòng chọn địa chỉ');
+      showAlertModal('error', 'Lỗi', 'Vui lòng chọn địa chỉ');
       return;
     }
 
@@ -904,6 +957,20 @@ function BookService() {
             </TouchableOpacity>
           </View>
         </Modal>
+
+        {/* Custom Modal */}
+        <CustomModal
+          visible={showModal}
+          type={modalType}
+          title={modalTitle}
+          message={modalMessage}
+          onClose={() => setShowModal(false)}
+          onConfirm={modalOnConfirm}
+          showCancel={showCancelButton}
+          confirmText="OK"
+          cancelText="Hủy"
+          autoClose={modalAutoClose}
+        />
       </View>
     </>
   );
@@ -1794,6 +1861,58 @@ const styles = StyleSheet.create({
     height: 216,
     width: '100%',
     backgroundColor: 'white',
+  },
+  // Photo picker action sheet styles
+  photoPickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  photoPickerContainer: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 34,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  photoPickerHeader: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  photoPickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    textAlign: 'center',
+  },
+  photoPickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  photoPickerOptionText: {
+    fontSize: 16,
+    color: '#1F2937',
+    fontWeight: '500',
+  },
+  photoPickerDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginHorizontal: 20,
+  },
+  photoPickerCancelOption: {
+    marginTop: 8,
+  },
+  photoPickerCancelText: {
+    color: '#EF4444',
   },
 });
 

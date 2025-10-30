@@ -136,6 +136,7 @@ export default function withCustomerAuth<P extends object>(
     const router = useRouter();
     const { isAuthorized, isLoading, error } = useCustomerAuth();
     const hasCheckedOnce = useRef(false);
+    const hasRedirected = useRef(false);
 
     // Mark that we've done first check
     useEffect(() => {
@@ -155,20 +156,37 @@ export default function withCustomerAuth<P extends object>(
 
     // Handle error modal close + redirect
     const handleErrorClose = () => {
-      if (redirectOnError) {
-        router.replace('/');
+      if (redirectOnError && !hasRedirected.current) {
+        hasRedirected.current = true;
+        // For role mismatch, redirect to home page
+        if (error === 'ROLE_MISMATCH') {
+          router.replace('/');
+        } else {
+          router.replace('/customer/login');
+        }
       }
     };
 
     // Handle login button press
     const handleLoginPress = () => {
-      router.replace('/customer/login');
+      if (!hasRedirected.current) {
+        hasRedirected.current = true;
+        // For role mismatch, redirect to home page
+        if (error === 'ROLE_MISMATCH') {
+          router.replace('/');
+        } else {
+          router.replace('/customer/login');
+        }
+      }
     };
 
     // Handle hooks error during logout transition
     const handleHooksError = () => {
       // Redirect on hooks error (likely during logout)
-      router.replace('/customer/login');
+      if (!hasRedirected.current) {
+        hasRedirected.current = true;
+        router.replace('/customer/login');
+      }
     };
 
     // CRITICAL: Always return same JSX structure, never use conditional returns
