@@ -199,6 +199,15 @@ function TechnicianOrderTracking() {
   // Payment notification state
   const [showPaymentNotification, setShowPaymentNotification] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  
+  // Display data for success screen
+  const [bookingInfo, setBookingInfo] = useState<{
+    serviceName: string;
+    customerName: string;
+  }>({
+    serviceName: '',
+    customerName: '',
+  });
 
   // Custom modal states
   const [showModal, setShowModal] = useState(false);
@@ -209,6 +218,19 @@ function TechnicianOrderTracking() {
   const [showCancelButton, setShowCancelButton] = useState(false);
   const [modalAutoClose, setModalAutoClose] = useState(false);
   
+  // Helper function to mask phone number for privacy
+  const maskPhoneNumber = (phone: string): string => {
+    if (!phone) return '';
+    // Format: 0912***678 (show first 4 digits and last 3 digits)
+    if (phone.length >= 7) {
+      const firstPart = phone.substring(0, 4);
+      const lastPart = phone.substring(phone.length - 3);
+      return `${firstPart}***${lastPart}`;
+    }
+    // If phone is too short, mask middle part
+    return phone.substring(0, 2) + '***' + phone.substring(phone.length - 2);
+  };
+
   // Helper function to show modal
   const showAlertModal = (
     type: 'success' | 'error' | 'warning' | 'info' | 'confirm',
@@ -248,10 +270,26 @@ function TechnicianOrderTracking() {
     };
   });
 
-  // Fetch data on mount
+  // Fetch data on mount and set up auto-refresh for real-time updates
   useEffect(() => {
     if (serviceRequestId) {
-      fetchOrderData();
+      // Initial load with loading indicator
+      fetchOrderData(false);
+      
+      // Set up auto-refresh interval (every 5 seconds for real-time updates)
+      // Use silent mode to avoid showing loading spinner on each refresh
+      const refreshInterval = setInterval(() => {
+        console.log('🔄 [Technician] Auto-refreshing order data...');
+        fetchOrderData(true); // Silent refresh
+      }, 5000);
+      
+      // Cleanup interval on unmount
+      return () => {
+        if (refreshInterval) {
+          console.log('🧹 [Technician] Cleaning up auto-refresh interval');
+          clearInterval(refreshInterval);
+        }
+      };
     } else {
       setError('Thiếu thông tin đơn hàng');
       setLoading(false);
@@ -268,15 +306,27 @@ function TechnicianOrderTracking() {
       // Only show notification for this appointment
       if (payload.appointmentId === appointment.id) {
         setPaymentAmount(payload.amount);
-        setShowPaymentNotification(true);
         
         // Auto-reload order data to reflect COMPLETED status
-        fetchOrderData();
+        fetchOrderData(true); // Silent reload
         
-        // Auto-hide notification after 5 seconds
+        // Navigate to success screen after short delay
         setTimeout(() => {
-          setShowPaymentNotification(false);
-        }, 5000);
+          console.log('✅ [Technician] Navigating to success screen...');
+          
+          router.replace({
+            pathname: '/technician/booking-success',
+            params: {
+              appointmentId: appointment.id,
+              serviceName: bookingInfo.serviceName || 'Dịch vụ sửa chữa',
+              customerName: bookingInfo.customerName || 'Khách hàng',
+              finalPrice: new Intl.NumberFormat('vi-VN', { 
+                style: 'currency', 
+                currency: 'VND' 
+              }).format(payload.amount),
+            },
+          });
+        }, 1500); // 1.5 second delay for smooth transition
       }
     };
     
@@ -285,7 +335,7 @@ function TechnicianOrderTracking() {
     
     // Cleanup subscription
     return unsubscribe;
-  }, [appointment?.id]);
+  }, [appointment?.id, bookingInfo]);
   
   // Fetch media when status changes to REPAIRING or later
   useEffect(() => {
@@ -356,9 +406,12 @@ function TechnicianOrderTracking() {
     fetchMedia();
   }, [currentStatus, appointment?.id, serviceRequestId]);
 
-  const fetchOrderData = async () => {
+  const fetchOrderData = async (silent = false) => {
     try {
-      setLoading(true);
+      // Only show loading on initial load, not on auto-refresh
+      if (!silent) {
+        setLoading(true);
+      }
       setError(null);
 
       // Fetch service request
@@ -367,6 +420,7 @@ function TechnicianOrderTracking() {
         requestID: requestData.requestID,
         requestAddress: requestData.requestAddress,
         addressID: requestData.addressID,
+        status: requestData.status, // Log status
         allKeys: Object.keys(requestData)
       });
       setServiceRequest(requestData);
@@ -377,15 +431,23 @@ function TechnicianOrderTracking() {
       }
 
       // Fetch service name
+      let fetchedServiceName = 'Dịch vụ';
       if (requestData.serviceId) {
         try {
           const serviceData = await servicesService.getServiceById(requestData.serviceId);
-          setServiceName(serviceData.serviceName || 'Dịch vụ');
+          fetchedServiceName = serviceData.serviceName || 'Dịch vụ';
+          setServiceName(fetchedServiceName);
         } catch (err) {
           console.log('Could not fetch service name, using default');
           setServiceName('Dịch vụ');
         }
       }
+      
+      // Update booking info for success screen
+      setBookingInfo({
+        serviceName: fetchedServiceName,
+        customerName: requestData.fullName || 'Khách hàng',
+      });
 
       // Fetch offer - if offerId not provided, try to find it
       let effectiveOfferId = offerId as string;
@@ -437,8 +499,37 @@ function TechnicianOrderTracking() {
         try {
           const appointmentData = await appointmentsService.getAppointment(effectiveAppointmentId);
           setAppointment(appointmentData);
-          setCurrentStatus(appointmentData.status); // Use appointment status as source of truth
-          console.log('✅ Current status from appointment:', appointmentData.status);
+          
+          // PRIORITY CHECK: If service request is COMPLETED, override appointment status
+          // This handles case where payment completed but appointment status not synced yet
+          if (requestData.status === 'COMPLETED') {
+            console.log('✅ [Technician] Service request COMPLETED, overriding appointment status');
+            setCurrentStatus('completed'); // Use string 'completed' instead of enum
+            
+            // Auto-navigate to success screen
+            const finalPrice = offerData.finalCost || offerData.estimatedCost || 0;
+            
+            setTimeout(() => {
+              router.replace({
+                pathname: '/technician/booking-success',
+                params: {
+                  appointmentId: effectiveAppointmentId,
+                  serviceName: fetchedServiceName,
+                  customerName: requestData.fullName || 'Khách hàng',
+                  finalPrice: new Intl.NumberFormat('vi-VN', { 
+                    style: 'currency', 
+                    currency: 'VND' 
+                  }).format(finalPrice),
+                },
+              });
+            }, 500);
+            
+            return; // Exit early
+          } else {
+            // Use appointment status as source of truth
+            setCurrentStatus(appointmentData.status);
+            console.log('✅ Current status from appointment:', appointmentData.status);
+          }
         } catch (err: any) {
           console.error('❌ Error fetching appointment:', err);
           
@@ -473,10 +564,14 @@ function TechnicianOrderTracking() {
         console.log('📊 Offer status:', offerData.status);
       }
 
-      setLoading(false);
+      // Only hide loading on initial load
+      if (!silent) {
+        setLoading(false);
+      }
     } catch (err: any) {
       console.error('Error fetching order data:', err);
       setError(err.message || 'Không thể tải thông tin đơn hàng');
+      // Always hide loading on error
       setLoading(false);
     }
   };
@@ -1129,9 +1224,13 @@ function TechnicianOrderTracking() {
     showAlertModal(
       'confirm',
       'Liên hệ khách hàng',
-      `Gọi cho ${serviceRequest.customerName || 'khách hàng'}?`,
+      `Gọi cho ${serviceRequest.customerName || 'khách hàng'}?\n\nSố điện thoại: ${maskPhoneNumber(serviceRequest.phoneNumber)}`,
       () => {
-        showAlertModal('info', 'Đang gọi...', serviceRequest.phoneNumber);
+        // Actually make the phone call
+        const phoneUrl = `tel:${serviceRequest.phoneNumber}`;
+        Linking.openURL(phoneUrl).catch(() => {
+          showAlertModal('error', 'Lỗi', 'Không thể thực hiện cuộc gọi');
+        });
       },
       true
     );
@@ -1980,7 +2079,7 @@ function TechnicianOrderTracking() {
             </View>
             <View style={styles.customerPhoneSection}>
               <Ionicons name="call-outline" size={16} color="#9CA3AF" />
-              <Text style={styles.customerPhoneText}>{displayData.phoneNumber}</Text>
+              <Text style={styles.customerPhoneText}>{maskPhoneNumber(displayData.phoneNumber)}</Text>
             </View>
             {/* Address Section */}
             <View style={styles.customerAddressSection}>
@@ -2192,6 +2291,16 @@ function TechnicianOrderTracking() {
               </Text>
             </View>
           )}
+
+          {/* Show waiting message when REPAIRED - waiting for customer payment */}
+          {currentStatus === AppointmentStatus.REPAIRED && (
+            <View style={[styles.enRouteHint, { backgroundColor: '#ECFDF5', borderColor: '#10B981' }]}>
+              <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+              <Text style={styles.enRouteHintText}>
+                Đã hoàn thành sửa chữa. Đang chờ khách hàng thanh toán...
+              </Text>
+            </View>
+          )}
           
           <SwipeButton
             title={
@@ -2199,6 +2308,8 @@ function TechnicianOrderTracking() {
                 ? "Dùng bản đồ để xác nhận đã đến" 
                 : currentStatus === AppointmentStatus.PRICE_REVIEW
                 ? "Đang chờ khách hàng xác nhận giá"
+                : currentStatus === AppointmentStatus.REPAIRED
+                ? "Đang chờ khách hàng thanh toán"
                 : currentStatus === AppointmentStatus.CHECKING && (uploadedMedia.length === 0 || !initialNotes.trim())
                 ? "Cần ảnh và ghi chú để tiếp tục"
                 : currentStatus === AppointmentStatus.REPAIRING && (finalMedia.length === 0 || !finalNotes.trim())
@@ -2208,6 +2319,7 @@ function TechnicianOrderTracking() {
             isEnabled={
               currentStatus !== AppointmentStatus.EN_ROUTE && 
               currentStatus !== AppointmentStatus.PRICE_REVIEW &&
+              currentStatus !== AppointmentStatus.REPAIRED &&
               !(currentStatus === AppointmentStatus.CHECKING && (uploadedMedia.length === 0 || !initialNotes.trim())) &&
               !(currentStatus === AppointmentStatus.REPAIRING && (finalMedia.length === 0 || !finalNotes.trim()))
             }
@@ -2215,6 +2327,7 @@ function TechnicianOrderTracking() {
             backgroundColor={
               currentStatus === AppointmentStatus.EN_ROUTE || 
               currentStatus === AppointmentStatus.PRICE_REVIEW ||
+              currentStatus === AppointmentStatus.REPAIRED ||
               (currentStatus === AppointmentStatus.CHECKING && (uploadedMedia.length === 0 || !initialNotes.trim())) ||
               (currentStatus === AppointmentStatus.REPAIRING && (finalMedia.length === 0 || !finalNotes.trim()))
                 ? "#9CA3AF" 

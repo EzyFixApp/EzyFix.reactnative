@@ -41,12 +41,16 @@ const CustomModal: React.FC<CustomModalProps> = ({
   useEffect(() => {
     if (visible && autoClose && !showCancel && type !== 'confirm') {
       const timer = setTimeout(() => {
+        // Call onConfirm if exists, then close
+        if (onConfirm) {
+          onConfirm();
+        }
         onClose();
       }, 3000);
 
       return () => clearTimeout(timer);
     }
-  }, [visible, autoClose, showCancel, type, onClose]);
+  }, [visible, autoClose, showCancel, type, onClose, onConfirm]);
   const getIconConfig = () => {
     switch (type) {
       case 'success':

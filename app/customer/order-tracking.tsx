@@ -15,6 +15,7 @@ import {
   Modal,
   SafeAreaView,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,6 +31,7 @@ import { useAuth } from '../../store/authStore';
 import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 import AuthModal from '../../components/AuthModal';
 import QuoteNotificationModal from '../../components/QuoteNotificationModal';
+import CustomModal from '../../components/CustomModal';
 
 interface OrderDetail {
   id: string;
@@ -85,6 +87,38 @@ function CustomerOrderTracking() {
     };
   } | null>(null);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
+
+  // Rejection Modal states
+  const [showRejectionModal, setShowRejectionModal] = useState(false);
+  const [selectedRejectionReason, setSelectedRejectionReason] = useState('');
+  const [customRejectionReason, setCustomRejectionReason] = useState('');
+
+  // Custom Modal states
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState<'success' | 'error' | 'warning' | 'info' | 'confirm'>('info');
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalOnConfirm, setModalOnConfirm] = useState<(() => void) | undefined>();
+  const [showCancelButton, setShowCancelButton] = useState(false);
+  const [modalAutoClose, setModalAutoClose] = useState(false);
+
+  // Helper function to show modal
+  const showAlertModal = (
+    type: 'success' | 'error' | 'warning' | 'info' | 'confirm',
+    title: string,
+    message: string,
+    onConfirm?: () => void,
+    showCancel = false
+  ) => {
+    setModalType(type);
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalOnConfirm(onConfirm ? () => onConfirm : undefined);
+    setShowCancelButton(showCancel);
+    // Auto-close for non-confirm modals
+    setModalAutoClose(type !== 'confirm' && !showCancel);
+    setShowModal(true);
+  };
 
   // Refs for auto-scroll
   const scrollViewRef = useRef<ScrollView>(null);
@@ -229,8 +263,7 @@ function CustomerOrderTracking() {
   // Load order details from API
   const loadOrderDetail = async (silent = false) => {
     if (!orderId) {
-      Alert.alert('Lỗi', 'Không tìm thấy ID đơn hàng');
-      router.back();
+      showAlertModal('error', 'Lỗi', 'Không tìm thấy ID đơn hàng', () => router.back());
       return;
     }
 
@@ -583,28 +616,28 @@ function CustomerOrderTracking() {
       
       // Handle common errors
       if (error.status_code === 404) {
-        Alert.alert(
+        showAlertModal(
+          'error',
           'Không tìm thấy',
           'Không tìm thấy chi tiết đơn hàng này.',
-          [{ text: 'OK', onPress: () => router.back() }]
+          () => router.back()
         );
       } else if (error.status_code === 403) {
-        Alert.alert(
+        showAlertModal(
+          'error',
           'Lỗi truy cập',
           'Không có quyền truy cập chi tiết đơn hàng này.',
-          [{ text: 'OK', onPress: () => router.back() }]
+          () => router.back()
         );
       } else if (error.status_code === 401) {
         setShowAuthModal(true);
       } else {
         if (!silent) {
-          Alert.alert(
+          showAlertModal(
+            'error',
             'Lỗi',
             'Không thể tải chi tiết đơn hàng. Vui lòng thử lại sau.',
-            [
-              { text: 'Thử lại', onPress: () => loadOrderDetail() },
-              { text: 'Quay lại', onPress: () => router.back() }
-            ]
+            () => loadOrderDetail()
           );
         }
       }
@@ -658,18 +691,14 @@ function CustomerOrderTracking() {
             }
 
             // Show success alert
-            Alert.alert(
+            showAlertModal(
+              'success',
               'Thanh toán thành công! 🎉',
               'Cảm ơn bạn đã thanh toán. Đơn hàng đã hoàn tất.',
-              [
-                {
-                  text: 'OK',
-                  onPress: () => {
-                    // Reload to update UI
-                    loadOrderDetail();
-                  }
-                }
-              ]
+              () => {
+                // Reload to update UI
+                loadOrderDetail();
+              }
             );
           }
         });
@@ -832,28 +861,26 @@ function CustomerOrderTracking() {
   // Handle Accept Final Price (PRICE_REVIEW → REPAIRING)
   const handleAcceptFinalPrice = async () => {
     if (!order?.appointmentId) {
-      Alert.alert('Lỗi', 'Không tìm thấy thông tin lịch hẹn');
+      showAlertModal('error', 'Lỗi', 'Không tìm thấy thông tin lịch hẹn');
       return;
     }
 
     // Validate current status from UI
     if (order.status !== 'price-review') {
-      Alert.alert(
+      showAlertModal(
+        'warning',
         'Không thể thực hiện',
         'Trạng thái đơn hàng đã thay đổi. Vui lòng tải lại trang.',
-        [{ text: 'Tải lại', onPress: () => loadOrderDetail() }]
+        () => loadOrderDetail()
       );
       return;
     }
 
-    Alert.alert(
+    showAlertModal(
+      'confirm',
       'Xác nhận giá cuối cùng',
       `Bạn xác nhận chấp nhận giá cuối cùng: ${order.finalPrice}?\n\nThợ sẽ bắt đầu sửa chữa sau khi bạn xác nhận.`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xác nhận',
-          onPress: async () => {
+      async () => {
             try {
               setLoading(true);
               
@@ -872,95 +899,83 @@ function CustomerOrderTracking() {
 
               console.log('✅ [OrderTracking] Successfully updated to REPAIRING');
 
-              Alert.alert(
-                'Thành công',
-                'Đã xác nhận giá cuối cùng. Thợ sẽ bắt đầu sửa chữa.',
-                [{ text: 'OK', onPress: () => loadOrderDetail() }]
-              );
-            } catch (error: any) {
-              console.error('❌ [OrderTracking] Error accepting final price:', error);
-              
-              // Handle specific error messages
-              const errorMessage = error?.data?.exceptionMessage || error?.message || 'Không thể xác nhận giá. Vui lòng thử lại.';
-              
-              if (errorMessage.includes('APPOINTMENT_INVALID_TRANSITION') || errorMessage.includes('price review is not required')) {
-                Alert.alert(
-                  'Trạng thái đã thay đổi',
-                  'Đơn hàng không còn ở trạng thái chờ xác nhận giá nữa. Vui lòng tải lại trang.',
-                  [{ text: 'Tải lại', onPress: () => loadOrderDetail() }]
-                );
-              } else {
-                Alert.alert('Lỗi', errorMessage);
-              }
-            } finally {
-              setLoading(false);
-            }
+          showAlertModal(
+            'success',
+            'Thành công',
+            'Đã xác nhận giá cuối cùng. Thợ sẽ bắt đầu sửa chữa.',
+            () => loadOrderDetail()
+          );
+        } catch (error: any) {
+          console.error('❌ [OrderTracking] Error accepting final price:', error);
+          
+          // Handle specific error messages
+          const errorMessage = error?.data?.exceptionMessage || error?.message || 'Không thể xác nhận giá. Vui lòng thử lại.';
+          
+          if (errorMessage.includes('APPOINTMENT_INVALID_TRANSITION') || errorMessage.includes('price review is not required')) {
+            showAlertModal(
+              'warning',
+              'Trạng thái đã thay đổi',
+              'Đơn hàng không còn ở trạng thái chờ xác nhận giá nữa. Vui lòng tải lại trang.',
+              () => loadOrderDetail()
+            );
+          } else {
+            showAlertModal('error', 'Lỗi', errorMessage);
           }
+        } finally {
+          setLoading(false);
         }
-      ]
+      },
+      true // showCancel
     );
   };
 
   // Handle Reject Final Price (PRICE_REVIEW → DISPUTE with reason)
   const handleRejectFinalPrice = () => {
     if (!order?.appointmentId) {
-      Alert.alert('Lỗi', 'Không tìm thấy thông tin lịch hẹn');
+      showAlertModal('error', 'Lỗi', 'Không tìm thấy thông tin lịch hẹn');
       return;
     }
 
     // Validate current status from UI
     if (order.status !== 'price-review') {
-      Alert.alert(
+      showAlertModal(
+        'warning',
         'Không thể thực hiện',
         'Trạng thái đơn hàng đã thay đổi. Vui lòng tải lại trang.',
-        [{ text: 'Tải lại', onPress: () => loadOrderDetail() }]
+        () => loadOrderDetail()
       );
       return;
     }
 
-    const rejectionReasons = [
-      { label: 'Giá quá cao, không chấp nhận được', value: 'price_too_high' },
-      { label: 'Thợ thái độ không tốt', value: 'bad_attitude' },
-      { label: 'Không tin tưởng vào chất lượng', value: 'quality_concern' },
-      { label: 'Lý do khác (tự nhập)', value: 'other' },
-    ];
+    // Reset states and show rejection modal
+    setSelectedRejectionReason('');
+    setCustomRejectionReason('');
+    setShowRejectionModal(true);
+  };
 
-    // Show dialog with rejection reasons
-    Alert.alert(
-      'Từ chối báo giá',
-      'Vui lòng chọn lý do từ chối:',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        ...rejectionReasons.map(reason => ({
-          text: reason.label,
-          onPress: async () => {
-            if (reason.value === 'other') {
-              // Let user input custom reason
-              Alert.prompt(
-                'Lý do từ chối',
-                'Nhập lý do từ chối của bạn:',
-                [
-                  { text: 'Hủy', style: 'cancel' },
-                  {
-                    text: 'Gửi',
-                    onPress: async (customReason?: string) => {
-                      if (customReason && customReason.trim()) {
-                        await submitRejection(`Lý do khác: ${customReason.trim()}`);
-                      } else {
-                        Alert.alert('Lỗi', 'Vui lòng nhập lý do từ chối');
-                      }
-                    }
-                  }
-                ],
-                'plain-text'
-              );
-            } else {
-              await submitRejection(reason.label);
-            }
-          }
-        }))
-      ]
-    );
+  // Handle submit rejection from modal
+  const handleSubmitRejection = async () => {
+    if (!selectedRejectionReason) {
+      showAlertModal('error', 'Lỗi', 'Vui lòng chọn lý do từ chối');
+      return;
+    }
+
+    if (selectedRejectionReason === 'other' && !customRejectionReason.trim()) {
+      showAlertModal('error', 'Lỗi', 'Vui lòng nhập lý do từ chối');
+      return;
+    }
+
+    setShowRejectionModal(false);
+
+    const rejectionReasons: { [key: string]: string } = {
+      'price_too_high': 'Giá quá cao, không chấp nhận được',
+      'bad_attitude': 'Thợ thái độ không tốt',
+      'quality_concern': 'Không tin tưởng vào chất lượng',
+      'other': `Lý do khác: ${customRejectionReason.trim()}`,
+    };
+
+    const reason = rejectionReasons[selectedRejectionReason] || customRejectionReason;
+    await submitRejection(reason);
   };
 
   // Submit rejection to backend
@@ -987,10 +1002,11 @@ function CustomerOrderTracking() {
 
       console.log('✅ [OrderTracking] Successfully updated to DISPUTE');
 
-      Alert.alert(
+      showAlertModal(
+        'success',
         'Đã gửi',
         'Đã từ chối báo giá. Yêu cầu của bạn sẽ được xem xét lại.',
-        [{ text: 'OK', onPress: () => loadOrderDetail() }]
+        () => loadOrderDetail()
       );
     } catch (error: any) {
       console.error('❌ [OrderTracking] Error rejecting final price:', error);
@@ -999,13 +1015,14 @@ function CustomerOrderTracking() {
       const errorMessage = error?.data?.exceptionMessage || error?.message || 'Không thể gửi từ chối. Vui lòng thử lại.';
       
       if (errorMessage.includes('APPOINTMENT_INVALID_TRANSITION') || errorMessage.includes('price review is not required')) {
-        Alert.alert(
+        showAlertModal(
+          'warning',
           'Trạng thái đã thay đổi',
           'Đơn hàng không còn ở trạng thái chờ xác nhận giá nữa. Vui lòng tải lại trang.',
-          [{ text: 'Tải lại', onPress: () => loadOrderDetail() }]
+          () => loadOrderDetail()
         );
       } else {
-        Alert.alert('Lỗi', errorMessage);
+        showAlertModal('error', 'Lỗi', errorMessage);
       }
     } finally {
       setLoading(false);
@@ -1015,22 +1032,22 @@ function CustomerOrderTracking() {
   // Handle Payment - Navigate to payment summary screen
   const handlePayment = () => {
     if (!order?.appointmentId) {
-      Alert.alert('Lỗi', 'Không tìm thấy thông tin lịch hẹn');
+      showAlertModal('error', 'Lỗi', 'Không tìm thấy thông tin lịch hẹn');
       return;
     }
 
     // Validate current status
     if (order.status !== 'payment' && order.appointmentStatus?.toUpperCase() !== 'REPAIRED') {
-      Alert.alert(
+      showAlertModal(
+        'warning',
         'Không thể thanh toán',
-        'Đơn hàng chưa sẵn sàng để thanh toán. Vui lòng đợi thợ hoàn thành sửa chữa.',
-        [{ text: 'OK' }]
+        'Đơn hàng chưa sẵn sàng để thanh toán. Vui lòng đợi thợ hoàn thành sửa chữa.'
       );
       return;
     }
 
     if (!order.finalPrice) {
-      Alert.alert('Lỗi', 'Không tìm thấy giá chốt của dịch vụ');
+      showAlertModal('error', 'Lỗi', 'Không tìm thấy giá chốt của dịch vụ');
       return;
     }
 
@@ -1483,7 +1500,7 @@ function CustomerOrderTracking() {
                     onPress={() => {
                       const shortOrderId = orderId.split('-')[0];
                       Clipboard.setString(shortOrderId);
-                      Alert.alert('Đã sao chép', `Mã đơn ${shortOrderId} đã được sao chép`);
+                      showAlertModal('success', 'Đã sao chép', `Mã đơn ${shortOrderId} đã được sao chép`);
                     }}
                     activeOpacity={0.7}
                   >
@@ -1499,93 +1516,21 @@ function CustomerOrderTracking() {
                 {/* Price information - Clean and Simple Design */}
                 {(order.estimatedPrice || order.finalPrice) ? (
                   <View style={styles.priceSection}>
-                    {/* Payment Status - Show when ready for payment */}
-                    {order.status === 'payment' && order.finalPrice && (
-                      <View ref={paymentSectionRef} style={styles.paymentStatusCard}>
-                        <View style={styles.paymentStatusHeader}>
-                          <View style={styles.paymentStatusIcon}>
-                            <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-                          </View>
-                          <View style={styles.paymentStatusTextContainer}>
-                            <Text style={styles.paymentStatusTitle}>Sửa chữa hoàn tất</Text>
-                            <Text style={styles.paymentStatusSubtitle}>Vui lòng thanh toán để hoàn thành</Text>
-                          </View>
-                        </View>
-
-                        {/* Price Display */}
-                        <View style={styles.paymentPriceRow}>
-                          <Text style={styles.paymentPriceLabel}>Tổng thanh toán</Text>
-                          <Text style={styles.paymentPriceValue}>{order.finalPrice}</Text>
-                        </View>
-
-                        {/* Completion Photos */}
-                        {finalMedia.length > 0 && (
-                          <View style={styles.paymentPhotosSection}>
-                            <Text style={styles.paymentPhotosLabel}>Ảnh hoàn thành ({finalMedia.length})</Text>
-                            <ScrollView 
-                              horizontal 
-                              showsHorizontalScrollIndicator={false}
-                              style={styles.paymentPhotosScroll}
-                            >
-                              {finalMedia.map((url, index) => (
-                                <TouchableOpacity
-                                  key={index}
-                                  style={styles.paymentPhoto}
-                                  activeOpacity={0.7}
-                                >
-                                  <Image
-                                    source={{ uri: url }}
-                                    style={styles.paymentPhotoImage}
-                                    resizeMode="cover"
-                                  />
-                                </TouchableOpacity>
-                              ))}
-                            </ScrollView>
-                          </View>
-                        )}
-
-                        {/* Payment Button */}
-                        <TouchableOpacity
-                          style={styles.paymentButton}
-                          onPress={handlePayment}
-                          activeOpacity={0.8}
+                    {/* Price Card - Always show when we have price info */}
+                    <>
+                      {order.finalPrice ? (
+                        <View 
+                          ref={order.status === 'price-review' ? priceReviewSectionRef : (order.status === 'payment' ? paymentSectionRef : null)}
+                          style={order.status === 'price-review' ? styles.simplePriceCardHighlight : styles.simplePriceCard}
                         >
-                          <LinearGradient
-                            colors={['#609CEF', '#3B82F6']}
-                            style={styles.paymentButtonGradient}
-                          >
-                            <Ionicons name="card-outline" size={20} color="white" />
-                            <Text style={styles.paymentButtonText}>Thanh toán ngay</Text>
-                            <Ionicons name="arrow-forward" size={20} color="white" />
-                          </LinearGradient>
-                        </TouchableOpacity>
-
-                        {/* Security Note */}
-                        <View style={styles.paymentSecurityNote}>
-                          <Ionicons name="shield-checkmark-outline" size={14} color="#6B7280" />
-                          <Text style={styles.paymentSecurityNoteText}>
-                            Thanh toán bảo mật qua PayOS
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-
-                    {/* Price Card - Show when NOT payment status */}
-                    {order.status !== 'payment' && (
-                      <>
-                        {order.finalPrice ? (
-                          <View 
-                            ref={order.status === 'price-review' ? priceReviewSectionRef : null}
-                            style={order.status === 'price-review' ? styles.simplePriceCardHighlight : styles.simplePriceCard}
-                          >
-                            <View style={styles.simplePriceRow}>
-                              <View style={styles.simplePriceLeft}>
-                                <Text style={order.status === 'price-review' ? styles.simplePriceLabelHighlight : styles.simplePriceLabel}>
-                                  Giá chốt
-                                </Text>
-                              </View>
-                              <Text style={order.status === 'price-review' ? styles.simplePriceValueHighlight : styles.simplePriceValue}>
-                                {order.finalPrice}
+                          <View style={styles.simplePriceRow}>
+                            <View style={styles.simplePriceLeft}>
+                              <Text style={order.status === 'price-review' ? styles.simplePriceLabelHighlight : styles.simplePriceLabel}>
+                                Giá chốt
+                              </Text>
+                            </View>
+                            <Text style={order.status === 'price-review' ? styles.simplePriceValueHighlight : styles.simplePriceValue}>
+                              {order.finalPrice}
                               </Text>
                             </View>
                             <Text style={styles.simplePriceNote}>
@@ -1607,7 +1552,6 @@ function CustomerOrderTracking() {
                           </View>
                         )}
                       </>
-                    )}
 
                     {/* Technician Notes - Show when finalPrice exists */}
                     {order.finalPrice && order.technicianNotes && (
@@ -1651,11 +1595,55 @@ function CustomerOrderTracking() {
                                 style={styles.photoImage}
                                 resizeMode="cover"
                               />
+                              <View style={styles.photoOverlay}>
+                                <Ionicons name="eye-outline" size={28} color="white" />
+                              </View>
                             </TouchableOpacity>
                           ))}
                         </ScrollView>
                         <Text style={styles.photosDescription}>
                           Ảnh chụp tại hiện trường sau khi thợ kiểm tra • Nhấn để phóng to
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Completion Photos - Show FINAL photos when payment status */}
+                    {order.status === 'payment' && finalMedia.length > 0 && (
+                      <View style={styles.photosSection}>
+                        <View style={styles.photosHeader}>
+                          <Ionicons name="checkmark-done-outline" size={20} color="#10B981" />
+                          <Text style={styles.photosHeaderText}>
+                            Ảnh hoàn thành ({finalMedia.length})
+                          </Text>
+                        </View>
+                        <ScrollView 
+                          horizontal 
+                          showsHorizontalScrollIndicator={false}
+                          style={styles.photosScroll}
+                        >
+                          {finalMedia.map((url, index) => (
+                            <TouchableOpacity
+                              key={index}
+                              style={styles.photoContainer}
+                              activeOpacity={0.9}
+                              onPress={() => {
+                                setSelectedImage(url);
+                                setShowImageModal(true);
+                              }}
+                            >
+                              <Image
+                                source={{ uri: url }}
+                                style={styles.photoImage}
+                                resizeMode="cover"
+                              />
+                              <View style={styles.photoOverlay}>
+                                <Ionicons name="eye-outline" size={28} color="white" />
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                        <Text style={styles.photosDescription}>
+                          Ảnh chụp sau khi hoàn thành sửa chữa • Nhấn để phóng to
                         </Text>
                       </View>
                     )}
@@ -1878,6 +1866,45 @@ function CustomerOrderTracking() {
         </View>
       )}
 
+      {/* Sticky Footer for PAYMENT Status - Pay Now */}
+      {order.status === 'payment' && order.finalPrice && (
+        <View style={styles.stickyFooter}>
+          <View style={styles.stickyFooterContent}>
+            <View style={styles.paymentFooterHeader}>
+              <View style={styles.paymentFooterIconContainer}>
+                <Ionicons name="checkmark-circle" size={28} color="#10B981" />
+              </View>
+              <View style={styles.paymentFooterTextContainer}>
+                <Text style={styles.paymentFooterTitle}>Sửa chữa hoàn tất</Text>
+                <Text style={styles.paymentFooterSubtitle}>
+                  Tổng thanh toán: <Text style={styles.paymentFooterPrice}>{order.finalPrice}</Text>
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.paymentFooterButton}
+              onPress={handlePayment}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={['#609CEF', '#3B82F6']}
+                style={styles.paymentFooterButtonGradient}
+              >
+                <Ionicons name="card-outline" size={22} color="white" />
+                <Text style={styles.paymentFooterButtonText}>Thanh toán ngay</Text>
+                <Ionicons name="arrow-forward" size={22} color="white" />
+              </LinearGradient>
+            </TouchableOpacity>
+            <View style={styles.paymentFooterSecurityNote}>
+              <Ionicons name="shield-checkmark-outline" size={14} color="#6B7280" />
+              <Text style={styles.paymentFooterSecurityText}>
+                Thanh toán bảo mật qua PayOS
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* Sticky Footer for QUOTED Status - View Quote */}
       {order.status === 'quoted' && pendingQuote && (
         <View style={styles.stickyFooter}>
@@ -1972,6 +1999,134 @@ function CustomerOrderTracking() {
             )}
             <Text style={styles.imageModalHint}>Nhấn vào bất kỳ đâu để đóng</Text>
           </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* Custom Modal */}
+      <CustomModal
+        visible={showModal}
+        type={modalType}
+        title={modalTitle}
+        message={modalMessage}
+        onClose={() => setShowModal(false)}
+        onConfirm={modalOnConfirm}
+        showCancel={showCancelButton}
+        autoClose={modalAutoClose}
+      />
+
+      {/* Rejection Reason Modal */}
+      <Modal
+        visible={showRejectionModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowRejectionModal(false)}
+      >
+        <View style={styles.rejectionModalOverlay}>
+          <View style={styles.rejectionModalContent}>
+            {/* Header */}
+            <View style={styles.rejectionModalHeader}>
+              <Text style={styles.rejectionModalTitle}>Từ chối báo giá</Text>
+              <TouchableOpacity
+                onPress={() => setShowRejectionModal(false)}
+                style={styles.rejectionModalCloseButton}
+              >
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Body */}
+            <ScrollView style={styles.rejectionModalBody} showsVerticalScrollIndicator={false}>
+              <Text style={styles.rejectionModalLabel}>Vui lòng chọn lý do từ chối:</Text>
+
+              {/* Radio Options */}
+              <TouchableOpacity
+                style={styles.rejectionOption}
+                onPress={() => setSelectedRejectionReason('price_too_high')}
+              >
+                <View style={[styles.radio, selectedRejectionReason === 'price_too_high' && styles.radioSelected]}>
+                  {selectedRejectionReason === 'price_too_high' && (
+                    <View style={styles.radioDot} />
+                  )}
+                </View>
+                <Text style={styles.rejectionOptionText}>Giá quá cao, không chấp nhận được</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.rejectionOption}
+                onPress={() => setSelectedRejectionReason('bad_attitude')}
+              >
+                <View style={[styles.radio, selectedRejectionReason === 'bad_attitude' && styles.radioSelected]}>
+                  {selectedRejectionReason === 'bad_attitude' && (
+                    <View style={styles.radioDot} />
+                  )}
+                </View>
+                <Text style={styles.rejectionOptionText}>Thợ thái độ không tốt</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.rejectionOption}
+                onPress={() => setSelectedRejectionReason('quality_concern')}
+              >
+                <View style={[styles.radio, selectedRejectionReason === 'quality_concern' && styles.radioSelected]}>
+                  {selectedRejectionReason === 'quality_concern' && (
+                    <View style={styles.radioDot} />
+                  )}
+                </View>
+                <Text style={styles.rejectionOptionText}>Không tin tưởng vào chất lượng</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.rejectionOption}
+                onPress={() => setSelectedRejectionReason('other')}
+              >
+                <View style={[styles.radio, selectedRejectionReason === 'other' && styles.radioSelected]}>
+                  {selectedRejectionReason === 'other' && (
+                    <View style={styles.radioDot} />
+                  )}
+                </View>
+                <Text style={styles.rejectionOptionText}>Lý do khác (tự nhập)</Text>
+              </TouchableOpacity>
+
+              {/* Custom Input */}
+              {selectedRejectionReason === 'other' && (
+                <View style={styles.customReasonContainer}>
+                  <Text style={styles.customReasonLabel}>Nhập lý do của bạn:</Text>
+                  <TextInput
+                    style={styles.customReasonInput}
+                    placeholder="Ví dụ: Tôi muốn tìm thợ khác..."
+                    placeholderTextColor="#9CA3AF"
+                    value={customRejectionReason}
+                    onChangeText={setCustomRejectionReason}
+                    multiline
+                    numberOfLines={3}
+                    textAlignVertical="top"
+                  />
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Footer Buttons */}
+            <View style={styles.rejectionModalFooter}>
+              <TouchableOpacity
+                style={[styles.rejectionModalButton, styles.rejectionCancelButton]}
+                onPress={() => setShowRejectionModal(false)}
+              >
+                <Text style={styles.rejectionCancelButtonText}>Hủy</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.rejectionModalButton, styles.rejectionSubmitButton]}
+                onPress={handleSubmitRejection}
+              >
+                <LinearGradient
+                  colors={['#EF4444', '#DC2626']}
+                  style={styles.rejectionSubmitGradient}
+                >
+                  <Text style={styles.rejectionSubmitButtonText}>Gửi từ chối</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </Modal>
     </View>
@@ -3067,6 +3222,217 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.7)',
     fontSize: 14,
     textAlign: 'center',
+  },
+  
+  // Rejection Modal Styles
+  rejectionModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  rejectionModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+  },
+  rejectionModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  rejectionModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  rejectionModalCloseButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rejectionModalBody: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  rejectionModalLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 16,
+  },
+  rejectionOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  radio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioSelected: {
+    borderColor: '#609CEF',
+  },
+  radioDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#609CEF',
+  },
+  rejectionOptionText: {
+    flex: 1,
+    fontSize: 15,
+    color: '#1F2937',
+    fontWeight: '500',
+  },
+  customReasonContainer: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  customReasonLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  customReasonInput: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#1F2937',
+    minHeight: 100,
+  },
+  rejectionModalFooter: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  rejectionModalButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  rejectionCancelButton: {
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rejectionCancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  rejectionSubmitButton: {
+    overflow: 'hidden',
+  },
+  rejectionSubmitGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rejectionSubmitButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  // Payment Footer Styles
+  paymentFooterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  paymentFooterIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  paymentFooterTextContainer: {
+    flex: 1,
+  },
+  paymentFooterTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  paymentFooterSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  paymentFooterPrice: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#609CEF',
+  },
+  paymentFooterButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#609CEF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+    marginBottom: 8,
+  },
+  paymentFooterButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 10,
+  },
+  paymentFooterButtonText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: 'white',
+    letterSpacing: 0.3,
+  },
+  paymentFooterSecurityNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  paymentFooterSecurityText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  paymentPhotosDescription: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 8,
+    fontStyle: 'italic',
   },
 });
 

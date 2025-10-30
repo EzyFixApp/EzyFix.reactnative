@@ -82,15 +82,22 @@ export default function TechnicianActivityContent() {
             if (__DEV__) console.warn('Could not fetch offer for:', r.requestID);
           }
           
-          // 3. Fetch appointment for real-time status (highest priority)
+          // 3. Fetch appointment for real-time status
           try {
             const appointments = await appointmentsService.getAppointmentsByServiceRequest(r.requestID);
             if (appointments && appointments.length > 0) {
               const latestAppointment = appointments[appointments.length - 1];
-              actualStatus = latestAppointment.status; // Override with real-time status
+              actualStatus = latestAppointment.status; // Use appointment status
             }
           } catch (error) {
             if (__DEV__) console.warn('Could not fetch appointments for:', r.requestID);
+          }
+          
+          // 4. HIGHEST PRIORITY: Check if serviceRequest is COMPLETED (payment done)
+          // Override appointment status if serviceRequest shows COMPLETED
+          if (r.status === 'COMPLETED') {
+            actualStatus = 'COMPLETED';
+            if (__DEV__) console.log('✅ [TechnicianActivity] Request COMPLETED (payment done):', r.requestID);
           }
           
           return {

@@ -612,25 +612,28 @@ function PaymentSummary() {
             }}
           />
           
-          {/* Manual Payment Confirmation Button */}
-          <View style={styles.modalFooter}>
-            <TouchableOpacity
-              style={styles.manualConfirmButton}
-              onPress={handleManualPaymentConfirm}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={['#10B981', '#059669']}
-                style={styles.manualConfirmGradient}
+          {/* Manual Payment Confirmation Button - HIDDEN (No payment verification API yet) */}
+          {/* TODO: Re-enable when payment verification API is available */}
+          {false && (
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.manualConfirmButton}
+                onPress={handleManualPaymentConfirm}
+                activeOpacity={0.8}
               >
-                <Ionicons name="checkmark-circle" size={22} color="#FFFFFF" />
-                <Text style={styles.manualConfirmText}>Tôi đã thanh toán</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-            <Text style={styles.manualConfirmHint}>
-              Nhấn nút này nếu bạn đã hoàn tất thanh toán
-            </Text>
-          </View>
+                <LinearGradient
+                  colors={['#10B981', '#059669']}
+                  style={styles.manualConfirmGradient}
+                >
+                  <Ionicons name="checkmark-circle" size={22} color="#FFFFFF" />
+                  <Text style={styles.manualConfirmText}>Tôi đã thanh toán</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+              <Text style={styles.manualConfirmHint}>
+                Nhấn nút này nếu bạn đã hoàn tất thanh toán
+              </Text>
+            </View>
+          )}
         </SafeAreaView>
       </Modal>
 

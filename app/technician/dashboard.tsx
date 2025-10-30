@@ -366,7 +366,7 @@ function Dashboard() {
             if (__DEV__) console.error('❌ [Dashboard] Error fetching offer for request:', request.requestID, error);
           }
           
-          // 3. Get appointment details (highest priority for status)
+          // 3. Get appointment details for real-time status
           try {
             const appointments = await appointmentsService.getAppointmentsByServiceRequest(request.requestID);
             
@@ -385,6 +385,13 @@ function Dashboard() {
             if (__DEV__) console.warn('⚠️ [Dashboard] Could not fetch appointments');
           }
           
+          // 4. HIGHEST PRIORITY: Check if serviceRequest is COMPLETED (payment done)
+          // Override appointment status if serviceRequest shows COMPLETED
+          if (request.status === 'COMPLETED') {
+            actualStatus = 'COMPLETED';
+            if (__DEV__) console.log('✅ [Dashboard] Request COMPLETED (payment done):', request.requestID);
+          }
+          
           // Map API status to UI status
           const mapStatus = (status: string): ActiveOrderProps['status'] => {
             const normalized = status?.toUpperCase() || '';
@@ -399,7 +406,11 @@ function Dashboard() {
                 return 'repairing';
               case 'PRICE_REVIEW':
                 return 'price_review';
-              case 'REPAIRED':
+              case 'REPAIRED': // Đã sửa xong, chờ thanh toán - VẪN HIỆN
+                return 'completed';
+              case 'COMPLETED': // Đã thanh toán - KHÔNG HIỆN
+              case 'CANCELLED': // Đã hủy - KHÔNG HIỆN
+              case 'DISPUTE': // Tranh chấp - KHÔNG HIỆN
                 return 'completed';
               default:
                 return 'on_the_way';
@@ -416,15 +427,23 @@ function Dashboard() {
             priority: 'medium' as const, // Default priority
             customerPhone,
             offerId, // Required for navigation to tracking page
+            actualApiStatus: actualStatus, // Store original status for filtering
           };
         })
       );
       
-      // Filter to show only active orders (not completed)
-      const activeOnly = orders.filter(order => 
-        order.status !== 'completed' &&
-        !['completed', 'cancelled', 'repaired', 'dispute'].includes(order.status)
-      );
+      // Filter to show only ACTIVE orders
+      // Show: SCHEDULED, EN_ROUTE, ARRIVED, CHECKING, REPAIRING, PRICE_REVIEW, REPAIRED
+      // Hide: COMPLETED (paid), CANCELLED, DISPUTE
+      const activeOnly = orders.filter(order => {
+        const status = (order as any).actualApiStatus?.toUpperCase() || '';
+        const isCompleted = status === 'COMPLETED'; // Đã thanh toán
+        const isCancelled = status === 'CANCELLED'; // Đã hủy
+        const isDispute = status === 'DISPUTE'; // Tranh chấp
+        
+        // Only show if NOT completed/cancelled/dispute
+        return !isCompleted && !isCancelled && !isDispute;
+      });
       
       setActiveOrders(activeOnly);
     } catch (error: any) {
