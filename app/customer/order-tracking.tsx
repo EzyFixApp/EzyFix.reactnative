@@ -32,6 +32,8 @@ import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 import AuthModal from '../../components/AuthModal';
 import QuoteNotificationModal from '../../components/QuoteNotificationModal';
 import CustomModal from '../../components/CustomModal';
+import ReviewModal from '../../components/ReviewModal';
+import { reviewService } from '../../lib/api/reviews';
 
 interface OrderDetail {
   id: string;
@@ -46,6 +48,9 @@ interface OrderDetail {
   expectedStartTime?: string;
   serviceDescription?: string;
   technicianName?: string;
+  technicianId?: string; // Technician ID for profile navigation
+  technicianAvatar?: string; // Technician avatar URL
+  technicianRating?: number; // Technician rating
   quotePrice?: string;
   estimatedPrice?: string; // Giá dự kiến
   finalPrice?: string;      // Giá chốt
@@ -101,6 +106,16 @@ function CustomerOrderTracking() {
   const [modalOnConfirm, setModalOnConfirm] = useState<(() => void) | undefined>();
   const [showCancelButton, setShowCancelButton] = useState(false);
   const [modalAutoClose, setModalAutoClose] = useState(false);
+
+  // Review states
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [existingReview, setExistingReview] = useState<{
+    reviewId: string;
+    ratingOverall: number;
+    comment: string;
+    reviewDate: string;
+  } | null>(null);
+  const [providerId, setProviderId] = useState<string>('');
 
   // Helper function to show modal
   const showAlertModal = (
@@ -311,6 +326,9 @@ function CustomerOrderTracking() {
       let estimatedPrice: string | undefined;
       let finalPrice: string | undefined;
       let technicianName: string | undefined;
+      let technicianId: string | undefined;
+      let technicianAvatar: string | undefined;
+      let technicianRating: number | undefined;
       let appointmentId: string | undefined;
       let actualStatus = serviceRequest.status; // Will be overridden by appointment status if available
       let technicianNotes: string | undefined; // Technician notes from offer
@@ -381,10 +399,33 @@ function CustomerOrderTracking() {
               appointmentId = appointment.id;
               actualStatus = appointment.status; // Override with appointment status
               
+              // Store providerId (technicianId) for reviews
+              if (appointment.technicianId) {
+                setProviderId(appointment.technicianId);
+              }
+              
               if (__DEV__) console.log('✅ [OrderTracking] Appointment status:', {
                 appointmentId,
-                status: actualStatus
+                status: actualStatus,
+                technicianId: appointment.technicianId
               });
+              
+              // Fetch existing review if appointment is COMPLETED
+              if (actualStatus?.toUpperCase() === 'COMPLETED' && appointmentId) {
+                try {
+                  const review = await reviewService.getReviewByAppointment(appointmentId);
+                  if (review) {
+                    setExistingReview(review);
+                    if (__DEV__) console.log('✅ [OrderTracking] Review loaded:', review);
+                  } else {
+                    setExistingReview(null);
+                    if (__DEV__) console.log('ℹ️ [OrderTracking] No review yet for this appointment');
+                  }
+                } catch (reviewError) {
+                  if (__DEV__) console.warn('⚠️ [OrderTracking] Error fetching review:', reviewError);
+                  setExistingReview(null);
+                }
+              }
               
               // Fetch media for this appointment
               try {
@@ -472,16 +513,27 @@ function CustomerOrderTracking() {
           if (relevantOffer.technicianId) {
             if (__DEV__) console.log('✅ [OrderTracking] Technician ID found:', relevantOffer.technicianId);
             
+            // Store technician ID for profile navigation
+            technicianId = relevantOffer.technicianId;
+            
             // Priority 1: Check if technician info is in offer response (NEW API structure)
             if (relevantOffer.technician?.technicianName) {
               technicianName = relevantOffer.technician.technicianName;
-              if (__DEV__) console.log('✅ [OrderTracking] Technician name from offer.technician.technicianName:', technicianName);
+              technicianAvatar = relevantOffer.technician.technicianAvatar;
+              technicianRating = relevantOffer.technician.technicianRating;
+              if (__DEV__) console.log('✅ [OrderTracking] Technician info from offer.technician:', {
+                name: technicianName,
+                avatar: technicianAvatar,
+                rating: technicianRating
+              });
             }
             // Priority 2: Check if technician details are in offer response (old structure with user object)
             else if (relevantOffer.technician?.user?.firstName || relevantOffer.technician?.user?.lastName) {
               const firstName = relevantOffer.technician.user.firstName || '';
               const lastName = relevantOffer.technician.user.lastName || '';
               technicianName = `${lastName} ${firstName}`.trim();
+              technicianAvatar = relevantOffer.technician.technicianAvatar;
+              technicianRating = relevantOffer.technician.technicianRating;
               
               if (__DEV__) console.log('✅ [OrderTracking] Technician name from offer.technician.user:', technicianName);
             } 
@@ -490,6 +542,8 @@ function CustomerOrderTracking() {
               const firstName = relevantOffer.technician.firstName || '';
               const lastName = relevantOffer.technician.lastName || '';
               technicianName = `${lastName} ${firstName}`.trim();
+              technicianAvatar = relevantOffer.technician.technicianAvatar;
+              technicianRating = relevantOffer.technician.technicianRating;
               
               if (__DEV__) console.log('✅ [OrderTracking] Technician name from technician firstName/lastName:', technicianName);
             }
@@ -535,6 +589,9 @@ function CustomerOrderTracking() {
         notes: serviceRequest.serviceDescription,
         technicianNotes: technicianNotes,
         technicianName: technicianName,
+        technicianId: technicianId,
+        technicianAvatar: technicianAvatar,
+        technicianRating: technicianRating,
         quotePrice: quotePrice,
         estimatedPrice: estimatedPrice,
         finalPrice: finalPrice,
@@ -553,6 +610,24 @@ function CustomerOrderTracking() {
       }
       
       setOrder(transformedOrder);
+      
+      // Fetch review if order is COMPLETED (check both appointment and service request status)
+      if ((serviceRequestStatus === 'COMPLETED' || finalStatus?.toUpperCase() === 'COMPLETED') && appointmentId) {
+        try {
+          if (__DEV__) console.log('🔍 [OrderTracking] Fetching review for completed order, appointmentId:', appointmentId);
+          const review = await reviewService.getReviewByAppointment(appointmentId);
+          if (review) {
+            setExistingReview(review);
+            if (__DEV__) console.log('✅ [OrderTracking] Review loaded after order load:', review);
+          } else {
+            setExistingReview(null);
+            if (__DEV__) console.log('ℹ️ [OrderTracking] No review yet for this appointment');
+          }
+        } catch (reviewError) {
+          if (__DEV__) console.warn('⚠️ [OrderTracking] Error fetching review:', reviewError);
+          setExistingReview(null);
+        }
+      }
       
       // Check for pending quotes (status QUOTED + no accepted offer)
       if (serviceRequestStatus === 'QUOTED') {
@@ -1224,9 +1299,8 @@ function CustomerOrderTracking() {
           </View>
 
           <View style={styles.loadingContainer}>
-            <Animated.View style={{ transform: [{ rotate: spin }] }}>
-              <Ionicons name="refresh-circle" size={32} color="#609CEF" />
-            </Animated.View>
+            <ActivityIndicator size="large" color="#609CEF" />
+            <Text style={styles.loadingText}>Đang tải thông tin đơn hàng...</Text>
           </View>
         </View>
       </View>
@@ -1698,13 +1772,12 @@ function CustomerOrderTracking() {
             <View style={styles.section}>
               <View style={styles.card}>
                 <View style={styles.cardHeader}>
-                  <Ionicons name="images-outline" size={20} color="#F59E0B" />
+                  <Ionicons name="images-outline" size={20} color="#609CEF" />
                   <Text style={styles.cardTitle}>Ảnh vấn đề ({issueMedia.length})</Text>
                 </View>
                 <View style={styles.cardContent}>
                   <View style={styles.photosSection}>
                     <View style={styles.photosHeader}>
-                      <Ionicons name="camera-outline" size={20} color="#F59E0B" />
                       <Text style={styles.photosHeaderText}>Ảnh bạn đã gửi</Text>
                     </View>
                     <ScrollView 
@@ -1769,17 +1842,59 @@ function CustomerOrderTracking() {
           {/* Technician Info */}
           {order.technicianName && (
             <View style={styles.section}>
-              <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.card}
+                onPress={() => {
+                  if (order.technicianId) {
+                    router.push({
+                      pathname: './technician-profile',
+                      params: { technicianId: order.technicianId },
+                    } as any);
+                  } else {
+                    Alert.alert('Thông báo', 'Không thể xem thông tin thợ lúc này');
+                  }
+                }}
+                activeOpacity={order.technicianId ? 0.7 : 1}
+                disabled={!order.technicianId}
+              >
                 <View style={styles.cardHeader}>
                   <Ionicons name="hammer-outline" size={20} color="#609CEF" />
                   <Text style={styles.cardTitle}>Thông tin thợ</Text>
+                  {order.technicianId && (
+                    <Ionicons name="chevron-forward" size={20} color="#94A3B8" style={{ marginLeft: 'auto' }} />
+                  )}
                 </View>
                 <View style={styles.cardContent}>
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Tên thợ:</Text>
-                    <Text style={styles.infoValue}>{order.technicianName}</Text>
+                  {/* Technician Profile Row */}
+                  <View style={styles.technicianProfileRow}>
+                    {/* Avatar */}
+                    {order.technicianAvatar ? (
+                      <Image
+                        source={{ uri: order.technicianAvatar }}
+                        style={styles.technicianAvatar}
+                      />
+                    ) : (
+                      <View style={styles.technicianAvatarPlaceholder}>
+                        <Ionicons name="person" size={24} color="#94A3B8" />
+                      </View>
+                    )}
+                    
+                    {/* Name and Rating */}
+                    <View style={styles.technicianInfo}>
+                      <Text style={styles.technicianName}>Thợ: {order.technicianName}</Text>
+                      {order.technicianRating !== undefined && (
+                        <View style={styles.technicianRatingRow}>
+                          <Ionicons name="star" size={16} color="#F59E0B" />
+                          <Text style={styles.technicianRatingText}>
+                            {order.technicianRating.toFixed(1)}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
-                  <View style={styles.infoRow}>
+                  
+                  {/* Status */}
+                  <View style={styles.technicianStatusRow}>
                     <Text style={styles.infoLabel}>Trạng thái:</Text>
                     <Text style={[styles.infoValue, { color: '#8B5CF6' }]}>
                       {(() => {
@@ -1797,7 +1912,7 @@ function CustomerOrderTracking() {
                     </Text>
                   </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             </View>
           )}
           
@@ -1816,6 +1931,57 @@ function CustomerOrderTracking() {
                     </Text>
                   </View>
                 </View>
+              </View>
+            </View>
+          )}
+
+          {/* Review Section - Show when COMPLETED */}
+          {order.status === 'completed' && order.appointmentId && (
+            <View style={styles.reviewSection}>
+              <View style={styles.reviewCard}>
+                <View style={styles.reviewHeader}>
+                  <Text style={styles.reviewTitle}>Đánh giá dịch vụ</Text>
+                </View>
+
+                {existingReview ? (
+                  // Show existing review
+                  <View style={styles.existingReview}>
+                    <View style={styles.reviewRating}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Ionicons
+                          key={star}
+                          name={star <= existingReview.ratingOverall ? 'star' : 'star-outline'}
+                          size={24}
+                          color={star <= existingReview.ratingOverall ? '#FFB800' : '#E5E7EB'}
+                        />
+                      ))}
+                    </View>
+                    <Text style={styles.reviewComment}>{existingReview.comment}</Text>
+                    <Text style={styles.reviewDate}>
+                      Đánh giá ngày {new Date(existingReview.reviewDate).toLocaleDateString('vi-VN')}
+                    </Text>
+                  </View>
+                ) : (
+                  // Show review button
+                  <View style={styles.noReview}>
+                    <Text style={styles.noReviewText}>
+                      Chia sẻ trải nghiệm của bạn để giúp cải thiện dịch vụ
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.reviewButton}
+                      onPress={() => setShowReviewModal(true)}
+                      activeOpacity={0.8}
+                    >
+                      <LinearGradient
+                        colors={['#FFB800', '#FFA000']}
+                        style={styles.reviewButtonGradient}
+                      >
+                        <Ionicons name="star" size={20} color="#FFFFFF" />
+                        <Text style={styles.reviewButtonText}>Đánh giá thợ</Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             </View>
           )}
@@ -1966,6 +2132,23 @@ function CustomerOrderTracking() {
             // Reload order to reflect changes
             await loadOrderDetail(false);
           }}
+        />
+      )}
+
+      {/* Review Modal */}
+      {order && order.technicianName && providerId && (
+        <ReviewModal
+          visible={showReviewModal}
+          onClose={() => setShowReviewModal(false)}
+          onReviewSubmit={() => {
+            setShowReviewModal(false);
+            // Reload to show the new review
+            loadOrderDetail();
+          }}
+          appointmentId={order.appointmentId || ''}
+          providerId={providerId}
+          technicianName={order.technicianName}
+          serviceName={order.serviceName}
         />
       )}
 
@@ -2197,10 +2380,11 @@ const styles = StyleSheet.create({
     paddingTop: 50,
   },
   loadingText: {
-    fontSize: 16,
-    color: '#6B7280',
-    marginTop: 12,
+    fontSize: 14,
+    color: '#64748B',
+    marginTop: 16,
     textAlign: 'center',
+    fontWeight: '500',
   },
   scrollView: {
     flex: 1,
@@ -2303,6 +2487,58 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 2,
     textAlign: 'right',
+  },
+  // Technician profile styles
+  technicianProfileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  technicianAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+  },
+  technicianAvatarPlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginRight: 12,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+  },
+  technicianInfo: {
+    flex: 1,
+  },
+  technicianName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 4,
+  },
+  technicianRatingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  technicianRatingText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#F59E0B',
+  },
+  technicianStatusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   ratingContainer: {
     flexDirection: 'row',
@@ -3433,6 +3669,78 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 8,
     fontStyle: 'italic',
+  },
+  // Review Section Styles
+  reviewSection: {
+    marginHorizontal: 16,
+    marginTop: 16,
+  },
+  reviewCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  reviewTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  existingReview: {
+    gap: 12,
+  },
+  reviewRating: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  reviewComment: {
+    fontSize: 15,
+    color: '#374151',
+    lineHeight: 22,
+  },
+  reviewDate: {
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+  noReview: {
+    gap: 16,
+  },
+  noReviewText: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  reviewButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#FFB800',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  reviewButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+  },
+  reviewButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
 

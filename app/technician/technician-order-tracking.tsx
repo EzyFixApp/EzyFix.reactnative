@@ -30,9 +30,11 @@ import { servicesService } from '../../lib/api/services';
 import { authService } from '../../lib/api/auth';
 import { mediaService } from '../../lib/api/media';
 import { paymentHub, PaymentUpdatePayload } from '../../lib/signalr/paymentHub';
+import { techniciansService } from '../../lib/api/technicians';
 import { useAuthStore } from '../../store/authStore';
 import { useLocation } from '../../hooks/useLocation';
 import TechnicianMapView from '../../components/TechnicianMapView';
+import { reviewService } from '../../lib/api/reviews';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -217,6 +219,22 @@ function TechnicianOrderTracking() {
   const [modalOnConfirm, setModalOnConfirm] = useState<(() => void) | undefined>();
   const [showCancelButton, setShowCancelButton] = useState(false);
   const [modalAutoClose, setModalAutoClose] = useState(false);
+
+  // Review states (read-only for technician)
+  const [existingReview, setExistingReview] = useState<{
+    reviewId: string;
+    ratingOverall: number;
+    comment: string;
+    reviewDate: string;
+  } | null>(null);
+
+  // Technician profile info
+  const [technicianInfo, setTechnicianInfo] = useState<{
+    technicianId: string;
+    technicianName: string;
+    avatar?: string;
+    averageRating?: number;
+  } | null>(null);
   
   // Helper function to mask phone number for privacy
   const maskPhoneNumber = (phone: string): string => {
@@ -480,6 +498,31 @@ function TechnicianOrderTracking() {
       });
       setOffer(offerData);
 
+      // Extract technician info from offer or user data
+      if (user?.id) {
+        try {
+          // Fetch technician profile to get rating
+          const technicianProfile = await techniciansService.getTechnicianById(user.id);
+          setTechnicianInfo({
+            technicianId: user.id,
+            technicianName: user.fullName,
+            avatar: user.avatarLink || (technicianProfile as any).avatar || undefined,
+            averageRating: (technicianProfile as any).averageRating || (technicianProfile as any).rating,
+          });
+          console.log('✅ Loaded technician info:', {
+            name: user.fullName,
+            rating: (technicianProfile as any).averageRating
+          });
+        } catch (err) {
+          console.log('⚠️ Could not fetch technician profile, using basic info');
+          setTechnicianInfo({
+            technicianId: user.id,
+            technicianName: user.fullName,
+            avatar: user.avatarLink || undefined,
+          });
+        }
+      }
+
       // Check if we have cached appointmentId in AsyncStorage (for when server doesn't sync)
       // Use userId in cache key to avoid conflicts between different users
       const cacheKey = user?.id ? `appointment_${effectiveOfferId}_${user.id}` : `appointment_${effectiveOfferId}`;
@@ -506,6 +549,20 @@ function TechnicianOrderTracking() {
             console.log('✅ [Technician] Service request COMPLETED, overriding appointment status');
             setCurrentStatus('completed'); // Use string 'completed' instead of enum
             
+            // Fetch review if available (technician can see customer's review using direct API)
+            try {
+              const review = await reviewService.getReviewByAppointmentDirect(effectiveAppointmentId);
+              if (review) {
+                setExistingReview(review);
+                console.log('✅ [Technician] Review loaded:', review);
+              } else {
+                setExistingReview(null);
+              }
+            } catch (reviewError) {
+              console.warn('⚠️ [Technician] Error fetching review:', reviewError);
+              setExistingReview(null);
+            }
+            
             // Auto-navigate to success screen
             const finalPrice = offerData.finalCost || offerData.estimatedCost || 0;
             
@@ -529,6 +586,22 @@ function TechnicianOrderTracking() {
             // Use appointment status as source of truth
             setCurrentStatus(appointmentData.status);
             console.log('✅ Current status from appointment:', appointmentData.status);
+            
+            // Fetch review if appointment is COMPLETED (but request not yet marked as COMPLETED)
+            if (appointmentData.status?.toUpperCase() === 'COMPLETED') {
+              try {
+                const review = await reviewService.getReviewByAppointmentDirect(effectiveAppointmentId);
+                if (review) {
+                  setExistingReview(review);
+                  console.log('✅ [Technician] Review loaded:', review);
+                } else {
+                  setExistingReview(null);
+                }
+              } catch (reviewError) {
+                console.warn('⚠️ [Technician] Error fetching review:', reviewError);
+                setExistingReview(null);
+              }
+            }
           }
         } catch (err: any) {
           console.error('❌ Error fetching appointment:', err);
@@ -1967,12 +2040,43 @@ function TechnicianOrderTracking() {
           )}
 
           {currentStatus === 'completed' && (
-            <TouchableOpacity style={styles.primaryActionButton} onPress={handleViewEarnings}>
-              <LinearGradient colors={['#10B981', '#059669']} style={styles.primaryActionGradient}>
-                <Ionicons name="cash" size={24} color="#FFFFFF" />
-                <Text style={styles.primaryActionButtonText}>Xem thực nhận</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity style={styles.primaryActionButton} onPress={handleViewEarnings}>
+                <LinearGradient colors={['#10B981', '#059669']} style={styles.primaryActionGradient}>
+                  <Ionicons name="cash" size={24} color="#FFFFFF" />
+                  <Text style={styles.primaryActionButtonText}>Xem thực nhận</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* Customer Review Section (Read-only for technician) */}
+              {existingReview && (
+                <View style={styles.reviewSection}>
+                  <View style={styles.reviewCard}>
+                    <View style={styles.reviewHeader}>
+                      <Ionicons name="star" size={24} color="#FFB800" />
+                      <Text style={styles.reviewTitle}>Đánh giá của khách hàng</Text>
+                    </View>
+
+                    <View style={styles.existingReview}>
+                      <View style={styles.reviewRating}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Ionicons
+                            key={star}
+                            name={star <= existingReview.ratingOverall ? 'star' : 'star-outline'}
+                            size={28}
+                            color={star <= existingReview.ratingOverall ? '#FFB800' : '#E5E7EB'}
+                          />
+                        ))}
+                      </View>
+                      <Text style={styles.reviewComment}>{existingReview.comment}</Text>
+                      <Text style={styles.reviewDate}>
+                        Đánh giá ngày {new Date(existingReview.reviewDate).toLocaleDateString('vi-VN')}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+            </>
           )}
 
           {/* Secondary Action Buttons - Hide after arrived */}
@@ -2092,6 +2196,52 @@ function TechnicianOrderTracking() {
               </View>
             </View>
           </View>
+
+          {/* Technician Info Card - Clickable */}
+          {technicianInfo && (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                router.push({
+                  pathname: './technician-profile',
+                  params: {
+                    technicianId: technicianInfo.technicianId,
+                  },
+                } as any);
+              }}
+              style={styles.technicianCard}
+            >
+              <View style={styles.technicianHeader}>
+                <View style={styles.technicianAvatarCircle}>
+                  {technicianInfo.avatar ? (
+                    <Image
+                      source={{ uri: technicianInfo.avatar }}
+                      style={styles.technicianAvatarImage}
+                    />
+                  ) : (
+                    <Ionicons name="construct" size={20} color="#8B5CF6" />
+                  )}
+                </View>
+                <View style={styles.technicianInfo}>
+                  <Text style={styles.technicianLabel}>Thợ sửa chữa</Text>
+                  <Text style={styles.technicianName}>{technicianInfo.technicianName}</Text>
+                </View>
+                {technicianInfo.averageRating !== undefined && (
+                  <View style={styles.technicianRating}>
+                    <Ionicons name="star" size={16} color="#F59E0B" />
+                    <Text style={styles.ratingText}>
+                      {technicianInfo.averageRating?.toFixed(1) || 'N/A'}
+                    </Text>
+                  </View>
+                )}
+                <Ionicons name="chevron-forward" size={20} color="#9CA3AF" style={styles.chevronIcon} />
+              </View>
+              <View style={styles.technicianFooter}>
+                <Ionicons name="information-circle-outline" size={14} color="#9CA3AF" />
+                <Text style={styles.technicianFooterText}>Nhấn để xem hồ sơ chi tiết</Text>
+              </View>
+            </TouchableOpacity>
+          )}
           
           {/* Appointment Card - Enhanced for visibility */}
           <View style={styles.appointmentCardHighlight}>
@@ -3355,6 +3505,86 @@ const styles = StyleSheet.create({
     marginTop: 4,
     lineHeight: 18,
   },
+  // Technician Info Card Styles
+  technicianCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  technicianHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  technicianAvatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F3F0FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    overflow: 'hidden',
+  },
+  technicianAvatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  technicianInfo: {
+    flex: 1,
+  },
+  technicianLabel: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  technicianName: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  technicianRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 4,
+    marginRight: 8,
+  },
+  ratingText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#D97706',
+  },
+  chevronIcon: {
+    marginLeft: 4,
+  },
+  technicianFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  technicianFooterText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
   customerContactRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4376,6 +4606,45 @@ const styles = StyleSheet.create({
   },
   photoPickerCancelText: {
     color: '#EF4444',
+  },
+  // Review Section Styles (for technician - read-only view)
+  reviewSection: {
+    marginTop: 16,
+  },
+  reviewCard: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 2,
+    borderColor: '#FFB800',
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  reviewTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  existingReview: {
+    gap: 12,
+  },
+  reviewRating: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  reviewComment: {
+    fontSize: 15,
+    color: '#78350F',
+    lineHeight: 22,
+    fontWeight: '500',
+  },
+  reviewDate: {
+    fontSize: 13,
+    color: '#A16207',
   },
 });
 

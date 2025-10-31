@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import withCustomerAuth from '../../lib/auth/withCustomerAuth';
+import ReviewModal from '../../components/ReviewModal';
 
 function PaymentSuccess() {
   const params = useLocalSearchParams<{
@@ -23,9 +24,11 @@ function PaymentSuccess() {
     orderId: string;
     serviceName: string;
     technicianName: string;
+    providerId: string;
   }>();
 
   const [successAnimation] = useState(new Animated.Value(0));
+  const [showReviewModal, setShowReviewModal] = useState(false);
 
   const amount = parseFloat(params.amount || '0');
   const currentDate = new Date();
@@ -97,6 +100,22 @@ Cảm ơn bạn đã sử dụng dịch vụ EzyFix!
       pathname: '/customer/order-tracking',
       params: { orderId: params.appointmentId },
     });
+  };
+
+  // Handle review submission
+  const handleReviewSubmit = () => {
+    console.log('✅ Review submitted, closing modal');
+    setShowReviewModal(false);
+  };
+
+  // Open review modal
+  const handleOpenReview = () => {
+    if (!params.providerId) {
+      console.error('❌ Missing providerId');
+      alert('Không thể đánh giá lúc này. Vui lòng thử lại sau.');
+      return;
+    }
+    setShowReviewModal(true);
   };
 
   return (
@@ -232,19 +251,34 @@ Cảm ơn bạn đã sử dụng dịch vụ EzyFix!
 
         {/* Action Buttons */}
         <View style={styles.actionsContainer}>
-          <TouchableOpacity style={styles.shareButton} onPress={handleShareBill} activeOpacity={0.8}>
-            <Ionicons name="share-social-outline" size={20} color="#609CEF" />
-            <Text style={styles.shareButtonText}>Chia sẻ hóa đơn</Text>
-          </TouchableOpacity>
-
+          {/* Review Button - Prominent */}
           <TouchableOpacity
-            style={styles.detailsButton}
-            onPress={handleViewOrderDetails}
+            style={styles.reviewButton}
+            onPress={handleOpenReview}
             activeOpacity={0.8}
           >
-            <Ionicons name="document-text-outline" size={20} color="#609CEF" />
-            <Text style={styles.detailsButtonText}>Xem chi tiết đơn hàng</Text>
+            <LinearGradient colors={['#FFB800', '#FFA000']} style={styles.reviewButtonGradient}>
+              <Ionicons name="star" size={20} color="#FFFFFF" />
+              <Text style={styles.reviewButtonText}>Đánh giá thợ</Text>
+            </LinearGradient>
           </TouchableOpacity>
+
+          {/* Secondary Actions */}
+          <View style={styles.secondaryActions}>
+            <TouchableOpacity style={styles.shareButton} onPress={handleShareBill} activeOpacity={0.8}>
+              <Ionicons name="share-social-outline" size={20} color="#609CEF" />
+              <Text style={styles.shareButtonText}>Chia sẻ hóa đơn</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.detailsButton}
+              onPress={handleViewOrderDetails}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="document-text-outline" size={20} color="#609CEF" />
+              <Text style={styles.detailsButtonText}>Xem chi tiết đơn hàng</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Info Message */}
@@ -275,6 +309,17 @@ Cảm ơn bạn đã sử dụng dịch vụ EzyFix!
           </LinearGradient>
         </TouchableOpacity>
       </View>
+
+      {/* Review Modal */}
+      <ReviewModal
+        visible={showReviewModal}
+        onClose={() => setShowReviewModal(false)}
+        onReviewSubmit={handleReviewSubmit}
+        appointmentId={params.appointmentId}
+        providerId={params.providerId || ''}
+        technicianName={params.technicianName}
+        serviceName={params.serviceName}
+      />
     </View>
   );
 }
@@ -441,6 +486,30 @@ const styles = StyleSheet.create({
   actionsContainer: {
     marginHorizontal: 16,
     marginTop: 16,
+    gap: 12,
+  },
+  reviewButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#FFB800',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  reviewButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+  },
+  reviewButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  secondaryActions: {
     gap: 12,
   },
   shareButton: {

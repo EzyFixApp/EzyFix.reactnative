@@ -369,10 +369,6 @@ export default function TechnicianActivityContent() {
                 <Text style={styles.detailText}>{request.fullName || 'Không có tên'}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Ionicons name="call-outline" size={16} color="#64748B" />
-                <Text style={styles.detailText}>{request.phoneNumber || 'Không có SĐT'}</Text>
-              </View>
-              <View style={styles.detailRow}>
                 <Ionicons name="location-outline" size={16} color="#64748B" />
                 <Text style={styles.detailText} numberOfLines={2}>
                   {request.requestAddress || 'Không có địa chỉ'}

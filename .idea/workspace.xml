@@ -7,8 +7,12 @@
     <list default="true" id="868f0766-2637-44bf-ae60-358902ea7db5" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/customer/order-tracking.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/order-tracking.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/payment-success.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/payment-success.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/payment-summary.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/payment-summary.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/customer/technician-profile.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/technician-profile.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/technician/technician-order-tracking.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/technician-order-tracking.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/CustomModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/CustomModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ActiveOrdersSection.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/ActiveOrdersSection.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/BookingHistoryContent.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/BookingHistoryContent.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

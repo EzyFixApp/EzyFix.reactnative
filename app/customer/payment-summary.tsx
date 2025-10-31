@@ -48,6 +48,7 @@ function PaymentSummary() {
   const [invoiceRequested, setInvoiceRequested] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [providerId, setProviderId] = useState<string>('');
   const [checkoutUrl, setCheckoutUrl] = useState('');
   const [paymentId, setPaymentId] = useState(''); // Store payment ID for confirmation
   
@@ -205,6 +206,7 @@ function PaymentSummary() {
           orderId: params.appointmentId,
           serviceName: params.serviceName,
           technicianName: params.technicianName,
+          providerId: providerId || '',
         },
       });
     }, 1000);
@@ -301,6 +303,25 @@ function PaymentSummary() {
   };
 
   // Subscribe to SignalR payment updates
+  // Fetch providerId (technicianId) from appointment
+  useEffect(() => {
+    const fetchProviderId = async () => {
+      if (!params.appointmentId) return;
+      
+      try {
+        const appointment = await appointmentsService.getAppointment(params.appointmentId);
+        if (appointment.technicianId) {
+          setProviderId(appointment.technicianId);
+          console.log('✅ [PaymentSummary] ProviderId (technicianId) loaded:', appointment.technicianId);
+        }
+      } catch (error) {
+        console.error('❌ [PaymentSummary] Error fetching providerId:', error);
+      }
+    };
+    
+    fetchProviderId();
+  }, [params.appointmentId]);
+
   useEffect(() => {
     if (!params.appointmentId) return;
 
@@ -339,6 +360,7 @@ function PaymentSummary() {
             orderId: payload.appointmentId,
             serviceName: params.serviceName,
             technicianName: params.technicianName,
+            providerId: providerId || '',
           },
         });
       }

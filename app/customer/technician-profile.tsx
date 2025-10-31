@@ -219,9 +219,7 @@ function TechnicianProfile() {
           </View>
 
           <View style={styles.loadingContainer}>
-            <Animated.View style={{ transform: [{ rotate: spin }] }}>
-              <Ionicons name="refresh-circle" size={48} color="#609CEF" />
-            </Animated.View>
+            <ActivityIndicator size="large" color="#609CEF" />
             <Text style={styles.loadingText}>Đang tải thông tin thợ...</Text>
           </View>
         </View>
@@ -396,13 +394,14 @@ function TechnicianProfile() {
                 <Text style={styles.cardTitle}>Đánh giá gần đây</Text>
               </View>
               <View style={styles.cardContent}>
-                {profile.latestReviews.map((review, index) => (
+                {/* Show only first 3 reviews */}
+                {profile.latestReviews.slice(0, 3).map((review, index) => (
                   <View key={review.id}>
                     {index > 0 && <View style={styles.reviewDivider} />}
                     <View style={styles.reviewItem}>
                       <View style={styles.reviewHeader}>
                         <Text style={styles.reviewerName}>
-                          {review.customerName || 'Khách hàng'}
+                          Khách hàng ẩn danh
                         </Text>
                         <View style={styles.reviewRating}>
                           <Ionicons name="star" size={14} color="#F59E0B" />
@@ -410,12 +409,45 @@ function TechnicianProfile() {
                         </View>
                       </View>
                       {review.comment && (
-                        <Text style={styles.reviewComment}>{review.comment}</Text>
+                        <Text style={styles.reviewComment} numberOfLines={3}>
+                          {review.comment}
+                        </Text>
                       )}
                       <Text style={styles.reviewDate}>{formatDate(review.createdAt)}</Text>
                     </View>
                   </View>
                 ))}
+                
+                {/* Show "View All" button if there are more than 3 reviews */}
+                {(profile.totalReviews || 0) > 3 && (
+                  <TouchableOpacity
+                    style={styles.viewAllReviewsButton}
+                    onPress={() => {
+                      router.push({
+                        pathname: './technician-reviews',
+                        params: {
+                          technicianId: profile.id || technicianId,
+                          technicianName: fullName,
+                          totalReviews: profile.totalReviews || 0,
+                          averageRating: profile.averageRating || 0,
+                        },
+                      } as any);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <LinearGradient
+                      colors={['#609CEF', '#3B82F6']}
+                      style={styles.viewAllReviewsGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                    >
+                      <Text style={styles.viewAllReviewsText}>
+                        Xem tất cả {profile.totalReviews} đánh giá
+                      </Text>
+                      <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           )}
@@ -682,6 +714,30 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#F3F4F6',
     marginVertical: 8,
+  },
+  viewAllReviewsButton: {
+    marginTop: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#609CEF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  viewAllReviewsGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  viewAllReviewsText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
   bottomSpacing: {
     height: 32,

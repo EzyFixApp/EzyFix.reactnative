@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -392,9 +392,7 @@ export default function ActiveOrdersSection() {
           </View>
         </View>
         <View style={styles.loadingContainer}>
-          <Animated.View style={{ transform: [{ rotate: spin }] }}>
-            <Ionicons name="refresh-circle" size={32} color="#609CEF" />
-          </Animated.View>
+          <ActivityIndicator size="large" color="#609CEF" />
         </View>
       </View>
     );
@@ -622,7 +620,7 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     paddingHorizontal: 20,
-    paddingVertical: 24,
+    paddingVertical: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },

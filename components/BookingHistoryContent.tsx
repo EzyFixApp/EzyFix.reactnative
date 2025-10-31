@@ -21,6 +21,7 @@ import {
   Alert,
   RefreshControl,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -35,6 +36,8 @@ import { ServiceRequestResponse } from '../types/api';
 import { useAuth } from '../store/authStore';
 import QuoteNotificationModal from './QuoteNotificationModal';
 import { useNotifications } from '../hooks/useNotifications';
+import ReviewModal from './ReviewModal';
+import { reviewService, ReviewResponse } from '../lib/api/reviews';
 
 interface BookingItem {
   id: string;
@@ -75,6 +78,8 @@ interface BookingItem {
   // Payment information (for REPAIRED status)
   appointmentId?: string;
   finalPrice?: number;
+  // Review information
+  existingReview?: ReviewResponse | null;
 }
 
 type TabType = 'active' | 'history';
@@ -131,6 +136,16 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
     finalCost?: number;
     notes?: string;
     serviceRequestId: string;
+  } | null>(null);
+  
+  // Review modal state
+  const [reviewModalVisible, setReviewModalVisible] = useState(false);
+  const [selectedBookingForReview, setSelectedBookingForReview] = useState<{
+    appointmentId: string;
+    providerId: string;
+    technicianName: string;
+    serviceName: string;
+    existingReview?: ReviewResponse | null;
   } | null>(null);
   
   const { isAuthenticated, user } = useAuth();
@@ -213,6 +228,7 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
           let finalMedia: string[] = [];
           let appointmentId: string | undefined = undefined;
           let finalPrice: number | undefined = undefined;
+          let existingReview: ReviewResponse | null = null;
           
           try {
             // Get all offers for this request
@@ -287,6 +303,23 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
                     }
                   } catch (mediaError) {
                     if (__DEV__) console.warn(`⚠️ [BookingHistory] Could not fetch media for ${request.requestID}:`, mediaError);
+                  }
+                  
+                  // Fetch existing review for COMPLETED appointments
+                  if (actualStatus.toUpperCase() === 'COMPLETED') {
+                    try {
+                      const review = await reviewService.getReviewByAppointment(appointment.id);
+                      if (review) {
+                        existingReview = review;
+                        if (__DEV__) {
+                          console.log(`⭐ [BookingHistory] Found existing review for appointment ${appointment.id}`);
+                        }
+                      }
+                    } catch (reviewError) {
+                      if (__DEV__) {
+                        console.log(`ℹ️ [BookingHistory] No review found for appointment ${appointment.id}`);
+                      }
+                    }
                   }
                 } else {
                   if (__DEV__) console.log(`⚠️ [BookingHistory] No appointments found for ${request.requestID}`);
@@ -400,10 +433,28 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
             }
           }
 
+          // Fetch existing review for COMPLETED orders (after finalStatus is determined)
+          // Check if order is completed regardless of which status field it came from
+          if (finalStatus.toUpperCase() === 'COMPLETED' && appointmentId && !existingReview) {
+            try {
+              const review = await reviewService.getReviewByAppointment(appointmentId);
+              if (review) {
+                existingReview = review;
+                if (__DEV__) {
+                  console.log(`⭐ [BookingHistory] Found existing review for appointment ${appointmentId} (after finalStatus check)`);
+                }
+              }
+            } catch (reviewError) {
+              if (__DEV__) {
+                console.log(`ℹ️ [BookingHistory] No review found for appointment ${appointmentId} (after finalStatus check)`);
+              }
+            }
+          }
+
           const mappedStatus = mapApiStatus(finalStatus);
           
           if (__DEV__) {
-            console.log(`📦 [BookingHistory] Booking ${request.requestID}: ServiceRequest Status="${request.status}", Appointment Status="${actualStatus}", Final Status="${finalStatus}" → UI Status="${mappedStatus}", Has Quote: ${!!pendingQuote}, Quote Price: ${quotePrice || 'N/A'}`);
+            console.log(`📦 [BookingHistory] Booking ${request.requestID}: ServiceRequest Status="${request.status}", Appointment Status="${actualStatus}", Final Status="${finalStatus}" → UI Status="${mappedStatus}", Has Quote: ${!!pendingQuote}, Quote Price: ${quotePrice || 'N/A'}`, existingReview ? '✅ Has Review' : '❌ No Review');
           }
           
           return {
@@ -430,6 +481,8 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
             // Payment info for REPAIRED status
             appointmentId: appointmentId,
             finalPrice: finalPrice,
+            // Review info
+            existingReview: existingReview,
           };
         })
       );
@@ -764,8 +817,63 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
                 <Text style={styles.trackButtonText}>Theo dõi</Text>
               </LinearGradient>
             </TouchableOpacity>
+          ) : booking.status === 'completed' && booking.appointmentId ? (
+            // Show "Xem đánh giá" or "Đánh giá thợ" button based on review status
+            <TouchableOpacity
+              style={styles.trackButton}
+              onPress={async (e) => {
+                e.stopPropagation();
+                
+                // Fetch technician ID from appointment
+                try {
+                  const appointment = await appointmentsService.getAppointment(booking.appointmentId!);
+                  if (appointment.technicianId) {
+                    setSelectedBookingForReview({
+                      appointmentId: booking.appointmentId!,
+                      providerId: appointment.technicianId,
+                      technicianName: booking.technicianName || 'Thợ sửa chữa',
+                      serviceName: booking.serviceName,
+                      existingReview: booking.existingReview,
+                    });
+                    setReviewModalVisible(true);
+                  } else {
+                    Alert.alert('Lỗi', 'Không thể lấy thông tin thợ sửa chữa');
+                  }
+                } catch (error) {
+                  console.error('Error fetching technician ID:', error);
+                  Alert.alert('Lỗi', 'Không thể mở form đánh giá. Vui lòng thử lại.');
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <LinearGradient
+                colors={booking.existingReview ? ['#64748B', '#475569'] : ['#FFB800', '#FFA000']}
+                style={styles.trackGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Ionicons 
+                  name={booking.existingReview ? "eye" : "star"} 
+                  size={16} 
+                  color="#FFFFFF" 
+                />
+                <Text style={styles.trackButtonText}>
+                  {booking.existingReview ? 'Xem đánh giá' : 'Đánh giá thợ'}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.viewDetailsButton} activeOpacity={0.7}>
+            <TouchableOpacity 
+              style={styles.viewDetailsButton} 
+              activeOpacity={0.7}
+              onPress={(e) => {
+                e.stopPropagation();
+                router.push({
+                  pathname: './order-tracking',
+                  params: { orderId: booking.id },
+                } as any);
+              }}
+            >
               <Text style={styles.viewDetailsText}>Chi tiết</Text>
               <Ionicons name="chevron-forward" size={16} color="#609CEF" />
             </TouchableOpacity>
@@ -874,6 +982,7 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
       >
         {loading ? (
           <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#609CEF" />
             <Text style={styles.loadingText}>Đang tải đơn hàng...</Text>
           </View>
         ) : filteredBookings.length > 0 ? (
@@ -923,6 +1032,29 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
             }
           }
         }}
+        />
+      )}
+
+      {/* Review Modal */}
+      {selectedBookingForReview && (
+        <ReviewModal
+          visible={reviewModalVisible}
+          onClose={() => {
+            setReviewModalVisible(false);
+            setSelectedBookingForReview(null);
+          }}
+          onReviewSubmit={() => {
+            setReviewModalVisible(false);
+            setSelectedBookingForReview(null);
+            // Reload bookings to reflect changes
+            loadBookings(true);
+            Alert.alert('Thành công', 'Cảm ơn bạn đã đánh giá!');
+          }}
+          appointmentId={selectedBookingForReview.appointmentId}
+          providerId={selectedBookingForReview.providerId}
+          technicianName={selectedBookingForReview.technicianName}
+          serviceName={selectedBookingForReview.serviceName}
+          existingReview={selectedBookingForReview.existingReview}
         />
       )}
     </View>
