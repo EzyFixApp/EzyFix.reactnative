@@ -34,6 +34,7 @@ import QuoteNotificationModal from '../../components/QuoteNotificationModal';
 import CustomModal from '../../components/CustomModal';
 import ReviewModal from '../../components/ReviewModal';
 import { reviewService } from '../../lib/api/reviews';
+import { notificationService } from '../../lib/services/notificationService';
 
 interface OrderDetail {
   id: string;
@@ -116,6 +117,10 @@ function CustomerOrderTracking() {
     reviewDate: string;
   } | null>(null);
   const [providerId, setProviderId] = useState<string>('');
+
+  // Track previous status for notification changes
+  const previousStatusRef = useRef<string | null>(null);
+  const notificationSentRef = useRef<Set<string>>(new Set()); // Track which notifications have been sent
 
   // Helper function to show modal
   const showAlertModal = (
@@ -751,6 +756,82 @@ function CustomerOrderTracking() {
       }
     };
   }, [orderId]);
+
+  // Initialize notification service on mount
+  useEffect(() => {
+    const initNotifications = async () => {
+      try {
+        if (__DEV__) console.log('🔔 [OrderTracking] Initializing notifications...');
+        await notificationService.initialize();
+        if (__DEV__) console.log('✅ [OrderTracking] Notifications initialized');
+      } catch (error) {
+        if (__DEV__) console.error('❌ [OrderTracking] Failed to initialize notifications:', error);
+      }
+    };
+
+    initNotifications();
+
+    // Cleanup notification listeners on unmount
+    return () => {
+      notificationService.cleanup();
+    };
+  }, []);
+
+  // Monitor order status changes and trigger notifications
+  useEffect(() => {
+    if (!order) return;
+
+    const currentStatus = order.appointmentStatus?.toUpperCase() || order.status.toUpperCase();
+    const previousStatus = previousStatusRef.current;
+    const serviceName = order.serviceName || 'dịch vụ';
+    const technicianName = order.technicianName;
+
+    // Create unique notification key to prevent duplicates
+    const notificationKey = `${order.id}-${currentStatus}`;
+
+    // Skip if notification already sent for this status
+    if (notificationSentRef.current.has(notificationKey)) {
+      return;
+    }
+
+    // Only trigger notification if status changed from previous
+    if (previousStatus && previousStatus !== currentStatus) {
+      if (__DEV__) {
+        console.log('📱 [OrderTracking] Status changed:', {
+          from: previousStatus,
+          to: currentStatus,
+          serviceName,
+          technicianName
+        });
+      }
+
+      // Trigger appropriate notification based on new status
+      if (currentStatus === 'PENDING' || currentStatus === 'QUOTED') {
+        // Status: Finding technician or received quote
+        notificationService.notifyOrderPending(order.id, serviceName);
+        notificationSentRef.current.add(notificationKey);
+        if (__DEV__) console.log('🔍 Notification sent: Order PENDING');
+      } else if (currentStatus === 'ACCEPTED' || currentStatus === 'QUOTEACCEPTED') {
+        // Status: Technician accepted the order
+        notificationService.notifyOrderAccepted(order.id, serviceName, technicianName);
+        notificationSentRef.current.add(notificationKey);
+        if (__DEV__) console.log('✅ Notification sent: Order ACCEPTED');
+      } else if (currentStatus === 'CHECKING' || currentStatus === 'REPAIRING' || currentStatus === 'IN_PROGRESS') {
+        // Status: Order in progress
+        notificationService.notifyOrderInProgress(order.id, serviceName);
+        notificationSentRef.current.add(notificationKey);
+        if (__DEV__) console.log('🔧 Notification sent: Order IN_PROGRESS');
+      } else if (currentStatus === 'COMPLETED') {
+        // Status: Order completed
+        notificationService.notifyOrderCompleted(order.id, serviceName);
+        notificationSentRef.current.add(notificationKey);
+        if (__DEV__) console.log('🎉 Notification sent: Order COMPLETED');
+      }
+    }
+
+    // Update previous status
+    previousStatusRef.current = currentStatus;
+  }, [order?.appointmentStatus, order?.status, order?.id]);
 
   // SignalR Connection for realtime payment updates
   useEffect(() => {

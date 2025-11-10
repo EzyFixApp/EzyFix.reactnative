@@ -81,7 +81,12 @@ function TechnicianBookingSuccess() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen 
+        options={{ 
+          headerShown: false,
+          gestureEnabled: false, // Disable swipe back gesture
+        }} 
+      />
       <StatusBar barStyle="light-content" backgroundColor="#10B981" />
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>

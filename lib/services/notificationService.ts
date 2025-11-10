@@ -328,6 +328,331 @@ class NotificationService {
   }
 
   /**
+   * Schedule notification for order status: PENDING (Finding technician)
+   */
+  public async notifyOrderPending(serviceRequestId: string, serviceName: string): Promise<string | null> {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') {
+        if (__DEV__) console.warn('⚠️ Notification permission not granted');
+        return null;
+      }
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '🔍 Đang tìm thợ',
+          body: `Chúng tôi đang tìm kiếm thợ phù hợp cho dịch vụ "${serviceName}". Vui lòng chờ trong giây lát...`,
+          data: {
+            type: 'ORDER_PENDING',
+            serviceRequestId,
+            serviceName,
+            screen: 'order-tracking',
+          },
+          sound: 'default', // Ting ting sound
+          badge: 1,
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+          categoryIdentifier: 'order-update',
+        },
+        trigger: null, // Immediate delivery
+      });
+
+      if (__DEV__) console.log('✅ Order PENDING notification sent:', notificationId);
+      return notificationId;
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ Failed to send PENDING notification:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Schedule notification for order status: ACCEPTED (Technician accepted)
+   */
+  public async notifyOrderAccepted(
+    serviceRequestId: string, 
+    serviceName: string, 
+    technicianName?: string
+  ): Promise<string | null> {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') {
+        if (__DEV__) console.warn('⚠️ Notification permission not granted');
+        return null;
+      }
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '✅ Thợ đã chấp nhận đơn!',
+          body: technicianName 
+            ? `Thợ ${technicianName} đã chấp nhận đơn hàng "${serviceName}" của bạn. Hãy chuẩn bị đón thợ!`
+            : `Thợ đã chấp nhận đơn hàng "${serviceName}" của bạn. Hãy chuẩn bị đón thợ!`,
+          data: {
+            type: 'ORDER_ACCEPTED',
+            serviceRequestId,
+            serviceName,
+            technicianName,
+            screen: 'order-tracking',
+          },
+          sound: 'default', // Ting ting sound
+          badge: 1,
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          categoryIdentifier: 'order-update',
+        },
+        trigger: null, // Immediate delivery
+      });
+
+      if (__DEV__) console.log('✅ Order ACCEPTED notification sent:', notificationId);
+      return notificationId;
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ Failed to send ACCEPTED notification:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Schedule notification for order status: IN_PROGRESS
+   */
+  public async notifyOrderInProgress(serviceRequestId: string, serviceName: string): Promise<string | null> {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') return null;
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '🔧 Đơn hàng đang thực hiện',
+          body: `Thợ đã bắt đầu thực hiện dịch vụ "${serviceName}". Bạn có thể theo dõi tiến độ trực tiếp.`,
+          data: {
+            type: 'ORDER_IN_PROGRESS',
+            serviceRequestId,
+            serviceName,
+            screen: 'order-tracking',
+          },
+          sound: 'default',
+          badge: 1,
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+        },
+        trigger: null,
+      });
+
+      if (__DEV__) console.log('✅ Order IN_PROGRESS notification sent');
+      return notificationId;
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ Failed to send IN_PROGRESS notification:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Schedule notification for order status: COMPLETED
+   */
+  public async notifyOrderCompleted(serviceRequestId: string, serviceName: string): Promise<string | null> {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') return null;
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '🎉 Hoàn thành đơn hàng',
+          body: `Dịch vụ "${serviceName}" đã hoàn thành. Vui lòng kiểm tra và đánh giá chất lượng dịch vụ!`,
+          data: {
+            type: 'ORDER_COMPLETED',
+            serviceRequestId,
+            serviceName,
+            screen: 'order-tracking',
+          },
+          sound: 'default',
+          badge: 1,
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+        },
+        trigger: null,
+      });
+
+      if (__DEV__) console.log('✅ Order COMPLETED notification sent');
+      return notificationId;
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ Failed to send COMPLETED notification:', error);
+      return null;
+    }
+  }
+
+  // ========================================
+  // TECHNICIAN NOTIFICATIONS (Tiếng Việt)
+  // ========================================
+
+  /**
+   * Thông báo cho thợ: Khách hàng chấp nhận báo giá
+   */
+  public async notifyTechnicianQuoteAccepted(
+    serviceRequestId: string,
+    serviceName: string,
+    customerName?: string,
+    amount?: number
+  ): Promise<string | null> {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') {
+        if (__DEV__) console.warn('⚠️ Notification permission not granted');
+        return null;
+      }
+
+      const amountText = amount ? `${amount.toLocaleString('vi-VN')} VNĐ` : '';
+      const customerText = customerName || 'Khách hàng';
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '✅ Báo giá được chấp nhận!',
+          body: amount
+            ? `${customerText} đã chấp nhận báo giá ${amountText} cho "${serviceName}". Chuẩn bị xuất phát!`
+            : `${customerText} đã chấp nhận báo giá cho "${serviceName}". Chuẩn bị xuất phát!`,
+          data: {
+            type: 'TECHNICIAN_QUOTE_ACCEPTED',
+            serviceRequestId,
+            serviceName,
+            customerName,
+            amount,
+            screen: 'technician-order-tracking',
+          },
+          sound: 'default', // Ting ting sound
+          badge: 1,
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          categoryIdentifier: 'technician-order-update',
+        },
+        trigger: null,
+      });
+
+      if (__DEV__) console.log('✅ Technician QUOTE_ACCEPTED notification sent:', notificationId);
+      return notificationId;
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ Failed to send technician QUOTE_ACCEPTED notification:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Thông báo cho thợ: Đã tới hẹn (sắp tới giờ appointment)
+   */
+  public async notifyTechnicianAppointmentReminder(
+    serviceRequestId: string,
+    serviceName: string,
+    appointmentTime: string,
+    customerAddress?: string
+  ): Promise<string | null> {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') return null;
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '⏰ Nhắc lịch hẹn',
+          body: customerAddress
+            ? `Lịch hẹn "${serviceName}" lúc ${appointmentTime} tại ${customerAddress}. Chuẩn bị khởi hành!`
+            : `Lịch hẹn "${serviceName}" lúc ${appointmentTime}. Đừng quên!`,
+          data: {
+            type: 'TECHNICIAN_APPOINTMENT_REMINDER',
+            serviceRequestId,
+            serviceName,
+            appointmentTime,
+            customerAddress,
+            screen: 'technician-order-tracking',
+          },
+          sound: 'default',
+          badge: 1,
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+        },
+        trigger: null,
+      });
+
+      if (__DEV__) console.log('✅ Technician APPOINTMENT_REMINDER notification sent');
+      return notificationId;
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ Failed to send technician APPOINTMENT_REMINDER notification:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Thông báo cho thợ: Khách hàng đã thanh toán
+   */
+  public async notifyTechnicianPaymentReceived(
+    serviceRequestId: string,
+    serviceName: string,
+    amount: number
+  ): Promise<string | null> {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') return null;
+
+      const amountText = amount.toLocaleString('vi-VN') + ' VNĐ';
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '💰 Đã nhận thanh toán',
+          body: `Khách hàng đã thanh toán ${amountText} cho "${serviceName}". Công việc hoàn tất!`,
+          data: {
+            type: 'TECHNICIAN_PAYMENT_RECEIVED',
+            serviceRequestId,
+            serviceName,
+            amount,
+            screen: 'technician-order-tracking',
+          },
+          sound: 'default',
+          badge: 1,
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+        },
+        trigger: null,
+      });
+
+      if (__DEV__) console.log('✅ Technician PAYMENT_RECEIVED notification sent');
+      return notificationId;
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ Failed to send technician PAYMENT_RECEIVED notification:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Thông báo cho thợ: Khách hàng đã đánh giá
+   */
+  public async notifyTechnicianReviewed(
+    serviceRequestId: string,
+    serviceName: string,
+    rating: number,
+    customerName?: string
+  ): Promise<string | null> {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') return null;
+
+      const stars = '⭐'.repeat(Math.round(rating));
+      const customerText = customerName || 'Khách hàng';
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '⭐ Nhận đánh giá mới',
+          body: `${customerText} đã đánh giá ${stars} (${rating}/5) cho "${serviceName}". Xem chi tiết!`,
+          data: {
+            type: 'TECHNICIAN_REVIEWED',
+            serviceRequestId,
+            serviceName,
+            rating,
+            customerName,
+            screen: 'technician-order-tracking',
+          },
+          sound: 'default',
+          badge: 1,
+          priority: Notifications.AndroidNotificationPriority.DEFAULT,
+        },
+        trigger: null,
+      });
+
+      if (__DEV__) console.log('✅ Technician REVIEWED notification sent');
+      return notificationId;
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ Failed to send technician REVIEWED notification:', error);
+      return null;
+    }
+  }
+
+  /**
    * Clear all notifications
    */
   public async clearAllNotifications(): Promise<void> {

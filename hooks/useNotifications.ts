@@ -71,6 +71,36 @@ export function useNotifications() {
         }
         break;
 
+      case 'ORDER_PENDING':
+      case 'ORDER_ACCEPTED':
+      case 'ORDER_IN_PROGRESS':
+      case 'ORDER_COMPLETED':
+        // Order status updates → navigate to order tracking (Customer)
+        if (user?.userType === 'customer' && data.serviceRequestId) {
+          router.push({
+            pathname: '/customer/order-tracking' as any,
+            params: { orderId: data.serviceRequestId }
+          });
+        }
+        break;
+
+      // Technician notifications
+      case 'TECHNICIAN_QUOTE_ACCEPTED':
+      case 'TECHNICIAN_APPOINTMENT_REMINDER':
+      case 'TECHNICIAN_PAYMENT_RECEIVED':
+      case 'TECHNICIAN_REVIEWED':
+        // Technician order updates → navigate to order tracking
+        if (user?.userType === 'technician' && data.serviceRequestId) {
+          router.push({
+            pathname: '/technician/technician-order-tracking' as any,
+            params: { 
+              serviceRequestId: data.serviceRequestId,
+              // offerId might be needed, but not always available from notification
+            }
+          });
+        }
+        break;
+
       default:
         if (__DEV__) console.warn('⚠️ Unknown notification type:', data.type);
     }

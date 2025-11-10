@@ -34,6 +34,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useLocation } from '../../hooks/useLocation';
 import TechnicianMapView from '../../components/TechnicianMapView';
 import { reviewService } from '../../lib/api/reviews';
+import { notificationService } from '../../lib/services/notificationService';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -227,6 +228,10 @@ function TechnicianOrderTracking() {
     reviewDate: string;
   } | null>(null);
   
+  // Track previous status for notification changes (Technician notifications)
+  const previousStatusRef = useRef<string | null>(null);
+  const notificationSentRef = useRef<Set<string>>(new Set()); // Track which notifications have been sent
+  
   // Helper function to mask phone number for privacy
   const maskPhoneNumber = (phone: string): string => {
     if (!phone) return '';
@@ -345,6 +350,85 @@ function TechnicianOrderTracking() {
     // Cleanup subscription
     return unsubscribe;
   }, [appointment?.id, bookingInfo]);
+  
+  // Initialize notification service on mount (Technician)
+  useEffect(() => {
+    const initNotifications = async () => {
+      try {
+        if (__DEV__) console.log('🔔 [Technician] Initializing notifications...');
+        await notificationService.initialize();
+        if (__DEV__) console.log('✅ [Technician] Notifications initialized');
+      } catch (error) {
+        if (__DEV__) console.error('❌ [Technician] Failed to initialize notifications:', error);
+      }
+    };
+
+    initNotifications();
+
+    // Cleanup notification listeners on unmount
+    return () => {
+      notificationService.cleanup();
+    };
+  }, []);
+
+  // Monitor appointment status changes and trigger technician notifications
+  useEffect(() => {
+    if (!appointment || !serviceRequest) return;
+
+    const currentStatusValue = appointment.status?.toUpperCase();
+    const previousStatus = previousStatusRef.current;
+    const currentServiceName = serviceName || 'dịch vụ';
+    const customerName = serviceRequest.fullName || 'Khách hàng';
+
+    // Create unique notification key to prevent duplicates
+    const notificationKey = `${appointment.id}-${currentStatusValue}`;
+
+    // Skip if notification already sent for this status
+    if (notificationSentRef.current.has(notificationKey)) {
+      return;
+    }
+
+    // Only trigger notification if status changed from previous
+    if (previousStatus && previousStatus !== currentStatusValue) {
+      if (__DEV__) {
+        console.log('📱 [Technician] Status changed:', {
+          from: previousStatus,
+          to: currentStatusValue,
+          serviceName: currentServiceName,
+          customerName
+        });
+      }
+
+      // Trigger appropriate notification based on new status
+      if (currentStatusValue === 'SCHEDULED') {
+        // Khách hàng đã chấp nhận báo giá → đã có lịch hẹn
+        const amount = offer?.finalCost || offer?.estimatedCost;
+        notificationService.notifyTechnicianQuoteAccepted(
+          serviceRequest.requestID,
+          currentServiceName,
+          customerName,
+          amount
+        );
+        notificationSentRef.current.add(notificationKey);
+        if (__DEV__) console.log('✅ Notification sent: Quote ACCEPTED (Technician)');
+      } else if (currentStatusValue === 'COMPLETED') {
+        // Đơn hàng hoàn thành → khách hàng có thể đã thanh toán
+        const amount = offer?.finalCost || offer?.estimatedCost || 0;
+        if (amount > 0) {
+          notificationService.notifyTechnicianPaymentReceived(
+            serviceRequest.requestID,
+            currentServiceName,
+            amount
+          );
+          notificationSentRef.current.add(notificationKey);
+          if (__DEV__) console.log('💰 Notification sent: Payment RECEIVED (Technician)');
+        }
+      }
+    }
+
+    // Update previous status
+    previousStatusRef.current = currentStatusValue;
+  }, [appointment?.status, appointment?.id, serviceRequest?.requestID, serviceName, offer?.finalCost, offer?.estimatedCost]);
   
   // Fetch media when status changes to REPAIRING or later
   useEffect(() => {
