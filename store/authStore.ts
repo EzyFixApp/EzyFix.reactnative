@@ -10,6 +10,8 @@ import { apiService } from '../lib/api/base';
 import { tokenManager } from '../lib/api/tokenManager';
 import { logger } from '../lib/logger';
 import { STORAGE_KEYS } from '../lib/api/config';
+import { clearCustomerAuthCache } from '../hooks/useCustomerAuth';
+import { clearTechnicianAuthCache } from '../hooks/useTechnicianAuth';
 import type { 
   AuthState, 
   UserData, 
@@ -120,6 +122,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       // Call logout API (will call DELETE refresh token and clear tokenManager)
       await authService.logout();
 
+      // Clear auth caches to prevent role mismatch warnings
+      clearCustomerAuthCache();
+      clearTechnicianAuthCache();
+
       // Reset store state
       set({
         isAuthenticated: false,
@@ -137,8 +143,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     } catch (error: any) {
       logger.error('❌ Logout error:', error);
       
-      // Even if logout fails, reset local state WITHOUT setting error
+      // Even if logout fails, clear caches and reset local state WITHOUT setting error
       // (logout errors are not critical - user just wants to log out)
+      clearCustomerAuthCache();
+      clearTechnicianAuthCache();
+      
       set({
         isAuthenticated: false,
         user: null,

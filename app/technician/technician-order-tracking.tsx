@@ -30,7 +30,6 @@ import { servicesService } from '../../lib/api/services';
 import { authService } from '../../lib/api/auth';
 import { mediaService } from '../../lib/api/media';
 import { paymentHub, PaymentUpdatePayload } from '../../lib/signalr/paymentHub';
-import { techniciansService } from '../../lib/api/technicians';
 import { useAuthStore } from '../../store/authStore';
 import { useLocation } from '../../hooks/useLocation';
 import TechnicianMapView from '../../components/TechnicianMapView';
@@ -226,14 +225,6 @@ function TechnicianOrderTracking() {
     ratingOverall: number;
     comment: string;
     reviewDate: string;
-  } | null>(null);
-
-  // Technician profile info
-  const [technicianInfo, setTechnicianInfo] = useState<{
-    technicianId: string;
-    technicianName: string;
-    avatar?: string;
-    averageRating?: number;
   } | null>(null);
   
   // Helper function to mask phone number for privacy
@@ -497,31 +488,6 @@ function TechnicianOrderTracking() {
         hasAppointmentId: !!offerData.appointmentId
       });
       setOffer(offerData);
-
-      // Extract technician info from offer or user data
-      if (user?.id) {
-        try {
-          // Fetch technician profile to get rating
-          const technicianProfile = await techniciansService.getTechnicianById(user.id);
-          setTechnicianInfo({
-            technicianId: user.id,
-            technicianName: user.fullName,
-            avatar: user.avatarLink || (technicianProfile as any).avatar || undefined,
-            averageRating: (technicianProfile as any).averageRating || (technicianProfile as any).rating,
-          });
-          console.log('✅ Loaded technician info:', {
-            name: user.fullName,
-            rating: (technicianProfile as any).averageRating
-          });
-        } catch (err) {
-          console.log('⚠️ Could not fetch technician profile, using basic info');
-          setTechnicianInfo({
-            technicianId: user.id,
-            technicianName: user.fullName,
-            avatar: user.avatarLink || undefined,
-          });
-        }
-      }
 
       // Check if we have cached appointmentId in AsyncStorage (for when server doesn't sync)
       // Use userId in cache key to avoid conflicts between different users
@@ -2196,52 +2162,6 @@ function TechnicianOrderTracking() {
               </View>
             </View>
           </View>
-
-          {/* Technician Info Card - Clickable */}
-          {technicianInfo && (
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => {
-                router.push({
-                  pathname: './technician-profile',
-                  params: {
-                    technicianId: technicianInfo.technicianId,
-                  },
-                } as any);
-              }}
-              style={styles.technicianCard}
-            >
-              <View style={styles.technicianHeader}>
-                <View style={styles.technicianAvatarCircle}>
-                  {technicianInfo.avatar ? (
-                    <Image
-                      source={{ uri: technicianInfo.avatar }}
-                      style={styles.technicianAvatarImage}
-                    />
-                  ) : (
-                    <Ionicons name="construct" size={20} color="#8B5CF6" />
-                  )}
-                </View>
-                <View style={styles.technicianInfo}>
-                  <Text style={styles.technicianLabel}>Thợ sửa chữa</Text>
-                  <Text style={styles.technicianName}>{technicianInfo.technicianName}</Text>
-                </View>
-                {technicianInfo.averageRating !== undefined && (
-                  <View style={styles.technicianRating}>
-                    <Ionicons name="star" size={16} color="#F59E0B" />
-                    <Text style={styles.ratingText}>
-                      {technicianInfo.averageRating?.toFixed(1) || 'N/A'}
-                    </Text>
-                  </View>
-                )}
-                <Ionicons name="chevron-forward" size={20} color="#9CA3AF" style={styles.chevronIcon} />
-              </View>
-              <View style={styles.technicianFooter}>
-                <Ionicons name="information-circle-outline" size={14} color="#9CA3AF" />
-                <Text style={styles.technicianFooterText}>Nhấn để xem hồ sơ chi tiết</Text>
-              </View>
-            </TouchableOpacity>
-          )}
           
           {/* Appointment Card - Enhanced for visibility */}
           <View style={styles.appointmentCardHighlight}>
@@ -3504,86 +3424,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 4,
     lineHeight: 18,
-  },
-  // Technician Info Card Styles
-  technicianCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  technicianHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  technicianAvatarCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#F3F0FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    overflow: 'hidden',
-  },
-  technicianAvatarImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-  },
-  technicianInfo: {
-    flex: 1,
-  },
-  technicianLabel: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    fontWeight: '500',
-    marginBottom: 2,
-  },
-  technicianName: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  technicianRating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 4,
-    marginRight: 8,
-  },
-  ratingText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#D97706',
-  },
-  chevronIcon: {
-    marginLeft: 4,
-  },
-  technicianFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: 6,
-  },
-  technicianFooterText: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
   },
   customerContactRow: {
     flexDirection: 'row',

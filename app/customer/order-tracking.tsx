@@ -520,7 +520,10 @@ function CustomerOrderTracking() {
             if (relevantOffer.technician?.technicianName) {
               technicianName = relevantOffer.technician.technicianName;
               technicianAvatar = relevantOffer.technician.technicianAvatar;
-              technicianRating = relevantOffer.technician.technicianRating;
+              // Only assign rating if it's a valid number
+              if (typeof relevantOffer.technician.technicianRating === 'number') {
+                technicianRating = relevantOffer.technician.technicianRating;
+              }
               if (__DEV__) console.log('✅ [OrderTracking] Technician info from offer.technician:', {
                 name: technicianName,
                 avatar: technicianAvatar,
@@ -533,7 +536,10 @@ function CustomerOrderTracking() {
               const lastName = relevantOffer.technician.user.lastName || '';
               technicianName = `${lastName} ${firstName}`.trim();
               technicianAvatar = relevantOffer.technician.technicianAvatar;
-              technicianRating = relevantOffer.technician.technicianRating;
+              // Only assign rating if it's a valid number
+              if (typeof relevantOffer.technician.technicianRating === 'number') {
+                technicianRating = relevantOffer.technician.technicianRating;
+              }
               
               if (__DEV__) console.log('✅ [OrderTracking] Technician name from offer.technician.user:', technicianName);
             } 
@@ -543,7 +549,10 @@ function CustomerOrderTracking() {
               const lastName = relevantOffer.technician.lastName || '';
               technicianName = `${lastName} ${firstName}`.trim();
               technicianAvatar = relevantOffer.technician.technicianAvatar;
-              technicianRating = relevantOffer.technician.technicianRating;
+              // Only assign rating if it's a valid number
+              if (typeof relevantOffer.technician.technicianRating === 'number') {
+                technicianRating = relevantOffer.technician.technicianRating;
+              }
               
               if (__DEV__) console.log('✅ [OrderTracking] Technician name from technician firstName/lastName:', technicianName);
             }
@@ -651,7 +660,10 @@ function CustomerOrderTracking() {
                 technicianId: offerDetails.technician.technicianId,
                 technicianName: offerDetails.technician.technicianName || 'Thợ',
                 technicianAvatar: offerDetails.technician.technicianAvatar,
-                technicianRating: offerDetails.technician.technicianRating,
+                // Only include rating if it's a valid number
+                technicianRating: typeof offerDetails.technician.technicianRating === 'number' 
+                  ? offerDetails.technician.technicianRating 
+                  : undefined,
               } : undefined,
             });
             
@@ -1882,7 +1894,7 @@ function CustomerOrderTracking() {
                     {/* Name and Rating */}
                     <View style={styles.technicianInfo}>
                       <Text style={styles.technicianName}>Thợ: {order.technicianName}</Text>
-                      {order.technicianRating !== undefined && (
+                      {order.technicianRating !== undefined && order.technicianRating !== null && (
                         <View style={styles.technicianRatingRow}>
                           <Ionicons name="star" size={16} color="#F59E0B" />
                           <Text style={styles.technicianRatingText}>

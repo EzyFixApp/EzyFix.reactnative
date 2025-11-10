@@ -648,10 +648,12 @@ function TechnicianOrders() {
         );
       }
       
+      // Filter accepted orders: Only show active orders (accepted or in-progress)
+      // Exclude completed orders - they should be in history, not in active "Đã nhận" tab
       const accepted = transformedAcceptedOrders.filter(order => {
         const isAccepted = order.status === 'accepted' ||    // QuoteAccepted from backend
-                          order.status === 'in-progress' || // InProgress from backend
-                          order.status === 'completed';      // Completed from backend
+                          order.status === 'in-progress';    // InProgress from backend
+        // NOTE: 'completed' orders are excluded from "Đã nhận" tab
         
         if (__DEV__ && !isAccepted) {
           console.log(`⚠️ Order ${order.id} with status "${order.status}" was FILTERED OUT`);

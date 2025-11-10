@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, TextInput, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
 import { servicesService } from '../../lib/api/services';
 import type { Service, Category } from '../../types/api';
@@ -9,16 +8,10 @@ import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 
 interface ServiceItemProps {
   service: Service;
-  bgColor?: string;
-  iconBg?: string;
   onPress?: () => void;
 }
 
-function ServiceItem({ service, bgColor, iconBg, onPress }: ServiceItemProps) {
-  const formatPrice = (price: number) => {
-    return `${price.toLocaleString('vi-VN')} VND`;
-  };
-
+function ServiceItem({ service, onPress }: ServiceItemProps) {
   const getDefaultImage = (categoryId: string) => {
     switch (categoryId) {
       case 'HVAC':
@@ -31,36 +24,13 @@ function ServiceItem({ service, bgColor, iconBg, onPress }: ServiceItemProps) {
   };
 
   return (
-    <TouchableOpacity style={styles.serviceItem} onPress={onPress} activeOpacity={0.7}>
-      <View style={[
-        styles.serviceImageContainer,
-        { backgroundColor: bgColor || '#F8FAFF' }
-      ]}>
-        <View style={[
-          styles.serviceIconOverlay,
-          { backgroundColor: iconBg || '#609CEF' }
-        ]} />
-        <Image 
-          source={service.serviceIconUrl ? { uri: service.serviceIconUrl } : getDefaultImage(service.categoryId)} 
-          style={styles.serviceImage} 
-          resizeMode="cover"
-        />
-      </View>
-      
-      <View style={styles.serviceContent}>
-        <Text style={styles.serviceTitle} numberOfLines={2}>{service.serviceName}</Text>
-        <Text style={styles.serviceDescription} numberOfLines={3}>{service.description}</Text>
-        
-        <View style={styles.servicePriceContainer}>
-          <Text style={styles.servicePriceLabel}>Từ</Text>
-          <Text style={styles.servicePrice}>{formatPrice(service.basePrice)}</Text>
-        </View>
-        
-        <TouchableOpacity style={styles.bookButton} activeOpacity={0.8}>
-          <Text style={styles.bookButtonText}>Đặt ngay</Text>
-          <Ionicons name="arrow-forward" size={14} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
+    <TouchableOpacity style={styles.serviceCard} onPress={onPress} activeOpacity={0.8}>
+      <Image 
+        source={service.serviceIconUrl ? { uri: service.serviceIconUrl } : getDefaultImage(service.categoryId)} 
+        style={styles.serviceImage} 
+        resizeMode="cover"
+      />
+      <Text style={styles.serviceName} numberOfLines={2}>{service.serviceName}</Text>
     </TouchableOpacity>
   );
 }
@@ -71,102 +41,24 @@ interface ServiceCategoryProps {
 }
 
 function ServiceCategory({ title, services }: ServiceCategoryProps) {
-  const getCategoryIcon = (title: string) => {
-    switch (title) {
-      case 'Điện':
-        return 'flash-outline';
-      case 'Nước':
-        return 'water-outline';
-      case 'Điện lạnh':
-        return 'snow-outline';
-      case 'Thiết bị':
-        return 'construct-outline';
-      default:
-        return 'construct-outline';
-    }
-  };
-
-  const getCategoryColor = (title: string) => {
-    switch (title) {
-      case 'Điện':
-        return '#F59E0B';
-      case 'Nước':
-        return '#06B6D4';
-      case 'Điện lạnh':
-        return '#06D6A0';
-      case 'Thiết bị':
-        return '#8B5CF6';
-      default:
-        return '#609CEF';
-    }
-  };
-
-  const getServiceColors = (categoryId: string, index: number) => {
-    const colorSets = {
-      'Electrical': [
-        { bgColor: '#FFF3CD', iconBg: '#F59E0B' }, // Vàng cho điện
-        { bgColor: '#FFE5B4', iconBg: '#D97706' }
-      ],
-      'Plumbing': [
-        { bgColor: '#CFFAFE', iconBg: '#06B6D4' }, // Xanh nước biển
-        { bgColor: '#B0F2FF', iconBg: '#0891B2' }
-      ],
-      'HVAC': [
-        { bgColor: '#D1FAE5', iconBg: '#06D6A0' }, // Xanh lá
-        { bgColor: '#A7F3D0', iconBg: '#059669' }
-      ],
-      'Appliances': [
-        { bgColor: '#EDE9FE', iconBg: '#8B5CF6' }, // Tím
-        { bgColor: '#DDD6FE', iconBg: '#7C3AED' }
-      ]
-    };
-    
-    const colors = colorSets[categoryId as keyof typeof colorSets] || colorSets['Appliances'];
-    return colors[index % colors.length];
-  };
-
   return (
-    <View style={styles.categoryContainer}>
-      <View style={styles.categoryHeader}>
-        <LinearGradient
-          colors={[getCategoryColor(title), `${getCategoryColor(title)}CC`]}
-          style={styles.categoryIconContainer}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Ionicons 
-            name={getCategoryIcon(title) as keyof typeof Ionicons.glyphMap} 
-            size={24} 
-            color="white" 
-          />
-        </LinearGradient>
-        <View style={styles.categoryTitleContainer}>
-          <Text style={styles.categoryTitle}>{title}</Text>
-          <Text style={styles.categorySubtitle}>{services.length} dịch vụ có sẵn</Text>
-        </View>
-      </View>
+    <View style={styles.categorySection}>
+      <Text style={styles.categoryTitle}>{title}</Text>
       <View style={styles.servicesGrid}>
-        {services.map((service, index) => {
-          const colors = getServiceColors(service.categoryId, index);
-          return (
-            <ServiceItem
-              key={service.serviceId}
-              service={service}
-              bgColor={colors.bgColor}
-              iconBg={colors.iconBg}
-              onPress={() => {
-                router.push({
-                  pathname: '../customer/book-service' as any,
-                  params: {
-                    serviceId: service.serviceId,
-                    serviceName: service.serviceName,
-                    servicePrice: service.basePrice.toString()
-                  }
-                });
-              }}
-            />
-          );
-        })}
+        {services.map((service) => (
+          <ServiceItem
+            key={service.serviceId}
+            service={service}
+            onPress={() => {
+              router.push({
+                pathname: '../customer/service-detail' as any,
+                params: {
+                  serviceId: service.serviceId,
+                }
+              });
+            }}
+          />
+        ))}
       </View>
     </View>
   );
@@ -177,6 +69,7 @@ function AllServices() {
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleBackPress = () => {
@@ -212,6 +105,25 @@ function AllServices() {
     }
   };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      // Fetch both services and categories in parallel
+      const [servicesData, categoriesData] = await Promise.all([
+        servicesService.getAllServices(),
+        servicesService.getAllCategories()
+      ]);
+      
+      setServices(servicesData);
+      setCategories(categoriesData);
+      setError(null);
+    } catch (err: any) {
+      setError('Không thể tải danh sách dịch vụ. Vui lòng thử lại.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   // Organize services by category using real category names
   const organizeServicesByCategory = () => {
     const grouped = services.reduce((acc, service) => {
@@ -230,10 +142,31 @@ function AllServices() {
     };
 
     // Return all categories with real category names
-    return Object.entries(grouped).map(([categoryId, services]) => ({
+    const allCategories = Object.entries(grouped).map(([categoryId, services]) => ({
       title: getCategoryName(categoryId),
-      services: services
+      services: services,
+      categoryId: categoryId
     }));
+
+    // Define custom order: Điện lạnh → Điện → Nước
+    const categoryOrder = ['Điện lạnh', 'Điện', 'Nước'];
+    
+    // Sort categories based on custom order (by title/categoryName)
+    return allCategories.sort((a, b) => {
+      const indexA = categoryOrder.indexOf(a.title);
+      const indexB = categoryOrder.indexOf(b.title);
+      
+      // If both are in the order list, sort by their position
+      if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
+      }
+      // If only A is in the list, A comes first
+      if (indexA !== -1) return -1;
+      // If only B is in the list, B comes first
+      if (indexB !== -1) return 1;
+      // If neither is in the list, maintain original order
+      return 0;
+    });
   };
 
   // Filter services based on search query
@@ -249,44 +182,44 @@ function AllServices() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.container}>
-        {/* Header with Gradient */}
-        <LinearGradient
-          colors={['#609CEF', '#4F8BE8', '#3D7CE0']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.header}
-        >
+        {/* Header */}
+        <View style={styles.header}>
           <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={24} color="white" />
+            <Ionicons name="chevron-back" size={28} color="#1F2937" />
           </TouchableOpacity>
-          
-          <View style={styles.headerContent}>
-            <Text style={styles.headerTitle}>Dịch vụ của chúng tôi</Text>
-            <Text style={styles.headerSubtitle}>Tìm kiếm dịch vụ phù hợp với bạn</Text>
-          </View>
-        </LinearGradient>
+          <Text style={styles.headerTitle}>Tìm kiếm dịch vụ</Text>
+        </View>
 
         {/* Search Bar */}
         <View style={styles.searchContainer}>
-          <View style={styles.searchInputContainer}>
-            <Ionicons name="search-outline" size={20} color="#9CA3AF" style={styles.searchIcon} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Tìm kiếm dịch vụ"
-              placeholderTextColor="#9CA3AF"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Ionicons name="close-circle" size={20} color="#9CA3AF" />
-              </TouchableOpacity>
-            )}
-          </View>
+          <Ionicons name="search-outline" size={20} color="#9CA3AF" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Tìm kiếm dịch vụ"
+            placeholderTextColor="#9CA3AF"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Services Content */}
-        <ScrollView style={styles.contentContainer} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          style={styles.content} 
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#609CEF']}
+              tintColor="#609CEF"
+            />
+          }
+        >
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#609CEF" />
@@ -337,288 +270,88 @@ function AllServices() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#FFFFFF',
   },
   header: {
-    paddingBottom: 24,
-    paddingTop: 60,
-  },
-  backButton: {
-    position: 'absolute',
-    top: 60,
-    left: 16,
-    zIndex: 1,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerContent: {
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 10,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: 'white',
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    textAlign: 'center',
-  },
-  searchContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 20,
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  searchInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFF',
-    borderRadius: 16,
     paddingHorizontal: 16,
-    height: 52,
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-    shadowColor: '#609CEF',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    paddingTop: 60,
+    paddingBottom: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
-  searchIcon: {
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 12,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    marginHorizontal: 16,
+    marginVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
     color: '#1F2937',
-    fontWeight: '500',
+    marginLeft: 8,
   },
-  contentContainer: {
+  content: {
     flex: 1,
-    paddingTop: 8,
   },
-  categoryContainer: {
+  categorySection: {
     marginBottom: 32,
-  },
-  categoryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: 16,
-    marginBottom: 16,
-  },
-  categoryIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    shadowColor: '#609CEF',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  categoryTitleContainer: {
-    flex: 1,
   },
   categoryTitle: {
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '700',
     color: '#1F2937',
-    letterSpacing: -0.3,
-    marginBottom: 2,
-  },
-  categorySubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
+    marginBottom: 16,
   },
   servicesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 8,
+    gap: 12,
   },
-  serviceItem: {
-    flexDirection: 'column',
-    backgroundColor: 'white',
-    width: '47%',
-    marginHorizontal: '1.5%',
-    marginVertical: 8,
-    borderRadius: 20,
-    padding: 16,
+  serviceCard: {
+    width: '31%',
     alignItems: 'center',
-    shadowColor: '#609CEF',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(96, 156, 239, 0.08)',
-    transform: [{ scale: 1 }],
-  },
-  serviceImageContainer: {
-    width: 85,
-    height: 85,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: 'rgba(96, 156, 239, 0.1)',
-    shadowColor: '#609CEF',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  serviceIconOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 16,
-    opacity: 0.15,
+    marginBottom: 24,
   },
   serviceImage: {
-    width: 65,
-    height: 65,
-    borderRadius: 12,
-  },
-  serviceBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  ratingText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginLeft: 2,
-  },
-  serviceContent: {
-    alignItems: 'center',
     width: '100%',
-    flex: 1,
-  },
-  serviceTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 6,
-    textAlign: 'center',
-    letterSpacing: -0.2,
-    lineHeight: 20,
-  },
-  serviceDescription: {
-    fontSize: 12,
-    color: '#64748B',
-    marginBottom: 10,
-    lineHeight: 16,
-    textAlign: 'center',
-    fontWeight: '500',
-    flex: 1,
-  },
-  servicePriceContainer: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 10,
-  },
-  servicePriceLabel: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    fontWeight: '500',
-    marginRight: 4,
-  },
-  servicePrice: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#609CEF',
-  },
-  bookButton: {
-    backgroundColor: '#609CEF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    shadowColor: '#609CEF',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  bookButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-    marginRight: 6,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 40,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#6B7280',
-    marginTop: 16,
+    aspectRatio: 1,
+    borderRadius: 12,
     marginBottom: 8,
   },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#9CA3AF',
+  serviceName: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#1F2937',
     textAlign: 'center',
-    lineHeight: 20,
-  },
-  bottomSpacing: {
-    height: 80,
+    lineHeight: 18,
   },
   loadingContainer: {
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 60,
-    paddingHorizontal: 40,
   },
   loadingText: {
     fontSize: 16,
@@ -655,6 +388,27 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  bottomSpacing: {
+    height: 40,
   },
 });
 

@@ -27,6 +27,13 @@ let cachedAuthResult: {
 
 const CACHE_DURATION = 5000; // Cache for 5 seconds
 
+/**
+ * Clear technician auth cache (call this on logout)
+ */
+export function clearTechnicianAuthCache() {
+  cachedAuthResult = null;
+}
+
 export function useTechnicianAuth(): UseTechnicianAuthReturn {
   const { isAuthenticated, user, isLoading: authLoading } = useAuth();
   const { logout } = useAuthActions();
@@ -171,8 +178,9 @@ export function useTechnicianAuth(): UseTechnicianAuthReturn {
           timestamp: Date.now(),
         };
         
+        // Debug log only - this is normal when switching roles
         if (__DEV__) {
-          console.warn(`[useTechnicianAuth] Role mismatch: Expected 'technician', got '${roleFromToken}'`);
+          console.log(`[useTechnicianAuth] Role mismatch (expected 'technician', got '${roleFromToken}') - Normal when switching roles`);
         }
         return;
       }
@@ -189,8 +197,9 @@ export function useTechnicianAuth(): UseTechnicianAuthReturn {
           timestamp: Date.now(),
         };
         
+        // Debug log only - this is normal when switching roles
         if (__DEV__) {
-          console.warn(`[useTechnicianAuth] User data role mismatch: Expected 'technician', got '${user.userType}'`);
+          console.log(`[useTechnicianAuth] User data role mismatch (expected 'technician', got '${user.userType}') - Normal when switching roles`);
         }
         return;
       }

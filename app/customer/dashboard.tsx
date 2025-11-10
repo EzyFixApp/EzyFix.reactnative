@@ -10,7 +10,7 @@
 
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useAuth } from '../../store/authStore';
 import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 import CustomerHeader from '../../components/CustomerHeader';
@@ -117,6 +117,14 @@ function CustomerDashboardPage() {
 
   return (
     <View style={styles.container}>
+      {/* Disable swipe back gesture to prevent returning to login */}
+      <Stack.Screen 
+        options={{ 
+          headerShown: false,
+          gestureEnabled: false, // Critical: Prevent swipe back to login screen
+        }} 
+      />
+
       {/* Fixed Header */}
       <CustomerHeader 
         title={headerTitle}

@@ -15,11 +15,15 @@ interface TokenInfo {
 
 class TokenManager {
   private accessTokenInfo: TokenInfo | null = null;
+  private refreshTokenInfo: TokenInfo | null = null;
   private isRefreshing = false;
   private refreshPromise: Promise<string | null> | null = null;
+  private refreshInterval: any = null;
   
   // Buffer time: Refresh token 60s before expiry
   private readonly REFRESH_BUFFER_SECONDS = 60;
+  // Proactive refresh: Check every 5 minutes
+  private readonly PROACTIVE_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
   /**
    * Decode JWT and extract payload
@@ -30,7 +34,8 @@ class TokenManager {
       const decoded = atob(payload);
       return JSON.parse(decoded);
     } catch (error) {
-      logger.error('❌ Error decoding JWT:', error);
+      // Silent fail - some tokens (like refresh tokens) might not be JWT format
+      // This is expected and not an error
       return null;
     }
   }
@@ -60,7 +65,7 @@ class TokenManager {
 
       if (__DEV__) {
         const expiryDate = new Date(payload.exp * 1000);
-        console.log('📅 Token expires at:', expiryDate.toLocaleString());
+        console.log('📅 Access token expires at:', expiryDate.toLocaleString());
       }
 
       return token;
@@ -68,6 +73,80 @@ class TokenManager {
       logger.error('❌ Error loading access token:', error);
       return null;
     }
+  }
+
+  /**
+   * Load refresh token and check its expiry
+   * Note: Refresh token might not be JWT, so we can't decode expiry
+   */
+  private async loadRefreshToken(): Promise<string | null> {
+    try {
+      const token = await AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+      if (!token) {
+        this.refreshTokenInfo = null;
+        return null;
+      }
+
+      // Try to decode if it's a JWT, otherwise just store the token
+      try {
+        const payload = this.decodeJWT(token);
+        if (payload && payload.exp) {
+          this.refreshTokenInfo = {
+            token,
+            expiresAt: payload.exp
+          };
+
+          if (__DEV__) {
+            const expiryDate = new Date(payload.exp * 1000);
+            const timeUntilExpiry = payload.exp - Math.floor(Date.now() / 1000);
+            console.log('📅 Refresh token expires at:', expiryDate.toLocaleString());
+            console.log(`⏰ Refresh token valid for: ${Math.floor(timeUntilExpiry / 60)} minutes`);
+          }
+        } else {
+          // JWT decode succeeded but no exp claim
+          this.refreshTokenInfo = {
+            token,
+            expiresAt: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60) // 30 days default
+          };
+        }
+      } catch (decodeError) {
+        // Refresh token is not JWT format (e.g., GUID or random string)
+        // This is normal for some auth systems
+        this.refreshTokenInfo = {
+          token,
+          expiresAt: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60) // 30 days default
+        };
+        
+        if (__DEV__) {
+          logger.info('ℹ️ Refresh token is not JWT format - using default validity');
+        }
+      }
+
+      return token;
+    } catch (error) {
+      logger.error('❌ Error loading refresh token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Check if refresh token is expired
+   * Returns false if we can't determine expiry (non-JWT tokens)
+   */
+  private isRefreshTokenExpired(): boolean {
+    if (!this.refreshTokenInfo) {
+      return true;
+    }
+
+    const currentTime = Math.floor(Date.now() / 1000);
+    const timeUntilExpiry = this.refreshTokenInfo.expiresAt - currentTime;
+
+    if (timeUntilExpiry <= 0) {
+      logger.warn('⏰ Refresh token has expired');
+      return true;
+    }
+
+    return false;
   }
 
   /**
@@ -106,7 +185,19 @@ class TokenManager {
         await this.loadAccessToken();
       }
 
-      // If still no token after loading, user is logged out - don't attempt refresh
+      // Load refresh token to ensure we have it
+      if (!this.refreshTokenInfo) {
+        await this.loadRefreshToken();
+      }
+
+      // If no refresh token available, can't refresh
+      if (!this.refreshTokenInfo) {
+        if (__DEV__) {
+          logger.info('⚠️ [TokenManager] No refresh token available');
+        }
+      }
+
+      // If still no access token after loading, user is logged out
       if (!this.accessTokenInfo) {
         if (__DEV__) {
           logger.info('⚠️ [TokenManager] No token available - user not authenticated');
@@ -228,8 +319,12 @@ class TokenManager {
       }
     }
     
+    // Stop proactive refresh
+    this.stopProactiveRefresh();
+    
     // Clear all in-memory state first
     this.accessTokenInfo = null;
+    this.refreshTokenInfo = null;
     this.isRefreshing = false;
     this.refreshPromise = null;
     
@@ -258,9 +353,71 @@ class TokenManager {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
       await this.loadAccessToken();
+      await this.loadRefreshToken();
+      
+      // Start proactive refresh after login
+      this.startProactiveRefresh();
+      
       logger.info('✅ Access token updated in TokenManager');
     } catch (error) {
       logger.error('❌ Error updating access token:', error);
+    }
+  }
+
+  /**
+   * Start proactive token refresh
+   * Checks every 5 minutes and refreshes if needed
+   */
+  private startProactiveRefresh(): void {
+    // Clear any existing interval
+    this.stopProactiveRefresh();
+
+    if (__DEV__) {
+      logger.info('🔄 Starting proactive token refresh (check every 5 min)');
+    }
+
+    this.refreshInterval = setInterval(async () => {
+      try {
+        // Load latest token info
+        await this.loadAccessToken();
+        await this.loadRefreshToken();
+
+        // Check if we still have refresh token
+        if (!this.refreshTokenInfo) {
+          logger.warn('🔒 No refresh token available - stopping proactive refresh');
+          this.stopProactiveRefresh();
+          await this.clearTokens();
+          return;
+        }
+
+        // Check if access token needs refresh
+        if (this.isAccessTokenExpired()) {
+          logger.info('🔄 Proactive refresh triggered');
+          await this.refreshAccessToken();
+        } else {
+          if (__DEV__) {
+            const timeUntilExpiry = this.accessTokenInfo 
+              ? this.accessTokenInfo.expiresAt - Math.floor(Date.now() / 1000)
+              : 0;
+            console.log(`✅ Proactive check: Token still valid (${Math.floor(timeUntilExpiry / 60)} min remaining)`);
+          }
+        }
+      } catch (error) {
+        logger.error('❌ Error during proactive refresh:', error);
+      }
+    }, this.PROACTIVE_REFRESH_INTERVAL_MS);
+  }
+
+  /**
+   * Stop proactive token refresh
+   */
+  private stopProactiveRefresh(): void {
+    if (this.refreshInterval) {
+      clearInterval(this.refreshInterval);
+      this.refreshInterval = null;
+      if (__DEV__) {
+        logger.info('⏹️ Stopped proactive token refresh');
+      }
     }
   }
 

@@ -123,6 +123,7 @@ Cảm ơn bạn đã sử dụng dịch vụ EzyFix!
       <Stack.Screen
         options={{
           headerShown: false,
+          gestureEnabled: false, // CRITICAL: Prevent swipe back after payment success
         }}
       />
       <StatusBar barStyle="light-content" backgroundColor="#10B981" />

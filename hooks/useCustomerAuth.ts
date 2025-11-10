@@ -27,6 +27,13 @@ let cachedAuthResult: {
 
 const CACHE_DURATION = 5000; // Cache for 5 seconds
 
+/**
+ * Clear customer auth cache (call this on logout)
+ */
+export function clearCustomerAuthCache() {
+  cachedAuthResult = null;
+}
+
 export function useCustomerAuth(): UseCustomerAuthReturn {
   const { isAuthenticated, user, isLoading: authLoading } = useAuth();
   const { logout } = useAuthActions();
@@ -168,8 +175,9 @@ export function useCustomerAuth(): UseCustomerAuthReturn {
           timestamp: Date.now(),
         };
         
+        // Debug log only - this is normal when switching roles
         if (__DEV__) {
-          console.warn(`[useCustomerAuth] Role mismatch: Expected 'customer', got '${roleFromToken}'`);
+          console.log(`[useCustomerAuth] Role mismatch (expected 'customer', got '${roleFromToken}') - Normal when switching roles`);
         }
         return;
       }
@@ -186,8 +194,9 @@ export function useCustomerAuth(): UseCustomerAuthReturn {
           timestamp: Date.now(),
         };
         
+        // Debug log only - this is normal when switching roles
         if (__DEV__) {
-          console.warn(`[useCustomerAuth] User data role mismatch: Expected 'customer', got '${user.userType}'`);
+          console.log(`[useCustomerAuth] User data role mismatch (expected 'customer', got '${user.userType}') - Normal when switching roles`);
         }
         return;
       }

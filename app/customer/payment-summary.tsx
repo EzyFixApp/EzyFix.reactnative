@@ -269,6 +269,7 @@ function PaymentSummary() {
             orderId: params.appointmentId,
             serviceName: params.serviceName,
             technicianName: params.technicianName,
+            providerId: providerId || '', // CRITICAL: Pass providerId for review
           },
         });
       }, 2000);

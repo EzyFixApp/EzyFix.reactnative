@@ -592,7 +592,12 @@ const toggleOnlineStatus = () => {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
-        <Stack.Screen options={{ headerShown: false }} />
+        <Stack.Screen 
+          options={{ 
+            headerShown: false,
+            gestureEnabled: false, // Disable swipe back to prevent returning to login
+          }} 
+        />
       </View>
     );
   }
@@ -600,7 +605,12 @@ const toggleOnlineStatus = () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen 
+        options={{ 
+          headerShown: false,
+          gestureEnabled: false, // Disable swipe back to prevent returning to login
+        }} 
+      />
 
       {/* Header */}
       <TechnicianHeader
