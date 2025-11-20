@@ -73,6 +73,8 @@ function CustomerProfile() {
   const [orderCount, setOrderCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showComingSoonModal, setShowComingSoonModal] = useState(false);
+  const [comingSoonFeature, setComingSoonFeature] = useState('');
 
   // Load user service requests count
   const loadOrderCount = async () => {
@@ -136,8 +138,12 @@ function CustomerProfile() {
   const handleConfirmLogout = async () => {
     setShowLogoutModal(false);
     try {
+      if (__DEV__) console.log('🔴 User initiated manual logout');
+      
       // Properly logout: Clear tokens, call API, clear storage
       await logout();
+      
+      if (__DEV__) console.log('✅ Logout completed, navigating to home');
       
       // Navigate to home screen
       router.replace('/');
@@ -155,13 +161,15 @@ function CustomerProfile() {
         router.push('./personal-info' as any);
         break;
       case 'favorites':
-        router.push('./favorite-technicians' as any);
+        setComingSoonFeature('Thợ yêu thích');
+        setShowComingSoonModal(true);
         break;
       case 'addresses':
         router.push('./saved-addresses' as any);
         break;
       case 'payment':
-        router.push('./payment-methods' as any);
+        setComingSoonFeature('Phương thức thanh toán');
+        setShowComingSoonModal(true);
         break;
       case 'notifications':
         router.push('./notification-settings' as any);
@@ -170,13 +178,16 @@ function CustomerProfile() {
         router.push('./promotions' as any);
         break;
       case 'invite':
-        // TODO: Navigate to invite friends page
+        setComingSoonFeature('Mời bạn bè');
+        setShowComingSoonModal(true);
         break;
       case 'customer-support':
-        // TODO: Navigate to customer support
+        setComingSoonFeature('Hỗ trợ khách hàng');
+        setShowComingSoonModal(true);
         break;
       case 'rate-app':
-        // TODO: Open app store for rating
+        setComingSoonFeature('Đánh giá ứng dụng');
+        setShowComingSoonModal(true);
         break;
       case 'logout':
         handleLogout();
@@ -222,7 +233,7 @@ function CustomerProfile() {
               <Text style={styles.statLabel}>Điểm</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>5</Text>
+              <Text style={styles.statNumber}>0</Text>
               <Text style={styles.statLabel}>Thợ yêu thích</Text>
             </View>
           </View>
@@ -238,7 +249,10 @@ function CustomerProfile() {
             <Text style={styles.serviceCardText}>Yêu cầu sửa chữa</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.serviceCard}>
+          <TouchableOpacity 
+            style={styles.serviceCard}
+            onPress={() => router.push({ pathname: './dashboard', params: { tab: 'activity', historyTab: 'history' } } as any)}
+          >
             <Ionicons name="receipt-outline" size={24} color="#609CEF" />
             <Text style={styles.serviceCardText}>Lịch sử đơn hàng</Text>
           </TouchableOpacity>
@@ -246,7 +260,10 @@ function CustomerProfile() {
 
         {/* Second Row Service Cards */}
         <View style={styles.serviceCards}>
-          <TouchableOpacity style={styles.serviceCard}>
+          <TouchableOpacity 
+            style={styles.serviceCard}
+            onPress={() => router.push({ pathname: './dashboard', params: { tab: 'activity', historyTab: 'history' } } as any)}
+          >
             <Ionicons name="construct-outline" size={24} color="#609CEF" />
             <Text style={styles.serviceCardText}>Đánh giá thợ</Text>
           </TouchableOpacity>
@@ -354,6 +371,17 @@ function CustomerProfile() {
         confirmText="Đăng xuất"
         cancelText="Hủy"
         showCancel={true}
+      />
+
+      {/* Coming Soon Modal */}
+      <CustomModal
+        visible={showComingSoonModal}
+        type="info"
+        title="Tính năng đang phát triển"
+        message={`Tính năng "${comingSoonFeature}" đang được phát triển và sẽ sớm ra mắt trong phiên bản tiếp theo.`}
+        onClose={() => setShowComingSoonModal(false)}
+        onConfirm={() => setShowComingSoonModal(false)}
+        confirmText="Đã hiểu"
       />
     </View>
     </>

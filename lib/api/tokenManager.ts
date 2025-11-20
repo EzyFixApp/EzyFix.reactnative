@@ -207,10 +207,7 @@ class TokenManager {
 
       // Check if token is still valid
       if (!this.isAccessTokenExpired()) {
-        if (__DEV__) {
-          const timeUntilExpiry = this.accessTokenInfo.expiresAt - Math.floor(Date.now() / 1000);
-          console.log(`✅ Token is valid (expires in ${timeUntilExpiry}s)`);
-        }
+        // Removed excessive logging to reduce console spam
         return this.accessTokenInfo.token;
       }
 
@@ -260,13 +257,40 @@ class TokenManager {
 
       logger.info('🔄 Calling refresh token API...');
 
+      // Get user type (role) - required by backend
+      let userType = await AsyncStorage.getItem(STORAGE_KEYS.USER_TYPE);
+      
+      // Fallback: Try to extract userType from access token if not in storage
+      if (!userType) {
+        const accessToken = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+        if (accessToken) {
+          const payload = this.decodeJWT(accessToken);
+          if (payload?.role) {
+            userType = payload.role as string;
+            // Save for next time
+            await AsyncStorage.setItem(STORAGE_KEYS.USER_TYPE, userType);
+            logger.info('✅ Extracted and saved userType from access token:', userType);
+          }
+        }
+      }
+      
+      if (!userType) {
+        logger.error('❌ No user type available - cannot refresh token');
+        throw new Error('User type required for token refresh');
+      }
+
+      logger.info('🔄 Calling refresh token API...');
+
       // Use fetch directly to avoid interceptor infinite loop
       const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.REFRESH_TOKEN}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ refreshToken }),
+        body: JSON.stringify({ 
+          refreshToken,
+          userType, // Add userType to request body
+        }),
       });
 
       if (!response.ok) {

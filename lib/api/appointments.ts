@@ -62,6 +62,7 @@ export interface AppointmentData {
   scheduledDate: string;
   arrivedAt: string | null;
   repairedAt: string | null;
+  paymentAmount?: number; // Amount paid after voucher discount (for COMPLETED appointments)
 }
 
 class AppointmentsService {
@@ -135,7 +136,10 @@ class AppointmentsService {
         return [];
       }
     } catch (error: any) {
-      if (__DEV__) console.warn('Get appointments by service request error:', error);
+      // Silently handle timeout errors (408) to avoid console spam
+      if (error?.status_code !== 408 && __DEV__) {
+        console.warn('Get appointments by service request error:', error);
+      }
       // Return empty array on error to prevent crashes
       return [];
     }

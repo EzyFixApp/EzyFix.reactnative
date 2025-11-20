@@ -1,62 +1,72 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
-interface ServiceCategory {
-  id: string;
-  title: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-}
+import { servicesService } from '../lib/api/services';
+import type { Category } from '../types/api';
 
 interface ServiceCategoriesProps {
   onCategoryPress?: (categoryId: string) => void;
   onViewAllPress?: () => void;
 }
 
-const defaultCategories: ServiceCategory[] = [
-  {
-    id: 'electronics',
-    title: 'Điện Tử',
-    icon: 'phone-portrait',
-    color: '#609CEF',
-  },
-  {
-    id: 'cooling',
-    title: 'Điện Lạnh', 
-    icon: 'snow',
-    color: '#06D6A0',
-  },
-  {
-    id: 'appliances',
-    title: 'Điện Gia Dụng',
-    icon: 'home',
-    color: '#FF6B6B',
-  },
-  {
-    id: 'plumbing',
-    title: 'Nước & Ống',
-    icon: 'water',
-    color: '#4ECDC4',
-  },
-  {
-    id: 'electrical',
-    title: 'Điện Dân Dụng',
-    icon: 'flash',
-    color: '#FFE66D',
-  },
-  {
-    id: 'cleaning',
-    title: 'Vệ Sinh',
-    icon: 'sparkles',
-    color: '#A8E6CF',
-  },
-];
+// Icon mapping for categories
+const getCategoryIcon = (categoryName: string): keyof typeof Ionicons.glyphMap => {
+  const name = categoryName.toLowerCase();
+  if (name.includes('điện tử') || name.includes('electronic')) return 'phone-portrait';
+  if (name.includes('điện lạnh') || name.includes('cooling')) return 'snow';
+  if (name.includes('điện gia dụng') || name.includes('appliance')) return 'home';
+  if (name.includes('nước') || name.includes('ống') || name.includes('plumb')) return 'water';
+  if (name.includes('điện dân dụng') || name.includes('electrical')) return 'flash';
+  if (name.includes('vệ sinh') || name.includes('clean')) return 'sparkles';
+  return 'construct-outline'; // Default icon
+};
+
+// Color mapping for categories
+const getCategoryColor = (index: number): string => {
+  const colors = ['#609CEF', '#06D6A0', '#FF6B6B', '#4ECDC4', '#FFE66D', '#A8E6CF'];
+  return colors[index % colors.length];
+};
 
 export default function ServiceCategories({ 
   onCategoryPress, 
   onViewAllPress 
 }: ServiceCategoriesProps) {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
+  const loadCategories = async () => {
+    try {
+      setLoading(true);
+      const data = await servicesService.getAllCategories();
+      setCategories(data);
+      if (__DEV__) console.log('✅ [ServiceCategories] Loaded categories:', data.length);
+    } catch (error) {
+      console.error('❌ [ServiceCategories] Error loading categories:', error);
+      setCategories([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#609CEF" />
+          <Text style={styles.loadingText}>Đang tải danh mục...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (categories.length === 0) {
+    return null; // Hide if no categories
+  }
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -73,29 +83,34 @@ export default function ServiceCategories({
 
       {/* Categories Grid - 2 rows x 3 columns */}
       <View style={styles.categoriesContainer}>
-        {defaultCategories.map((category, index) => (
-          <TouchableOpacity
-            key={category.id}
-            style={[
-              styles.categoryItem,
-              index >= 3 && styles.categoryItemSecondRow
-            ]}
-            onPress={() => onCategoryPress?.(category.id)}
-            activeOpacity={0.8}
-          >
-            <View style={[
-              styles.iconContainer, 
-              { backgroundColor: `${category.color}15` }
-            ]}>
-              <Ionicons 
-                name={category.icon} 
-                size={28} 
-                color={category.color} 
-              />
-            </View>
-            <Text style={styles.categoryTitle}>{category.title}</Text>
-          </TouchableOpacity>
-        ))}
+        {categories.slice(0, 6).map((category, index) => {
+          const icon = getCategoryIcon(category.categoryName);
+          const color = getCategoryColor(index);
+          
+          return (
+            <TouchableOpacity
+              key={category.categoryId}
+              style={[
+                styles.categoryItem,
+                index >= 3 && styles.categoryItemSecondRow
+              ]}
+              onPress={() => onCategoryPress?.(category.categoryId)}
+              activeOpacity={0.8}
+            >
+              <View style={[
+                styles.iconContainer, 
+                { backgroundColor: `${color}15` }
+              ]}>
+                <Ionicons 
+                  name={icon} 
+                  size={28} 
+                  color={color} 
+                />
+              </View>
+              <Text style={styles.categoryTitle}>{category.categoryName}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );
@@ -117,6 +132,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
+  },
+  loadingContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
   },
   header: {
     flexDirection: 'row',

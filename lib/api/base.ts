@@ -22,6 +22,7 @@ import type {
 export class BaseApiService {
   private static instance: BaseApiService;
   private baseURL: string;
+  private isHandlingSessionExpired: boolean = false; // Flag to prevent multiple session expired handlers
 
   private constructor() {
     this.baseURL = API_BASE_URL;
@@ -60,9 +61,18 @@ export class BaseApiService {
 
   /**
    * Handle session expired (401 Unauthorized)
+   * Prevents multiple simultaneous calls using a flag
    */
   private async handleSessionExpired(): Promise<void> {
+    // Prevent multiple simultaneous session expired handlers
+    if (this.isHandlingSessionExpired) {
+      logger.info('⏭️ Session expired handler already running, skipping...');
+      return;
+    }
+
     try {
+      this.isHandlingSessionExpired = true;
+      
       // Clear all auth tokens
       await AsyncStorage.multiRemove([
         STORAGE_KEYS.ACCESS_TOKEN,
@@ -79,6 +89,11 @@ export class BaseApiService {
       }
     } catch (error) {
       logger.error('❌ Error handling session expired:', error);
+    } finally {
+      // Reset flag after a short delay to allow for race conditions
+      setTimeout(() => {
+        this.isHandlingSessionExpired = false;
+      }, 2000);
     }
   }
 
@@ -102,14 +117,7 @@ export class BaseApiService {
       // Get valid token (auto refresh if needed)
       const token = await tokenManager.getValidAccessToken();
       
-      if (__DEV__ && token) {
-        // Only log first and last 10 characters for security
-        const maskedToken = `${token.substring(0, 10)}...${token.substring(token.length - 10)}`;
-        const timeLeft = tokenManager.getTimeUntilExpiry();
-        console.log(`✅ Valid token (expires in ${timeLeft}s):`, maskedToken);
-      } else if (__DEV__) {
-        console.warn('⚠️ No auth token available for request');
-      }
+      // Removed excessive token logging to reduce console spam
       
       return token 
         ? { 'Authorization': `Bearer ${token}` }
@@ -216,6 +224,11 @@ export class BaseApiService {
     options: RequestOptions = {}
   ): Promise<ApiResponse<T>> {
     const { requireAuth = false, retryOnUnauthorized = true, skipAutoLogoutOn401 = false } = options;
+    
+    // Abort request immediately if session expired is being handled
+    if (this.isHandlingSessionExpired && requireAuth) {
+      throw this.createApiError(401, 'Session expired - please login again');
+    }
     
     try {
       // Build headers

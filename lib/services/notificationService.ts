@@ -56,6 +56,11 @@ class NotificationService {
    */
   public async initialize(onNotificationResponse?: (data: any) => void): Promise<string | null> {
     try {
+      // Setup Android notification channels FIRST (before requesting permissions)
+      if (Platform.OS === 'android') {
+        await this.setupAndroidChannels();
+      }
+
       // Register for push notifications
       const token = await this.registerForPushNotifications();
       this.expoPushToken = token;
@@ -68,6 +73,55 @@ class NotificationService {
     } catch (error: any) {
       if (__DEV__) console.error('❌ Failed to initialize notifications:', error);
       return null;
+    }
+  }
+
+  /**
+   * Setup Android notification channels
+   */
+  private async setupAndroidChannels(): Promise<void> {
+    if (Platform.OS !== 'android') return;
+
+    try {
+      // Create quote updates channel
+      await Notifications.setNotificationChannelAsync('quote-updates', {
+        name: 'Cập nhật báo giá',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        sound: 'default',
+        enableLights: true,
+        lightColor: '#609CEF',
+        enableVibrate: true,
+        showBadge: true,
+      });
+
+      // Create order updates channel
+      await Notifications.setNotificationChannelAsync('order-updates', {
+        name: 'Cập nhật đơn hàng',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        sound: 'default',
+        enableLights: true,
+        lightColor: '#10B981',
+        enableVibrate: true,
+        showBadge: true,
+      });
+
+      // Create default channel
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'Thông báo chung',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        sound: 'default',
+        enableLights: true,
+        lightColor: '#FF6B35',
+        enableVibrate: true,
+        showBadge: true,
+      });
+
+      if (__DEV__) console.log('✅ Android notification channels created');
+    } catch (error) {
+      if (__DEV__) console.error('❌ Failed to create Android channels:', error);
     }
   }
 
@@ -135,46 +189,29 @@ class NotificationService {
 
       if (__DEV__) console.log('✅ Notification permission granted');
 
-      // Get Expo push token
+      // Get Expo push token (optional - only needed for remote push notifications)
+      // Local notifications work without this
       const projectId = Constants.expoConfig?.extra?.eas?.projectId;
       
       if (!projectId) {
-        if (__DEV__) console.warn('⚠️ No EAS project ID found');
+        if (__DEV__) console.log('ℹ️ No EAS project ID found - local notifications only');
+        return null; // Return null but don't fail - local notifications still work
+      }
+
+      try {
+        const tokenData = await Notifications.getExpoPushTokenAsync({
+          projectId,
+        });
+
+        // Save token to AsyncStorage
+        await AsyncStorage.setItem('expoPushToken', tokenData.data);
+
+        if (__DEV__) console.log('✅ Push token obtained:', tokenData.data);
+        return tokenData.data;
+      } catch (tokenError) {
+        if (__DEV__) console.warn('⚠️ Could not get push token (local notifications still work):', tokenError);
         return null;
       }
-
-      const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId,
-      });
-
-      // Configure notification channel for Android
-      if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('quote-updates', {
-          name: 'Cập nhật báo giá',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          sound: 'default', // Can be customized
-          enableLights: true,
-          lightColor: '#609CEF',
-          enableVibrate: true,
-        });
-
-        await Notifications.setNotificationChannelAsync('order-updates', {
-          name: 'Cập nhật đơn hàng',
-          importance: Notifications.AndroidImportance.HIGH,
-          vibrationPattern: [0, 250, 250, 250],
-          sound: 'default',
-          enableLights: true,
-          lightColor: '#10B981',
-          enableVibrate: true,
-        });
-      }
-
-      // Save token to AsyncStorage
-      await AsyncStorage.setItem('expoPushToken', tokenData.data);
-
-      if (__DEV__) console.log('✅ Push token obtained:', tokenData.data);
-      return tokenData.data;
     } catch (error: any) {
       if (__DEV__) console.error('❌ Error registering for push notifications:', error);
       return null;
@@ -332,9 +369,13 @@ class NotificationService {
    */
   public async notifyOrderPending(serviceRequestId: string, serviceName: string): Promise<string | null> {
     try {
+      if (__DEV__) console.log('🔔 [NotifyOrderPending] Attempting to send notification...');
+      
       const { status } = await Notifications.getPermissionsAsync();
+      if (__DEV__) console.log('🔐 [NotifyOrderPending] Permission status:', status);
+      
       if (status !== 'granted') {
-        if (__DEV__) console.warn('⚠️ Notification permission not granted');
+        if (__DEV__) console.warn('⚠️ [NotifyOrderPending] Notification permission not granted:', status);
         return null;
       }
 
@@ -350,16 +391,16 @@ class NotificationService {
           },
           sound: 'default', // Ting ting sound
           badge: 1,
-          priority: Notifications.AndroidNotificationPriority.HIGH,
+          priority: Notifications.AndroidNotificationPriority.MAX,
           categoryIdentifier: 'order-update',
         },
         trigger: null, // Immediate delivery
       });
 
-      if (__DEV__) console.log('✅ Order PENDING notification sent:', notificationId);
+      if (__DEV__) console.log('✅ [NotifyOrderPending] Notification sent successfully! ID:', notificationId);
       return notificationId;
     } catch (error: any) {
-      if (__DEV__) console.error('❌ Failed to send PENDING notification:', error);
+      if (__DEV__) console.error('❌ [NotifyOrderPending] Failed to send notification:', error);
       return null;
     }
   }
@@ -373,9 +414,13 @@ class NotificationService {
     technicianName?: string
   ): Promise<string | null> {
     try {
+      if (__DEV__) console.log('🔔 [NotifyOrderAccepted] Attempting to send notification...');
+      
       const { status } = await Notifications.getPermissionsAsync();
+      if (__DEV__) console.log('🔐 [NotifyOrderAccepted] Permission status:', status);
+      
       if (status !== 'granted') {
-        if (__DEV__) console.warn('⚠️ Notification permission not granted');
+        if (__DEV__) console.warn('⚠️ [NotifyOrderAccepted] Notification permission not granted:', status);
         return null;
       }
 
@@ -400,10 +445,10 @@ class NotificationService {
         trigger: null, // Immediate delivery
       });
 
-      if (__DEV__) console.log('✅ Order ACCEPTED notification sent:', notificationId);
+      if (__DEV__) console.log('✅ [NotifyOrderAccepted] Notification sent successfully! ID:', notificationId);
       return notificationId;
     } catch (error: any) {
-      if (__DEV__) console.error('❌ Failed to send ACCEPTED notification:', error);
+      if (__DEV__) console.error('❌ [NotifyOrderAccepted] Failed to send notification:', error);
       return null;
     }
   }
@@ -470,6 +515,155 @@ class NotificationService {
       return notificationId;
     } catch (error: any) {
       if (__DEV__) console.error('❌ Failed to send COMPLETED notification:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Schedule notification for order status: EN_ROUTE (Technician on the way)
+   */
+  public async notifyOrderEnRoute(
+    serviceRequestId: string, 
+    serviceName: string, 
+    technicianName?: string
+  ): Promise<string | null> {
+    try {
+      if (__DEV__) console.log('🔔 [NotifyOrderEnRoute] Attempting to send notification...');
+      
+      const { status } = await Notifications.getPermissionsAsync();
+      if (__DEV__) console.log('🔐 [NotifyOrderEnRoute] Permission status:', status);
+      
+      if (status !== 'granted') {
+        if (__DEV__) console.warn('⚠️ [NotifyOrderEnRoute] Notification permission not granted:', status);
+        return null;
+      }
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '🚗 Thợ đang trên đường đến!',
+          body: technicianName 
+            ? `Thợ ${technicianName} đang di chuyển đến địa chỉ của bạn cho dịch vụ "${serviceName}". Hãy chuẩn bị đón thợ!`
+            : `Thợ đang di chuyển đến địa chỉ của bạn cho dịch vụ "${serviceName}". Hãy chuẩn bị đón thợ!`,
+          data: {
+            type: 'ORDER_EN_ROUTE',
+            serviceRequestId,
+            serviceName,
+            technicianName,
+            screen: 'order-tracking',
+          },
+          sound: 'default',
+          badge: 1,
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          categoryIdentifier: 'order-update',
+        },
+        trigger: null,
+      });
+
+      if (__DEV__) console.log('✅ [NotifyOrderEnRoute] Notification sent successfully! ID:', notificationId);
+      return notificationId;
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ [NotifyOrderEnRoute] Failed to send notification:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Schedule notification for order status: ARRIVED (Technician has arrived)
+   */
+  public async notifyOrderArrived(
+    serviceRequestId: string, 
+    serviceName: string, 
+    technicianName?: string
+  ): Promise<string | null> {
+    try {
+      if (__DEV__) console.log('🔔 [NotifyOrderArrived] Attempting to send notification...');
+      
+      const { status } = await Notifications.getPermissionsAsync();
+      if (__DEV__) console.log('🔐 [NotifyOrderArrived] Permission status:', status);
+      
+      if (status !== 'granted') {
+        if (__DEV__) console.warn('⚠️ [NotifyOrderArrived] Notification permission not granted:', status);
+        return null;
+      }
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '📍 Thợ đã đến nơi!',
+          body: technicianName 
+            ? `Thợ ${technicianName} đã đến địa chỉ của bạn cho dịch vụ "${serviceName}". Vui lòng ra đón!`
+            : `Thợ đã đến địa chỉ của bạn cho dịch vụ "${serviceName}". Vui lòng ra đón!`,
+          data: {
+            type: 'ORDER_ARRIVED',
+            serviceRequestId,
+            serviceName,
+            technicianName,
+            screen: 'order-tracking',
+          },
+          sound: 'default',
+          badge: 1,
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          categoryIdentifier: 'order-update',
+        },
+        trigger: null,
+      });
+
+      if (__DEV__) console.log('✅ [NotifyOrderArrived] Notification sent successfully! ID:', notificationId);
+      return notificationId;
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ [NotifyOrderArrived] Failed to send notification:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Schedule notification for order status: PRICE_REVIEW (Need to confirm final price)
+   */
+  public async notifyOrderPriceReview(
+    serviceRequestId: string, 
+    serviceName: string,
+    finalPrice?: number,
+    technicianName?: string
+  ): Promise<string | null> {
+    try {
+      if (__DEV__) console.log('🔔 [NotifyOrderPriceReview] Attempting to send notification...');
+      
+      const { status } = await Notifications.getPermissionsAsync();
+      if (__DEV__) console.log('🔐 [NotifyOrderPriceReview] Permission status:', status);
+      
+      if (status !== 'granted') {
+        if (__DEV__) console.warn('⚠️ [NotifyOrderPriceReview] Notification permission not granted:', status);
+        return null;
+      }
+
+      const priceText = finalPrice ? `${finalPrice.toLocaleString('vi-VN')} VNĐ` : '';
+      const bodyText = finalPrice
+        ? `Thợ ${technicianName || ''} đã gửi báo giá cuối ${priceText} cho dịch vụ "${serviceName}". Vui lòng kiểm tra và xác nhận!`
+        : `Thợ ${technicianName || ''} cần bạn xác nhận giá sửa chữa cho dịch vụ "${serviceName}". Vui lòng kiểm tra!`;
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '💰 Cần xác nhận giá sửa chữa',
+          body: bodyText,
+          data: {
+            type: 'ORDER_PRICE_REVIEW',
+            serviceRequestId,
+            serviceName,
+            finalPrice,
+            technicianName,
+            screen: 'order-tracking',
+          },
+          sound: 'default',
+          badge: 1,
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          categoryIdentifier: 'order-update',
+        },
+        trigger: null,
+      });
+
+      if (__DEV__) console.log('✅ [NotifyOrderPriceReview] Notification sent successfully! ID:', notificationId);
+      return notificationId;
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ [NotifyOrderPriceReview] Failed to send notification:', error);
       return null;
     }
   }
@@ -648,6 +842,112 @@ class NotificationService {
       return notificationId;
     } catch (error: any) {
       if (__DEV__) console.error('❌ Failed to send technician REVIEWED notification:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Thông báo cho thợ: Khách hàng đã hủy lịch hẹn
+   */
+  public async notifyTechnicianOrderCancelled(
+    serviceRequestId: string,
+    serviceName: string,
+    customerName?: string,
+    reason?: string
+  ): Promise<string | null> {
+    try {
+      if (__DEV__) console.log('🔔 [NotifyTechnicianOrderCancelled] Attempting to send notification...');
+      
+      const { status } = await Notifications.getPermissionsAsync();
+      if (__DEV__) console.log('🔐 [NotifyTechnicianOrderCancelled] Permission status:', status);
+      
+      if (status !== 'granted') {
+        if (__DEV__) console.warn('⚠️ [NotifyTechnicianOrderCancelled] Notification permission not granted:', status);
+        return null;
+      }
+
+      const customerText = customerName || 'Khách hàng';
+      const bodyText = reason
+        ? `${customerText} đã hủy lịch hẹn "${serviceName}". Lý do: ${reason}`
+        : `${customerText} đã hủy lịch hẹn "${serviceName}".`;
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '❌ Lịch hẹn đã bị hủy',
+          body: bodyText,
+          data: {
+            type: 'TECHNICIAN_ORDER_CANCELLED',
+            serviceRequestId,
+            serviceName,
+            customerName,
+            reason,
+            screen: 'technician-order-tracking',
+          },
+          sound: 'default',
+          badge: 1,
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          categoryIdentifier: 'technician-order-update',
+        },
+        trigger: null,
+      });
+
+      if (__DEV__) console.log('✅ [NotifyTechnicianOrderCancelled] Notification sent successfully! ID:', notificationId);
+      return notificationId;
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ [NotifyTechnicianOrderCancelled] Failed to send notification:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Thông báo cho thợ: Khách hàng vắng mặt
+   */
+  public async notifyTechnicianCustomerAbsent(
+    serviceRequestId: string,
+    serviceName: string,
+    customerName?: string,
+    customerAddress?: string
+  ): Promise<string | null> {
+    try {
+      if (__DEV__) console.log('🔔 [NotifyTechnicianCustomerAbsent] Attempting to send notification...');
+      
+      const { status } = await Notifications.getPermissionsAsync();
+      if (__DEV__) console.log('🔐 [NotifyTechnicianCustomerAbsent] Permission status:', status);
+      
+      if (status !== 'granted') {
+        if (__DEV__) console.warn('⚠️ [NotifyTechnicianCustomerAbsent] Notification permission not granted:', status);
+        return null;
+      }
+
+      const customerText = customerName || 'Khách hàng';
+      const bodyText = customerAddress
+        ? `${customerText} vắng mặt tại ${customerAddress} cho dịch vụ "${serviceName}". Vui lòng liên hệ hoặc cập nhật trạng thái.`
+        : `${customerText} vắng mặt cho dịch vụ "${serviceName}". Vui lòng liên hệ hoặc cập nhật trạng thái.`;
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '⚠️ Khách hàng vắng mặt',
+          body: bodyText,
+          data: {
+            type: 'TECHNICIAN_CUSTOMER_ABSENT',
+            serviceRequestId,
+            serviceName,
+            customerName,
+            customerAddress,
+            screen: 'technician-order-tracking',
+          },
+          sound: 'default',
+          badge: 1,
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+          categoryIdentifier: 'technician-order-update',
+        },
+        trigger: null,
+      });
+
+      if (__DEV__) console.log('✅ [NotifyTechnicianCustomerAbsent] Notification sent successfully! ID:', notificationId);
+      return notificationId;
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ [NotifyTechnicianCustomerAbsent] Failed to send notification:', error);
       return null;
     }
   }

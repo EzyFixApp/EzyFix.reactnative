@@ -9,7 +9,7 @@ import { View, ScrollView, StyleSheet, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import HeroBanner from './HeroBanner';
 import ServiceCategories from './ServiceCategories';
-import { PromotionSection } from './PromotionSection';
+import PromotionVouchersSection from './PromotionVouchersSection';
 import ActiveOrdersSection from './ActiveOrdersSection';
 
 interface DashboardContentProps {
@@ -28,7 +28,7 @@ export default function DashboardContent({ onRefresh, refreshing = false }: Dash
   };
 
   const handleSearchPress = () => {
-    console.log('Search pressed - navigate to search');
+    router.push('../customer/all-services' as any);
   };
 
   const handleCategoryPress = (categoryId: string) => {
@@ -92,9 +92,7 @@ export default function DashboardContent({ onRefresh, refreshing = false }: Dash
         />
 
         {/* Promotion Section */}
-        <PromotionSection
-          onViewAllPress={handleSeeAllPromotions}
-        />
+        <PromotionVouchersSection />
 
         {/* Bottom spacing for better UX */}
         <View style={styles.bottomSpacing} />

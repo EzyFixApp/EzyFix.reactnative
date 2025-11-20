@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, ActivityIndicator, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -29,10 +29,13 @@ interface ActiveOrder {
 export default function ActiveOrdersSection() {
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const { user, isAuthenticated } = useAuth();
+  const isMountedRef = React.useRef(true); // Track if component is mounted
+  const isLoadingRef = React.useRef(false); // Prevent concurrent requests
 
-  // Auto-refresh interval (30 seconds)
-  const REFRESH_INTERVAL = 5000;
+  // Auto-refresh interval (30 seconds) - increased from 5s to reduce load
+  const REFRESH_INTERVAL = 30000;
 
   // Animation for loading spinner
   const spinValue = new Animated.Value(0);
@@ -138,21 +141,36 @@ export default function ActiveOrdersSection() {
   );
 
   useEffect(() => {
+    // Don't start loading if user is not authenticated
+    if (!isAuthenticated || !user) {
+      if (__DEV__) console.log('⏭️ [ActiveOrders] User not authenticated, skipping initial load');
+      setActiveOrders([]);
+      setLoading(false);
+      isMountedRef.current = false; // Mark as unmounted
+      return; // Early return prevents setting up interval
+      return; // Early return prevents setting up interval
+    }
+    
+    isMountedRef.current = true; // Mark as mounted
     loadActiveOrders();
     
     // Set up auto-refresh interval for real-time updates
     const interval = setInterval(() => {
-      loadActiveOrders(true); // Silent refresh - don't show loading spinner
+      // Check if user is still authenticated before refreshing
+      if (isAuthenticated && user && isMountedRef.current) {
+        loadActiveOrders(true); // Silent refresh - don't show loading spinner
+      }
     }, REFRESH_INTERVAL);
 
-    // Cleanup interval on unmount
+    // Cleanup interval on unmount OR when user becomes null
     return () => {
+      isMountedRef.current = false; // Mark as unmounted
       if (interval) {
         clearInterval(interval);
         stopSpinning(); // Stop animation on unmount
       }
     };
-  }, []);
+  }, [user, isAuthenticated]); // Re-run when user or auth status changes
 
   // Start animation when loading starts
   useEffect(() => {
@@ -170,6 +188,22 @@ export default function ActiveOrdersSection() {
 
   const loadActiveOrders = async (silent = false) => {
     try {
+      // Debounce: prevent concurrent requests
+      if (isLoadingRef.current) {
+        if (__DEV__) console.log('⏭️ [ActiveOrders] Request already in progress, skipping');
+        return;
+      }
+      
+      // Don't load if user is not authenticated or component unmounted
+      if (!isAuthenticated || !user || !isMountedRef.current) {
+        if (__DEV__) console.log('⏭️ [ActiveOrders] User not authenticated or unmounted, skipping load');
+        setActiveOrders([]);
+        setLoading(false);
+        return;
+      }
+      
+      isLoadingRef.current = true; // Mark as loading
+      
       if (!silent) {
         setLoading(true);
       }
@@ -180,9 +214,39 @@ export default function ActiveOrdersSection() {
       // - For technicians: gets requests where they submitted offers
       const serviceRequests = await serviceRequestService.getUserServiceRequests();
       
+      // Check again after async call
+      if (!isMountedRef.current || !isAuthenticated) {
+        if (__DEV__) console.log('⏭️ [ActiveOrders] Component unmounted during load, aborting');
+        return;
+      }
+      
+      // OPTIMIZATION: Pre-fetch all unique services
+      const uniqueServiceIds = [...new Set(serviceRequests.map(req => req.serviceId))];
+      const servicesMap = new Map<string, any>();
+      
+      if (__DEV__) console.log(`🔍 [ActiveOrders] Pre-fetching ${uniqueServiceIds.length} unique services`);
+      
+      await Promise.allSettled(
+        uniqueServiceIds.map(async (serviceId) => {
+          try {
+            const service = await servicesService.getServiceById(serviceId);
+            servicesMap.set(serviceId, service);
+          } catch (error) {
+            // Skip failed services
+          }
+        })
+      );
+      
+      if (__DEV__) console.log(`✅ [ActiveOrders] Cached ${servicesMap.size} services`);
+      
       // Convert service requests to active orders format with data from all 3 APIs
-      const orders: ActiveOrder[] = await Promise.all(
+      const ordersWithNull: (ActiveOrder | null)[] = await Promise.all(
         serviceRequests.map(async (request) => {
+          // Early exit check - stop processing if unmounted/logged out
+          if (!isMountedRef.current || !isAuthenticated) {
+            return null; // Return null to filter out later
+          }
+          
           let serviceName = 'Dịch vụ'; // Default fallback
           let technicianName: string | undefined;
           let customerName: string | undefined;
@@ -196,27 +260,37 @@ export default function ActiveOrdersSection() {
             customerPhone = request.phoneNumber || undefined;
           }
           
-          // 1. Get service details from servicesService API
-          try {
-            const service = await servicesService.getServiceById(request.serviceId);
-            serviceName = service.serviceName || service.description || 'Dịch vụ';
-            
-            // Truncate if too long
+          // OPTIMIZATION: Use cached service from map
+          const cachedService = servicesMap.get(request.serviceId);
+          if (cachedService) {
+            serviceName = cachedService.serviceName || cachedService.description || 'Dịch vụ';
             if (serviceName.length > 30) {
               serviceName = serviceName.substring(0, 30) + '...';
             }
-          } catch (error) {
-            // Fallback to truncated description if service API fails
-            if (request.serviceDescription) {
-              serviceName = request.serviceDescription.length > 30 
-                ? request.serviceDescription.substring(0, 30) + '...' 
-                : request.serviceDescription;
-            }
+          } else if (request.serviceDescription) {
+            serviceName = request.serviceDescription.length > 30 
+              ? request.serviceDescription.substring(0, 30) + '...' 
+              : request.serviceDescription;
           }
           
-          // 2. Get offer details from serviceDeliveryOffersService API
-          try {
-            const allOffers = await serviceDeliveryOffersService.getAllOffers(request.requestID);
+          // OPTIMIZATION: Parallel fetch offers and appointments
+          if (!isMountedRef.current || !isAuthenticated) {
+            return null;
+          }
+          
+          const [offersResult, appointmentsResult] = await Promise.allSettled([
+            serviceDeliveryOffersService.getAllOffers(request.requestID),
+            appointmentsService.getAppointmentsByServiceRequest(request.requestID)
+          ]);
+          
+          // Check again after async calls
+          if (!isMountedRef.current || !isAuthenticated) {
+            return null;
+          }
+          
+          // Process offers
+          if (offersResult.status === 'fulfilled') {
+            const allOffers = offersResult.value;
             
             if (allOffers && allOffers.length > 0) {
               // Find ACCEPTED offer first, otherwise take the most recent one
@@ -228,18 +302,9 @@ export default function ActiveOrdersSection() {
                 relevantOffer = allOffers[allOffers.length - 1];
               }
               
-              // Get technician name from offer
-              if (relevantOffer.technicianId) {
-                try {
-                  // Fetch full offer details to get technician info
-                  const fullOfferDetails = await serviceDeliveryOffersService.getOfferById(relevantOffer.offerId);
-                  
-                  if (fullOfferDetails.technician?.technicianName) {
-                    technicianName = fullOfferDetails.technician.technicianName;
-                  }
-                } catch (offerError) {
-                  if (__DEV__) console.warn('⚠️ [ActiveOrders] Could not fetch full offer details');
-                }
+              // OPTIMIZATION: Use technician name from offer if available (no extra API call needed)
+              if (relevantOffer.technician?.technicianName) {
+                technicianName = relevantOffer.technician.technicianName;
               }
               
               // Get final price if available
@@ -250,13 +315,11 @@ export default function ActiveOrdersSection() {
                 }).format(relevantOffer.finalCost);
               }
             }
-          } catch (error) {
-            if (__DEV__) console.warn('⚠️ [ActiveOrders] Could not fetch offers');
           }
           
-          // 3. Get appointment details from appointmentsService API (highest priority)
-          try {
-            const appointments = await appointmentsService.getAppointmentsByServiceRequest(request.requestID);
+          // Process appointments (already fetched in parallel)
+          if (appointmentsResult.status === 'fulfilled') {
+            const appointments = appointmentsResult.value;
             
             if (appointments.length > 0) {
               // Take the most recent appointment
@@ -264,14 +327,7 @@ export default function ActiveOrdersSection() {
               
               // Override status with appointment status (highest priority)
               actualStatus = appointment.status;
-              
-              if (__DEV__) console.log('✅ [ActiveOrders] Appointment status:', {
-                requestId: request.requestID,
-                status: actualStatus
-              });
             }
-          } catch (error) {
-            if (__DEV__) console.warn('⚠️ [ActiveOrders] Could not fetch appointments');
           }
           
           // IMPORTANT: ServiceRequest status takes priority over Appointment status
@@ -306,6 +362,9 @@ export default function ActiveOrdersSection() {
         })
       );
       
+      // ✅ Filter out null values (from early exits during unmount/logout)
+      const validOrders = ordersWithNull.filter((order): order is ActiveOrder => order !== null);
+      
       // Filter to show only active orders
       // Exclude COMPLETED/CANCELLED ServiceRequests for both customers and technicians
       // These orders should not appear in "Active Orders" section
@@ -314,7 +373,7 @@ export default function ActiveOrdersSection() {
       if (user?.userType === 'technician') {
         // For technician: only show orders where they have ACCEPTED offers
         // and the appointment is in active state (not completed/cancelled/dispute)
-        activeOnly = orders.filter(order => {
+        activeOnly = validOrders.filter((order: ActiveOrder) => {
           const appointmentStatus = order.appointmentStatus?.toLowerCase() || '';
           
           // Exclude completed/cancelled/dispute status (from ServiceRequest or Appointment)
@@ -336,7 +395,7 @@ export default function ActiveOrdersSection() {
         // For customer: exclude completed/cancelled/dispute orders
         // Since finalStatus now prioritizes ServiceRequest status, 
         // COMPLETED ServiceRequests will have appointmentStatus='completed'
-        activeOnly = orders.filter(order => {
+        activeOnly = validOrders.filter((order: ActiveOrder) => {
           const appointmentStatus = order.appointmentStatus?.toLowerCase() || '';
           
           // Exclude completed/cancelled/dispute (these come from ServiceRequest when it's done)
@@ -346,8 +405,33 @@ export default function ActiveOrdersSection() {
         });
       }
       
+      // Final check before updating state
+      if (!isMountedRef.current || !isAuthenticated) {
+        if (__DEV__) console.log('⏭️ [ActiveOrders] Component unmounted before setting state, aborting');
+        return;
+      }
+      
       setActiveOrders(activeOnly);
     } catch (error: any) {
+      // Don't update state if component unmounted
+      if (!isMountedRef.current) {
+        return;
+      }
+      
+      // Silently handle session expired errors (401) - user is being logged out
+      if (error.status_code === 401) {
+        if (__DEV__) console.log('⏭️ [ActiveOrders] Session expired, clearing orders');
+        setActiveOrders([]);
+        return;
+      }
+      
+      // Silently handle timeout errors (408) - don't spam console
+      if (error.status_code === 408) {
+        // Timeout is expected when API is slow, don't log
+        setActiveOrders([]);
+        return;
+      }
+      
       // Silent handling for expected errors (403, 404) - these are OK when API is not ready
       if (error.status_code === 403 || error.status_code === 404) {
         // Expected errors when API is not ready
@@ -359,6 +443,7 @@ export default function ActiveOrdersSection() {
       // Set empty array to hide the section when API has issues or no orders
       setActiveOrders([]);
     } finally {
+      isLoadingRef.current = false; // Always reset loading flag
       if (!silent) {
         setLoading(false);
       }
@@ -369,30 +454,19 @@ export default function ActiveOrdersSection() {
     return (
       <View style={styles.container}>
         <View style={styles.sectionHeader}>
-          <View style={styles.titleContainer}>
-            <LinearGradient
-              colors={['#609CEF', '#7B68EE']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.titleIconContainer}
-            >
-            <Ionicons name="flash" size={16} color="#FFFFFF" />
-          </LinearGradient>
           <Text style={styles.sectionTitle}>
             {user?.userType === 'technician' ? 'Đơn đang thực hiện' : 'Đơn đang xử lý'}
           </Text>
           <View style={styles.countBadge}>
-              <Text style={styles.countText}>0</Text>
-            </View>
-            <View style={styles.refreshButton}>
-              <Animated.View style={{ transform: [{ rotate: spin }] }}>
-                <Ionicons name="refresh" size={14} color="#609CEF" />
-              </Animated.View>
-            </View>
+            <Text style={styles.countText}>...</Text>
           </View>
         </View>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#609CEF" />
+          <View style={styles.skeletonCard}>
+            <View style={styles.skeletonHeader} />
+            <View style={styles.skeletonLine} />
+            <View style={styles.skeletonLineShort} />
+          </View>
         </View>
       </View>
     );
@@ -436,36 +510,29 @@ export default function ActiveOrdersSection() {
     <View style={styles.container}>
       {/* Section Header */}
       <View style={styles.sectionHeader}>
-        <View style={styles.titleContainer}>
-          <LinearGradient
-            colors={['#609CEF', '#7B68EE']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.titleIconContainer}
-          >
-            <Ionicons name="flash" size={16} color="#FFFFFF" />
-          </LinearGradient>
-          <Text style={styles.sectionTitle}>
-            {user?.userType === 'technician' ? 'Đơn đang thực hiện' : 'Đơn đang xử lý'}
-          </Text>
-          <View style={styles.countBadge}>
-            <Text style={styles.countText}>{activeOrders.length}</Text>
-          </View>
-          <TouchableOpacity
-            onPress={refreshOrders}
-            style={styles.refreshButton}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="refresh" size={14} color="#609CEF" />
-          </TouchableOpacity>
+        <Text style={styles.sectionTitle}>
+          {user?.userType === 'technician' ? 'Đơn đang thực hiện' : 'Đơn đang xử lý'}
+        </Text>
+        <View style={styles.countBadge}>
+          <Text style={styles.countText}>{activeOrders.length}</Text>
         </View>
       </View>
 
-      {/* Horizontal Scrollable Cards */}
+      {/* Paginated Scrollable Cards */}
       <ScrollView
         horizontal
+        pagingEnabled={false}
         showsHorizontalScrollIndicator={false}
+        snapToInterval={Dimensions.get('window').width - 32}
+        decelerationRate="fast"
         contentContainerStyle={styles.scrollContainer}
+        onScroll={(event) => {
+          const offsetX = event.nativeEvent.contentOffset.x;
+          const cardWidth = Dimensions.get('window').width - 32 + 16; // card width + gap
+          const index = Math.round(offsetX / cardWidth);
+          setCurrentIndex(index);
+        }}
+        scrollEventThrottle={16}
       >
         {activeOrders.map((order, index) => (
           <TouchableOpacity
@@ -485,112 +552,135 @@ export default function ActiveOrdersSection() {
                 } as any);
               }
             }}
-            activeOpacity={0.7}
+            activeOpacity={0.95}
           >
+            {/* Card Gradient Background */}
             <LinearGradient
               colors={['#FFFFFF', '#F8FAFC']}
               style={styles.cardGradient}
             >
-              {/* Status indicator at top */}
-              <LinearGradient
-                colors={['#609CEF', '#609CEF80']}
-                style={styles.statusIndicator}
-              />
-              
-              <View style={styles.cardContent}>
-                {/* Header with service name and status */}
-                <View style={styles.cardHeader}>
-                  <View style={styles.serviceNameRow}>
-                    <Text style={styles.serviceName} numberOfLines={2}>{order.serviceName}</Text>
-                  </View>
+              {/* Status Badge */}
+              <View style={styles.statusBadgeContainer}>
+                <View style={styles.statusBadge}>
+                  <Ionicons name="time-outline" size={12} color="#FFFFFF" />
+                  <Text style={styles.statusBadgeText}>Đang xử lý</Text>
                 </View>
+              </View>
 
-                {/* Current step with better spacing */}
-                <View style={styles.stepContainer}>
-                  <View style={styles.stepRow}>
-                    <Ionicons name="radio-button-on" size={8} color="#609CEF" />
-                    <Text style={styles.stepText}>{order.currentStep}</Text>
+              {/* Service Info */}
+              <View style={styles.serviceSection}>
+                <View style={styles.serviceIconBox}>
+                  <Ionicons name="construct" size={24} color="#609CEF" />
+                </View>
+                <View style={styles.serviceInfo}>
+                  <Text style={styles.serviceName} numberOfLines={2}>{order.serviceName}</Text>
+                  <View style={styles.statusRow}>
+                    <View style={styles.statusDot} />
+                    <Text style={styles.statusText} numberOfLines={1}>{order.currentStep}</Text>
                   </View>
                 </View>
-                {/* Date and time info */}
-                <View style={styles.dateTimeContainer}>
+              </View>
+
+              {/* Divider */}
+              <View style={styles.divider} />
+
+              {/* Date and Time */}
+              {(order.requestedDate || order.expectedStartTime) && (
+                <View style={styles.dateTimeSection}>
                   {order.requestedDate && (
-                    <View style={styles.dateTimeRow}>
-                      <Ionicons name="calendar-outline" size={12} color="#6B7280" />
-                      <Text style={styles.dateTimeText}>
-                        {new Date(order.requestedDate).toLocaleDateString('vi-VN')}
-                      </Text>
+                    <View style={styles.dateTimeItem}>
+                      <View style={styles.dateTimeIconBox}>
+                        <Ionicons name="calendar-outline" size={16} color="#609CEF" />
+                      </View>
+                      <View>
+                        <Text style={styles.dateTimeLabel}>Ngày hẹn</Text>
+                        <Text style={styles.dateTimeValue}>
+                          {new Date(order.requestedDate).toLocaleDateString('vi-VN', { 
+                            day: '2-digit', 
+                            month: '2-digit',
+                            year: 'numeric'
+                          })}
+                        </Text>
+                      </View>
                     </View>
                   )}
                   {order.expectedStartTime && (
-                    <View style={styles.dateTimeRow}>
-                      <Ionicons name="time-outline" size={12} color="#6B7280" />
-                      <Text style={styles.dateTimeText}>
-                        {new Date(order.expectedStartTime).toLocaleTimeString('vi-VN', { 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
-                        })}
-                      </Text>
+                    <View style={styles.dateTimeItem}>
+                      <View style={styles.dateTimeIconBox}>
+                        <Ionicons name="time-outline" size={16} color="#609CEF" />
+                      </View>
+                      <View>
+                        <Text style={styles.dateTimeLabel}>Giờ</Text>
+                        <Text style={styles.dateTimeValue}>
+                          {new Date(order.expectedStartTime).toLocaleTimeString('vi-VN', { 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                          })}
+                        </Text>
+                      </View>
                     </View>
                   )}
                 </View>
+              )}
 
-                {/* Action button */}
-                <TouchableOpacity 
-                  style={styles.actionButton}
-                  onPress={() => {
-                    // Navigate to appropriate tracking screen based on user type
-                    if (user?.userType === 'technician') {
-                      router.push({
-                        pathname: '/technician/technician-order-tracking',
-                        params: { orderId: order.id }
-                      } as any);
-                    } else {
-                      router.push({
-                        pathname: './order-tracking',
-                        params: { orderId: order.id }
-                      } as any);
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.actionButtonText}>
-                    Xem chi tiết
-                  </Text>
-                  <Ionicons name="arrow-forward" size={14} color="#609CEF" />
-                </TouchableOpacity>
-              </View>
+              {/* Action Button */}
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => {
+                  if (user?.userType === 'technician') {
+                    router.push({
+                      pathname: '/technician/technician-order-tracking',
+                      params: { orderId: order.id }
+                    } as any);
+                  } else {
+                    router.push({
+                      pathname: './order-tracking',
+                      params: { orderId: order.id }
+                    } as any);
+                  }
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={styles.actionButtonGradient}>
+                  <Text style={styles.actionButtonText}>Xem chi tiết</Text>
+                  <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                </View>
+              </TouchableOpacity>
             </LinearGradient>
           </TouchableOpacity>
         ))}
       </ScrollView>
+
+      {/* Pagination Dots */}
+      {activeOrders.length > 1 && (
+        <View style={styles.paginationContainer}>
+          {activeOrders.map((_, index) => (
+            <View
+              key={index}
+              style={[
+                styles.paginationDot,
+                index === currentIndex && styles.paginationDotActive
+              ]}
+            />
+          ))}
+        </View>
+      )}
     </View>
   );
 }
 
+const { width } = Dimensions.get('window');
+
 const styles = StyleSheet.create({
   container: {
     marginTop: 8,
-    marginBottom: 16,
+    marginBottom: 24,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 20,
     marginBottom: 16,
-  },
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  titleIconContainer: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
   },
   sectionTitle: {
     fontSize: 18,
@@ -609,174 +699,189 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#EF4444',
   },
-  refreshButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#F0F7FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
   loadingContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
   },
-  scrollContainer: {
-    paddingHorizontal: 20,
+  skeletonCard: {
+    width: width - 32,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 20,
+    padding: 20,
     gap: 12,
   },
+  skeletonHeader: {
+    width: '60%',
+    height: 24,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 8,
+  },
+  skeletonLine: {
+    width: '100%',
+    height: 16,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 6,
+  },
+  skeletonLineShort: {
+    width: '70%',
+    height: 16,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 6,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  scrollContainer: {
+    paddingHorizontal: 16,
+    gap: 16,
+  },
   orderCard: {
-    width: 280,
-    borderRadius: 16,
+    width: width - 32,
+    borderRadius: 20,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   cardGradient: {
-    padding: 16,
-    position: 'relative',
+    padding: 20,
   },
-  statusIndicator: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 3,
+  statusBadgeContainer: {
+    marginBottom: 16,
   },
-  cardContent: {
-    marginTop: 4,
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 4,
+    backgroundColor: '#609CEF',
   },
-  cardHeader: {
-    marginBottom: 12,
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+  serviceSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  serviceIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#EFF6FF',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
-  cardTitleContainer: {
+  serviceInfo: {
     flex: 1,
   },
   serviceName: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
     color: '#1F2937',
-    flex: 1,
-    marginRight: 8,
-    lineHeight: 20,
+    marginBottom: 6,
+    lineHeight: 22,
   },
-  technicianRow: {
+  statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
   },
-  technicianText: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
   },
-  stepContainer: {
-    marginBottom: 12,
-  },
-  stepText: {
+  statusText: {
     fontSize: 14,
     color: '#4B5563',
     fontWeight: '500',
     flex: 1,
   },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  timeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  timeText: {
-    fontSize: 13,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  trackButtonSmall: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  trackButtonSmallText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#609CEF',
-  },
-  // New styles for improved layout
-  serviceNameRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-  },
-  statusBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
-    backgroundColor: '#609CEF',
-  },
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  personInfoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  personInfoText: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  dateTimeContainer: {
-    gap: 6,
+  divider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
     marginBottom: 16,
   },
-  dateTimeRow: {
+  dateTimeSection: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 20,
+  },
+  dateTimeItem: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    backgroundColor: '#F9FAFB',
+    padding: 12,
+    borderRadius: 12,
+    gap: 10,
   },
-  dateTimeText: {
-    fontSize: 12,
+  dateTimeIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dateTimeLabel: {
+    fontSize: 11,
     color: '#6B7280',
     fontWeight: '500',
+    marginBottom: 2,
+  },
+  dateTimeValue: {
+    fontSize: 14,
+    color: '#1F2937',
+    fontWeight: '600',
   },
   actionButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  actionButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#609CEF',
-    gap: 6,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    gap: 8,
+    backgroundColor: '#609CEF',
+    borderRadius: 12,
   },
   actionButtonText: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#609CEF',
+    color: '#FFFFFF',
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 16,
+    gap: 8,
+  },
+  paginationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#D1D5DB',
+  },
+  paginationDotActive: {
+    width: 24,
+    backgroundColor: '#609CEF',
   },
 });

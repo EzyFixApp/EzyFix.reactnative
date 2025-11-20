@@ -35,6 +35,8 @@ import { useLocation } from '../../hooks/useLocation';
 import TechnicianMapView from '../../components/TechnicianMapView';
 import { reviewService } from '../../lib/api/reviews';
 import { notificationService } from '../../lib/services/notificationService';
+import { notificationDeduplicator } from '../../lib/services/notificationDeduplicator';
+import { backgroundOrderMonitor } from '../../lib/services/backgroundOrderMonitor';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -230,7 +232,6 @@ function TechnicianOrderTracking() {
   
   // Track previous status for notification changes (Technician notifications)
   const previousStatusRef = useRef<string | null>(null);
-  const notificationSentRef = useRef<Set<string>>(new Set()); // Track which notifications have been sent
   
   // Helper function to mask phone number for privacy
   const maskPhoneNumber = (phone: string): string => {
@@ -351,25 +352,32 @@ function TechnicianOrderTracking() {
     return unsubscribe;
   }, [appointment?.id, bookingInfo]);
   
-  // Initialize notification service on mount (Technician)
+  // Initialize notification service and background monitoring on mount (Technician)
   useEffect(() => {
     const initNotifications = async () => {
       try {
         if (__DEV__) console.log('🔔 [Technician] Initializing notifications...');
         await notificationService.initialize();
         if (__DEV__) console.log('✅ [Technician] Notifications initialized');
+        
+        // Start background monitoring for this service request
+        if (serviceRequestId) {
+          if (__DEV__) console.log('📡 [Technician] Starting background monitoring...');
+          await backgroundOrderMonitor.startMonitoring(serviceRequestId as string);
+          if (__DEV__) console.log('✅ [Technician] Background monitoring started');
+        }
       } catch (error) {
-        if (__DEV__) console.error('❌ [Technician] Failed to initialize notifications:', error);
+        if (__DEV__) console.error('❌ [Technician] Failed to initialize:', error);
       }
     };
 
     initNotifications();
 
-    // Cleanup notification listeners on unmount
+    // Cleanup notification listeners on unmount (but keep background monitoring)
     return () => {
       notificationService.cleanup();
     };
-  }, []);
+  }, [serviceRequestId]);
 
   // Monitor appointment status changes and trigger technician notifications
   useEffect(() => {
@@ -380,54 +388,108 @@ function TechnicianOrderTracking() {
     const currentServiceName = serviceName || 'dịch vụ';
     const customerName = serviceRequest.fullName || 'Khách hàng';
 
-    // Create unique notification key to prevent duplicates
-    const notificationKey = `${appointment.id}-${currentStatusValue}`;
+    // Trigger notification when:
+    // 1. Status changed from previous (normal case)
+    // 2. First load and status is active (previousStatus is null)
+    const isFirstLoad = previousStatus === null || previousStatus === undefined;
+    const statusChanged = previousStatus && previousStatus !== currentStatusValue;
 
-    // Skip if notification already sent for this status
-    if (notificationSentRef.current.has(notificationKey)) {
-      return;
-    }
-
-    // Only trigger notification if status changed from previous
-    if (previousStatus && previousStatus !== currentStatusValue) {
-      if (__DEV__) {
-        console.log('📱 [Technician] Status changed:', {
-          from: previousStatus,
-          to: currentStatusValue,
-          serviceName: currentServiceName,
-          customerName
-        });
-      }
-
-      // Trigger appropriate notification based on new status
-      if (currentStatusValue === 'SCHEDULED') {
-        // Khách hàng đã chấp nhận báo giá → đã có lịch hẹn
-        const amount = offer?.finalCost || offer?.estimatedCost;
-        notificationService.notifyTechnicianQuoteAccepted(
-          serviceRequest.requestID,
-          currentServiceName,
-          customerName,
-          amount
+    if (statusChanged || isFirstLoad) {
+      (async () => {
+        // Check deduplication before sending
+        const alreadySent = await notificationDeduplicator.wasNotificationSent(
+          appointment.id, 
+          currentStatusValue || 'UNKNOWN'
         );
-        notificationSentRef.current.add(notificationKey);
-        if (__DEV__) console.log('✅ Notification sent: Quote ACCEPTED (Technician)');
-      } else if (currentStatusValue === 'COMPLETED') {
-        // Đơn hàng hoàn thành → khách hàng có thể đã thanh toán
-        const amount = offer?.finalCost || offer?.estimatedCost || 0;
-        if (amount > 0) {
-          notificationService.notifyTechnicianPaymentReceived(
+        
+        if (alreadySent) {
+          if (__DEV__) {
+            console.log('⏭️ [Technician] Notification already sent (deduplicated):', currentStatusValue);
+          }
+          // Update previous status but don't send
+          previousStatusRef.current = currentStatusValue;
+          return;
+        }
+
+        if (__DEV__) {
+          console.log('📱 [Technician] Triggering notification:', {
+            isFirstLoad,
+            statusChanged,
+            from: previousStatus,
+            to: currentStatusValue,
+            serviceName: currentServiceName,
+            customerName
+          });
+        }
+
+        // Trigger appropriate notification based on new status
+        let notificationId: string | null = null;
+
+        if (currentStatusValue === 'SCHEDULED') {
+          // Khách hàng đã chấp nhận báo giá → đã có lịch hẹn
+          const amount = offer?.finalCost || offer?.estimatedCost;
+          notificationId = await notificationService.notifyTechnicianQuoteAccepted(
             serviceRequest.requestID,
             currentServiceName,
+            customerName,
             amount
           );
-          notificationSentRef.current.add(notificationKey);
-          if (__DEV__) console.log('💰 Notification sent: Payment RECEIVED (Technician)');
+          if (__DEV__) console.log('✅ Notification sent: Quote ACCEPTED (Technician)');
+        } else if (currentStatusValue === 'CANCELLED') {
+          // Khách hàng đã hủy lịch hẹn
+          notificationId = await notificationService.notifyTechnicianOrderCancelled(
+            serviceRequest.requestID,
+            currentServiceName,
+            customerName
+          );
+          if (__DEV__) console.log('❌ Notification sent: Order CANCELLED (Technician)');
+          
+          // Stop background monitoring and clear history when cancelled
+          await backgroundOrderMonitor.stopMonitoring();
+          await notificationDeduplicator.clearOrderHistory(appointment.id);
+          if (__DEV__) console.log('🛑 [Technician] Background monitoring stopped & history cleared (cancelled)');
+        } else if (currentStatusValue === 'ABSENT') {
+          // Khách hàng vắng mặt
+          const customerAddress = serviceRequest.requestAddress;
+          notificationId = await notificationService.notifyTechnicianCustomerAbsent(
+            serviceRequest.requestID,
+            currentServiceName,
+            customerName,
+            customerAddress
+          );
+          if (__DEV__) console.log('⚠️ Notification sent: Customer ABSENT (Technician)');
+        } else if (currentStatusValue === 'COMPLETED') {
+          // Đơn hàng hoàn thành → khách hàng có thể đã thanh toán
+          const amount = offer?.finalCost || offer?.estimatedCost || 0;
+          if (amount > 0) {
+            notificationId = await notificationService.notifyTechnicianPaymentReceived(
+              serviceRequest.requestID,
+              currentServiceName,
+              amount
+            );
+            if (__DEV__) console.log('💰 Notification sent: Payment RECEIVED (Technician)');
+          }
+          
+          // Stop background monitoring and clear history when completed
+          await backgroundOrderMonitor.stopMonitoring();
+          await notificationDeduplicator.clearOrderHistory(appointment.id);
+          if (__DEV__) console.log('� [Technician] Background monitoring stopped & history cleared');
         }
-      }
-    }
 
-    // Update previous status
-    previousStatusRef.current = currentStatusValue;
+        // Mark notification as sent to prevent duplicates
+        if (notificationId && currentStatusValue) {
+          await notificationDeduplicator.markNotificationSent(
+            appointment.id, 
+            currentStatusValue, 
+            notificationId
+          );
+          if (__DEV__) console.log('✅ [Technician] Notification marked as sent');
+        }
+
+        // Update previous status
+        previousStatusRef.current = currentStatusValue;
+      })();
+    }
   }, [appointment?.status, appointment?.id, serviceRequest?.requestID, serviceName, offer?.finalCost, offer?.estimatedCost]);
   
   // Fetch media when status changes to REPAIRING or later

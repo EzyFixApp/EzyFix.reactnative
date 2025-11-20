@@ -105,6 +105,17 @@ export default function QuoteNotificationModal({
     }
   };
 
+  // Auto-dismiss success modal after 2 seconds
+  React.useEffect(() => {
+    if (showResultModal && resultSuccess) {
+      const timer = setTimeout(() => {
+        handleResultClose();
+      }, 3000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [showResultModal, resultSuccess]);
+
   return (
     <Modal
       visible={visible}

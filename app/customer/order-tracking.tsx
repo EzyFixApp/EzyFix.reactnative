@@ -35,6 +35,8 @@ import CustomModal from '../../components/CustomModal';
 import ReviewModal from '../../components/ReviewModal';
 import { reviewService } from '../../lib/api/reviews';
 import { notificationService } from '../../lib/services/notificationService';
+import { backgroundOrderMonitor } from '../../lib/services/backgroundOrderMonitor';
+import { notificationDeduplicator } from '../../lib/services/notificationDeduplicator';
 
 interface OrderDetail {
   id: string;
@@ -55,6 +57,7 @@ interface OrderDetail {
   quotePrice?: string;
   estimatedPrice?: string; // Giá dự kiến
   finalPrice?: string;      // Giá chốt
+  paidAmount?: string;      // Số tiền đã thanh toán thực tế (sau voucher)
   notes?: string;           // Service description or technician notes
   technicianNotes?: string; // Technician notes from offer
   appointmentId?: string;   // For PRICE_REVIEW actions
@@ -120,7 +123,6 @@ function CustomerOrderTracking() {
 
   // Track previous status for notification changes
   const previousStatusRef = useRef<string | null>(null);
-  const notificationSentRef = useRef<Set<string>>(new Set()); // Track which notifications have been sent
 
   // Helper function to show modal
   const showAlertModal = (
@@ -328,17 +330,18 @@ function CustomerOrderTracking() {
       
       // Get quote information if available
       let quotePrice: string | undefined;
-      let estimatedPrice: string | undefined;
-      let finalPrice: string | undefined;
-      let technicianName: string | undefined;
-      let technicianId: string | undefined;
-      let technicianAvatar: string | undefined;
-      let technicianRating: number | undefined;
-      let appointmentId: string | undefined;
-      let actualStatus = serviceRequest.status; // Will be overridden by appointment status if available
-      let technicianNotes: string | undefined; // Technician notes from offer
-      
-      try {
+  let estimatedPrice: string | undefined;
+  let finalPrice: string | undefined;
+  let paidAmount: string | undefined; // Actual payment amount (after voucher)
+  let technicianName: string | undefined;
+  let technicianId: string | undefined;
+  let technicianAvatar: string | undefined;
+  let technicianRating: number | undefined;
+  let appointmentId: string | undefined;
+  let actualStatus = serviceRequest.status; // Will be overridden by appointment status if available
+  let technicianNotes: string | undefined; // Technician notes from offer
+  
+  try {
         if (__DEV__) console.log('📦 [OrderTracking] Request status:', serviceRequest.status, 'Request ID:', serviceRequest.requestID);
         
         // Get ALL offers for this request (not just PENDING)
@@ -368,34 +371,27 @@ function CustomerOrderTracking() {
             technicianLastName: relevantOffer.technician?.user?.lastName || relevantOffer.technician?.lastName,
           });
           
-          // IMPORTANT: Fetch full offer details to get technician info
-          // The getAllOffers() response doesn't include technician details, 
-          // but getOfferById() does include technician name, avatar, rating
-          try {
-            if (__DEV__) console.log('🔍 [OrderTracking] Fetching full offer details:', relevantOffer.offerId);
-            
-            const fullOfferDetails = await serviceDeliveryOffersService.getOfferById(relevantOffer.offerId);
-            
-            if (fullOfferDetails.technician) {
-              // Update relevantOffer with full technician details
-              relevantOffer.technician = fullOfferDetails.technician;
-              
-              if (__DEV__) console.log('✅ [OrderTracking] Got technician from getOfferById:', {
-                technicianName: fullOfferDetails.technician.technicianName,
-                technicianRating: fullOfferDetails.technician.technicianRating,
-                technicianAvatar: fullOfferDetails.technician.technicianAvatar,
-              });
-            }
-          } catch (offerError) {
-            if (__DEV__) console.warn('⚠️ [OrderTracking] Could not fetch full offer details:', offerError);
+          // OPTIMIZATION: Parallel fetch offer details and appointments
+          const [fullOfferDetailsResult, appointmentsResult] = await Promise.allSettled([
+            serviceDeliveryOffersService.getOfferById(relevantOffer.offerId),
+            appointmentsService.getAppointmentsByServiceRequest(serviceRequest.requestID)
+          ]);
+          
+          // Process offer details
+          if (fullOfferDetailsResult.status === 'fulfilled' && fullOfferDetailsResult.value.technician) {
+            relevantOffer.technician = fullOfferDetailsResult.value.technician;
+            if (__DEV__) console.log('✅ [OrderTracking] Got technician from getOfferById:', {
+              technicianName: fullOfferDetailsResult.value.technician.technicianName,
+              technicianRating: fullOfferDetailsResult.value.technician.technicianRating,
+              technicianAvatar: fullOfferDetailsResult.value.technician.technicianAvatar,
+            });
+          } else if (__DEV__) {
+            console.warn('⚠️ [OrderTracking] Could not fetch full offer details');
           }
           
-          // Query appointments by serviceRequestId (backend doesn't return appointmentId in offer)
-          try {
-            if (__DEV__) console.log('🔍 [OrderTracking] Querying appointments for serviceRequestId:', serviceRequest.requestID);
-            
-            const appointments = await appointmentsService.getAppointmentsByServiceRequest(serviceRequest.requestID);
-            
+          // Process appointments
+          if (appointmentsResult.status === 'fulfilled') {
+            const appointments = appointmentsResult.value;
             if (__DEV__) console.log('📋 [OrderTracking] Found appointments:', appointments.length);
             
             // Take the most recent appointment (last in array)
@@ -409,44 +405,44 @@ function CustomerOrderTracking() {
                 setProviderId(appointment.technicianId);
               }
               
+              // Get paymentAmount from appointment (for COMPLETED/REPAIRED status)
+              // REPAIRED means technician finished work, COMPLETED means customer paid
+              if (appointment.paymentAmount && (actualStatus?.toUpperCase() === 'COMPLETED' || actualStatus?.toUpperCase() === 'REPAIRED')) {
+                paidAmount = new Intl.NumberFormat('vi-VN', {
+                  style: 'currency',
+                  currency: 'VND'
+                }).format(appointment.paymentAmount);
+                if (__DEV__) console.log('💳 [OrderTracking] Payment amount from appointment:', paidAmount, 'status:', actualStatus);
+              }
+              
               if (__DEV__) console.log('✅ [OrderTracking] Appointment status:', {
                 appointmentId,
                 status: actualStatus,
-                technicianId: appointment.technicianId
+                technicianId: appointment.technicianId,
+                paymentAmount: appointment.paymentAmount
               });
               
-              // Fetch existing review if appointment is COMPLETED
+              // OPTIMIZATION: Parallel fetch review and media
+              const fetchPromises: Promise<any>[] = [
+                mediaService.getMediaByRequest(serviceRequest.requestID, appointmentId)
+              ];
+              
+              // Only fetch review if appointment is COMPLETED
               if (actualStatus?.toUpperCase() === 'COMPLETED' && appointmentId) {
-                try {
-                  const review = await reviewService.getReviewByAppointment(appointmentId);
-                  if (review) {
-                    setExistingReview(review);
-                    if (__DEV__) console.log('✅ [OrderTracking] Review loaded:', review);
-                  } else {
-                    setExistingReview(null);
-                    if (__DEV__) console.log('ℹ️ [OrderTracking] No review yet for this appointment');
-                  }
-                } catch (reviewError) {
-                  if (__DEV__) console.warn('⚠️ [OrderTracking] Error fetching review:', reviewError);
-                  setExistingReview(null);
-                }
+                fetchPromises.push(reviewService.getReviewByAppointment(appointmentId));
               }
               
-              // Fetch media for this appointment
-              try {
-                if (__DEV__) console.log('📸 [OrderTracking] Fetching media for request:', serviceRequest.requestID);
-                
-                const mediaData = await mediaService.getMediaByRequest(
-                  serviceRequest.requestID,
-                  appointmentId
-                );
-                
+              const results = await Promise.allSettled(fetchPromises);
+              
+              // Process media (always first promise)
+              if (results[0].status === 'fulfilled') {
+                const mediaData = results[0].value;
                 if (__DEV__) console.log('✅ [OrderTracking] Media fetched:', mediaData.length);
                 
                 // Filter ISSUE type media (customer uploaded images)
                 const issueMediaUrls = mediaData
-                  .filter(m => m.mediaType === 'ISSUE')
-                  .map(m => m.fileURL);
+                  .filter((m: any) => m.mediaType === 'ISSUE')
+                  .map((m: any) => m.fileURL);
                 
                 if (issueMediaUrls.length > 0) {
                   setIssueMedia(issueMediaUrls);
@@ -455,8 +451,8 @@ function CustomerOrderTracking() {
                 
                 // Filter INITIAL type media (technician photos at CHECKING)
                 const initialMediaUrls = mediaData
-                  .filter(m => m.mediaType === 'INITIAL')
-                  .map(m => m.fileURL);
+                  .filter((m: any) => m.mediaType === 'INITIAL')
+                  .map((m: any) => m.fileURL);
                 
                 if (initialMediaUrls.length > 0) {
                   setInitialMedia(initialMediaUrls);
@@ -465,21 +461,34 @@ function CustomerOrderTracking() {
                 
                 // Filter FINAL type media (technician photos at REPAIRED)
                 const finalMediaUrls = mediaData
-                  .filter(m => m.mediaType === 'FINAL')
-                  .map(m => m.fileURL);
+                  .filter((m: any) => m.mediaType === 'FINAL')
+                  .map((m: any) => m.fileURL);
                 
                 if (finalMediaUrls.length > 0) {
                   setFinalMedia(finalMediaUrls);
                   if (__DEV__) console.log('✅ [OrderTracking] Loaded FINAL photos:', finalMediaUrls.length);
                 }
-              } catch (mediaError) {
-                if (__DEV__) console.warn('⚠️ [OrderTracking] Could not fetch media:', mediaError);
+              }
+              
+              // Process review (second promise, if fetched)
+              if (fetchPromises.length > 1 && results[1].status === 'fulfilled') {
+                const review = results[1].value;
+                if (review) {
+                  setExistingReview(review);
+                  if (__DEV__) console.log('✅ [OrderTracking] Review loaded:', review);
+                } else {
+                  setExistingReview(null);
+                  if (__DEV__) console.log('ℹ️ [OrderTracking] No review yet');
+                }
+              } else if (fetchPromises.length > 1) {
+                setExistingReview(null);
+                if (__DEV__) console.warn('⚠️ [OrderTracking] Could not fetch review');
               }
             } else {
               if (__DEV__) console.log('⚠️ [OrderTracking] No appointments found for service request');
             }
-          } catch (error) {
-            if (__DEV__) console.warn('⚠️ [OrderTracking] Could not fetch appointments:', error);
+          } else if (__DEV__) {
+            console.warn('⚠️ [OrderTracking] Could not fetch appointments');
           }
           
           // Get offer notes (technician notes about the job)
@@ -609,6 +618,7 @@ function CustomerOrderTracking() {
         quotePrice: quotePrice,
         estimatedPrice: estimatedPrice,
         finalPrice: finalPrice,
+        paidAmount: paidAmount, // Payment amount from appointment (for COMPLETED status)
         appointmentId: appointmentId, // Store for PRICE_REVIEW actions
         appointmentStatus: finalStatus, // Store final status for timeline (ServiceRequest takes priority)
       };
@@ -619,7 +629,8 @@ function CustomerOrderTracking() {
           status: transformedOrder.status,
           appointmentStatus: transformedOrder.appointmentStatus,
           appointmentId: transformedOrder.appointmentId,
-          finalPrice: transformedOrder.finalPrice
+          finalPrice: transformedOrder.finalPrice,
+          paidAmount: transformedOrder.paidAmount
         });
       }
       
@@ -741,11 +752,20 @@ function CustomerOrderTracking() {
   };
 
   useEffect(() => {
+    // Only load if authenticated
+    if (!isAuthenticated) {
+      if (__DEV__) console.log('⏭️ [OrderTracking] User not authenticated, skipping load');
+      return;
+    }
+    
     loadOrderDetail();
     
     // Set up auto-refresh interval for real-time updates
     const interval = setInterval(() => {
-      loadOrderDetail(true); // Silent refresh
+      // Check auth before refreshing
+      if (isAuthenticated) {
+        loadOrderDetail(true); // Silent refresh
+      }
     }, REFRESH_INTERVAL);
 
     // Cleanup interval on unmount
@@ -755,27 +775,35 @@ function CustomerOrderTracking() {
         stopSpinning();
       }
     };
-  }, [orderId]);
+  }, [orderId, isAuthenticated]);
 
-  // Initialize notification service on mount
+  // Initialize notification service and background monitoring on mount
   useEffect(() => {
     const initNotifications = async () => {
       try {
         if (__DEV__) console.log('🔔 [OrderTracking] Initializing notifications...');
         await notificationService.initialize();
         if (__DEV__) console.log('✅ [OrderTracking] Notifications initialized');
+        
+        // Start background monitoring for this order
+        if (orderId) {
+          if (__DEV__) console.log('📡 [OrderTracking] Starting background monitoring...');
+          await backgroundOrderMonitor.startMonitoring(orderId);
+          if (__DEV__) console.log('✅ [OrderTracking] Background monitoring started');
+        }
       } catch (error) {
-        if (__DEV__) console.error('❌ [OrderTracking] Failed to initialize notifications:', error);
+        if (__DEV__) console.error('❌ [OrderTracking] Failed to initialize:', error);
       }
     };
 
     initNotifications();
 
-    // Cleanup notification listeners on unmount
+    // Cleanup notification listeners and stop monitoring on unmount
     return () => {
       notificationService.cleanup();
+      // Note: Don't stop monitoring on unmount - let it continue in background
     };
-  }, []);
+  }, [orderId]);
 
   // Monitor order status changes and trigger notifications
   useEffect(() => {
@@ -786,46 +814,97 @@ function CustomerOrderTracking() {
     const serviceName = order.serviceName || 'dịch vụ';
     const technicianName = order.technicianName;
 
-    // Create unique notification key to prevent duplicates
-    const notificationKey = `${order.id}-${currentStatus}`;
+    // Trigger notification when:
+    // 1. Status changed from previous (normal case)
+    // 2. First load and status is active (previousStatus is null)
+    const isFirstLoad = previousStatus === null || previousStatus === undefined;
+    const statusChanged = previousStatus && previousStatus !== currentStatus;
+    
+    if (statusChanged || isFirstLoad) {
+      (async () => {
+        // Check deduplication before sending
+        const alreadySent = await notificationDeduplicator.wasNotificationSent(order.id, currentStatus);
+        
+        if (alreadySent) {
+          if (__DEV__) {
+            console.log('⏭️ [OrderTracking] Notification already sent (deduplicated):', currentStatus);
+          }
+          // Update previous status but don't send
+          previousStatusRef.current = currentStatus;
+          return;
+        }
 
-    // Skip if notification already sent for this status
-    if (notificationSentRef.current.has(notificationKey)) {
-      return;
-    }
+        if (__DEV__) {
+          console.log('📱 [OrderTracking] Triggering notification:', {
+            isFirstLoad,
+            statusChanged,
+            from: previousStatus,
+            to: currentStatus,
+            serviceName,
+            technicianName
+          });
+        }
 
-    // Only trigger notification if status changed from previous
-    if (previousStatus && previousStatus !== currentStatus) {
+        // Trigger appropriate notification based on new status
+        let notificationId: string | null = null;
+
+        if (currentStatus === 'PENDING' || currentStatus === 'QUOTED') {
+          // Status: Finding technician or received quote
+          notificationId = await notificationService.notifyOrderPending(order.id, serviceName);
+          if (__DEV__) console.log('🔍 Notification sent: Order PENDING');
+        } else if (currentStatus === 'ACCEPTED' || currentStatus === 'QUOTEACCEPTED' || currentStatus === 'SCHEDULED') {
+          // Status: Technician accepted the order
+          notificationId = await notificationService.notifyOrderAccepted(order.id, serviceName, technicianName);
+          if (__DEV__) console.log('✅ Notification sent: Order ACCEPTED');
+        } else if (currentStatus === 'EN_ROUTE') {
+          // Status: Technician is on the way
+          notificationId = await notificationService.notifyOrderEnRoute(order.id, serviceName, technicianName);
+          if (__DEV__) console.log('🚗 Notification sent: Order EN_ROUTE');
+        } else if (currentStatus === 'ARRIVED') {
+          // Status: Technician has arrived
+          notificationId = await notificationService.notifyOrderArrived(order.id, serviceName, technicianName);
+          if (__DEV__) console.log('📍 Notification sent: Order ARRIVED');
+        } else if (currentStatus === 'PRICE_REVIEW') {
+          // Status: Need to confirm final price
+          const finalPrice = order.finalPrice ? parseFloat(order.finalPrice.replace(/[^\d]/g, '')) : undefined;
+          notificationId = await notificationService.notifyOrderPriceReview(order.id, serviceName, finalPrice, technicianName);
+          if (__DEV__) console.log('💰 Notification sent: Order PRICE_REVIEW');
+        } else if (currentStatus === 'CHECKING' || currentStatus === 'REPAIRING' || currentStatus === 'IN_PROGRESS') {
+          // Status: Order in progress
+          notificationId = await notificationService.notifyOrderInProgress(order.id, serviceName);
+          if (__DEV__) console.log('🔧 Notification sent: Order IN_PROGRESS');
+        } else if (currentStatus === 'COMPLETED') {
+          // Status: Order completed
+          notificationId = await notificationService.notifyOrderCompleted(order.id, serviceName);
+          if (__DEV__) console.log('🎉 Notification sent: Order COMPLETED');
+          
+          // Stop background monitoring and clear history when order is completed
+          await backgroundOrderMonitor.stopMonitoring();
+          await notificationDeduplicator.clearOrderHistory(order.id);
+          if (__DEV__) console.log('🛑 Background monitoring stopped & history cleared (order completed)');
+        } else if (currentStatus === 'CANCELLED') {
+          // Stop background monitoring when order is cancelled
+          await backgroundOrderMonitor.stopMonitoring();
+          await notificationDeduplicator.clearOrderHistory(order.id);
+          if (__DEV__) console.log('🛑 Background monitoring stopped & history cleared (order cancelled)');
+        }
+
+        // Mark notification as sent to prevent duplicates
+        if (notificationId) {
+          await notificationDeduplicator.markNotificationSent(order.id, currentStatus, notificationId);
+          if (__DEV__) console.log('✅ [OrderTracking] Notification marked as sent');
+        }
+
+        // Update previous status
+        previousStatusRef.current = currentStatus;
+      })();
+    } else {
       if (__DEV__) {
-        console.log('📱 [OrderTracking] Status changed:', {
-          from: previousStatus,
-          to: currentStatus,
-          serviceName,
-          technicianName
+        console.log('⏸️ [OrderTracking] No notification needed:', {
+          currentStatus,
+          previousStatus,
+          reason: 'Status unchanged'
         });
-      }
-
-      // Trigger appropriate notification based on new status
-      if (currentStatus === 'PENDING' || currentStatus === 'QUOTED') {
-        // Status: Finding technician or received quote
-        notificationService.notifyOrderPending(order.id, serviceName);
-        notificationSentRef.current.add(notificationKey);
-        if (__DEV__) console.log('🔍 Notification sent: Order PENDING');
-      } else if (currentStatus === 'ACCEPTED' || currentStatus === 'QUOTEACCEPTED') {
-        // Status: Technician accepted the order
-        notificationService.notifyOrderAccepted(order.id, serviceName, technicianName);
-        notificationSentRef.current.add(notificationKey);
-        if (__DEV__) console.log('✅ Notification sent: Order ACCEPTED');
-      } else if (currentStatus === 'CHECKING' || currentStatus === 'REPAIRING' || currentStatus === 'IN_PROGRESS') {
-        // Status: Order in progress
-        notificationService.notifyOrderInProgress(order.id, serviceName);
-        notificationSentRef.current.add(notificationKey);
-        if (__DEV__) console.log('🔧 Notification sent: Order IN_PROGRESS');
-      } else if (currentStatus === 'COMPLETED') {
-        // Status: Order completed
-        notificationService.notifyOrderCompleted(order.id, serviceName);
-        notificationSentRef.current.add(notificationKey);
-        if (__DEV__) console.log('🎉 Notification sent: Order COMPLETED');
       }
     }
 
@@ -1693,18 +1772,23 @@ function CustomerOrderTracking() {
                           <View style={styles.simplePriceRow}>
                             <View style={styles.simplePriceLeft}>
                               <Text style={order.status === 'price-review' ? styles.simplePriceLabelHighlight : styles.simplePriceLabel}>
-                                Giá chốt
+                                {/* Show "Đã thanh toán" for COMPLETED/REPAIRED orders with paidAmount */}
+                                {(order.status === 'completed' || order.status === 'payment') && order.paidAmount ? 'Đã thanh toán' : 'Giá chốt'}
                               </Text>
                             </View>
                             <Text style={order.status === 'price-review' ? styles.simplePriceValueHighlight : styles.simplePriceValue}>
-                              {order.finalPrice}
-                              </Text>
-                            </View>
-                            <Text style={styles.simplePriceNote}>
-                              Giá thực tế sau kiểm tra
+                              {/* Show paidAmount if available (orders with voucher), otherwise show finalPrice */}
+                              {order.paidAmount ? order.paidAmount : order.finalPrice}
                             </Text>
                           </View>
-                        ) : order.estimatedPrice && (
+                          <Text style={styles.simplePriceNote}>
+                            {/* Show note about voucher discount if paidAmount differs from finalPrice */}
+                            {order.paidAmount && order.paidAmount !== order.finalPrice
+                              ? `Giá dịch vụ: ${order.finalPrice} • Đã áp dụng voucher`
+                              : 'Giá thực tế sau kiểm tra'}
+                          </Text>
+                        </View>
+                      ) : order.estimatedPrice && (
                           <View style={styles.simplePriceCard}>
                             <View style={styles.simplePriceRow}>
                               <View style={styles.simplePriceLeft}>

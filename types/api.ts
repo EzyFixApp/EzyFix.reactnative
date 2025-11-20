@@ -345,3 +345,126 @@ export interface BookingFormData {
   expectedStartTime: string;    // Giờ bắt đầu (HH:mm)
   images: string[];             // Danh sách URI ảnh local
 }
+
+// ============= Voucher Types =============
+export interface Voucher {
+  voucherId: string;
+  voucherCode: string;
+  voucherDescription: string;
+  discountType: 'PERCENTAGE' | 'FIXED_AMOUNT';
+  discountValue: number;
+  maxDiscountAmount: number;
+  minimumOrderAmount: number;
+  validFrom: string;
+  validTo: string;
+  isActive: boolean;
+  appliesToService: boolean;
+  appliesToCategory: boolean;
+  appliesToPaymentMethod: boolean;
+  eligiblePaymentMethodCodes: string[];
+  remainingGlobalCount: number;
+  remainingPerUserCount: number;
+  previewDiscountAmount: number;
+  discountCapped: boolean;
+}
+
+export interface EligibleVouchersData {
+  appointmentId: string;
+  serviceRequestId: string;
+  customerId: string;
+  orderAmount: number;
+  vouchers: Voucher[];
+}
+
+export interface ValidateVoucherRequest {
+  appointmentId: string;
+  voucherCode: string;
+}
+
+export interface VoucherUsageData {
+  voucherUsageId: string;
+  voucherId: string;
+  appointmentId: string;
+  serviceRequestId: string;
+  customerId: string;
+  voucherCode: string;
+  discountType: 'PERCENTAGE' | 'FIXED_AMOUNT';
+  originalAmount: number;
+  discountAmount: number;
+  netAmount: number;
+  discountCapped: boolean;
+  status: string;
+  reservationToken: string;
+  expiresAt: string;
+  voucherDescription: string;
+  voucherMetadataJson: string;
+}
+
+// ============= All Vouchers (Dashboard) Types =============
+
+export interface VoucherItem {
+  voucherId: string;
+  voucherCode: string;
+  voucherDescription: string;
+  discountType: 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FREE_CHECKING';
+  discountValue: number;
+  maxDiscountAmount: number;
+  minimumOrderAmount: number;
+  validFrom: string;
+  validTo: string;
+  isActive: boolean;
+  maxUsageCount: number;
+  maxUsagePerUserCount: number;
+  pendingReservations: number;
+  confirmedUsages: number;
+  releasedReservations: number;
+  remainingGlobalCount: number;
+  categoryNames: string[];
+  serviceNames: string[];
+  paymentMethodCodes: string[];
+}
+
+export interface AllVouchersData {
+  items: VoucherItem[];
+  pagination: {
+    currentPage: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
+}
+
+// ============= Technician Profile Types =============
+
+export interface TechnicianReview {
+  id: string;
+  rating: number;
+  comment: string;
+  customerName: string;
+  createdAt: string;
+}
+
+export interface TechnicianProfile {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  avatar: string | null;
+  certification: string | null;
+  yearsOfExperience: number;
+  availabilityStatus: 'AVAILABLE' | 'BUSY' | 'OFFLINE';
+  hourlyRate: number;
+  averageRating: number;
+  totalReviews: number;
+  skills: string[];
+  latestReviews: TechnicianReview[];
+}
+
+export interface TechnicianProfileResponse {
+  status_code: number;
+  message: string;
+  reason: string | null;
+  is_success: boolean;
+  data: TechnicianProfile;
+}

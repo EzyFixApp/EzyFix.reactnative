@@ -20,8 +20,11 @@ import { WebView } from 'react-native-webview';
 import { Image } from 'react-native';
 import { appointmentsService } from '../../lib/api/appointments';
 import { paymentService } from '../../lib/api/payment';
+import { voucherService } from '../../lib/api/vouchers';
 import { paymentHub, PaymentUpdatePayload } from '../../lib/signalr/paymentHub';
 import withCustomerAuth from '../../lib/auth/withCustomerAuth';
+import VoucherSelectionModal from '../../components/VoucherSelectionModal';
+import type { Voucher } from '../../types/api';
 
 interface PaymentSummaryData {
   appointmentId: string;
@@ -45,6 +48,10 @@ function PaymentSummary() {
   const [applyingVoucher, setApplyingVoucher] = useState(false);
   const [voucherApplied, setVoucherApplied] = useState(false);
   const [voucherDiscount, setVoucherDiscount] = useState(0);
+  const [voucherReservationToken, setVoucherReservationToken] = useState('');
+  const [showVoucherModal, setShowVoucherModal] = useState(false);
+  const [selectedVoucher, setSelectedVoucher] = useState<Voucher | null>(null);
+  const [voucherUsageId, setVoucherUsageId] = useState<string | null>(null);
   const [invoiceRequested, setInvoiceRequested] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -94,33 +101,23 @@ function PaymentSummary() {
     setShowNotificationModal(true);
   };
 
-  // Handle apply voucher
-  const handleApplyVoucher = async () => {
-    if (!voucherCode.trim()) {
-      showNotification('warning', 'Thông báo', 'Vui lòng nhập mã voucher');
-      return;
-    }
+  // Handle voucher selection from modal (just store, don't validate yet)
+  const handleSelectVoucher = (voucher: Voucher) => {
+    // Just store the selected voucher, validation happens on payment
+    setSelectedVoucher(voucher);
+    setVoucherCode(voucher.voucherCode);
+    setVoucherDiscount(voucher.previewDiscountAmount);
+    setVoucherApplied(true);
+    
+    // Clear old reservation token - will get fresh one on payment
+    setVoucherReservationToken('');
+    setVoucherUsageId(null);
 
-    try {
-      setApplyingVoucher(true);
-      
-      // TODO: Call voucher validation API when backend is ready
-      // For now, show message that voucher system is not available
-      showNotification(
-        'info',
-        'Tính năng đang phát triển',
-        'Hệ thống voucher đang được hoàn thiện. Vui lòng thanh toán với giá gốc.'
-      );
-
-      // Example: const voucherData = await voucherService.validateVoucher(voucherCode, params.appointmentId);
-      // setVoucherDiscount(voucherData.discountAmount);
-      // setVoucherApplied(true);
-
-    } catch (error: any) {
-      showNotification('error', 'Lỗi', error?.message || 'Mã voucher không hợp lệ');
-    } finally {
-      setApplyingVoucher(false);
-    }
+    showNotification(
+      'success',
+      'Chọn voucher thành công!',
+      `Voucher sẽ được áp dụng khi thanh toán`
+    );
   };
 
   // Handle remove voucher
@@ -128,6 +125,9 @@ function PaymentSummary() {
     setVoucherCode('');
     setVoucherApplied(false);
     setVoucherDiscount(0);
+    setVoucherReservationToken('');
+    setSelectedVoucher(null);
+    setVoucherUsageId(null);
   };
 
   // Handle payment
@@ -139,10 +139,68 @@ function PaymentSummary() {
         console.log('💳 [PaymentSummary] Creating payment checkout for appointment:', params.appointmentId);
       }
 
-      // Call payment API to create checkout session
+      let validatedReservationToken = '';
+
+      // Step 1: Validate voucher if selected (MUST happen before checkout)
+      if (voucherApplied && voucherCode) {
+        try {
+          if (__DEV__) {
+            console.log('🎟️ [PaymentSummary] Validating voucher:', voucherCode);
+          }
+          
+          // Always validate fresh - don't reuse old token
+          const voucherUsage = await voucherService.validateVoucher({
+            appointmentId: params.appointmentId,
+            voucherCode: voucherCode,
+          });
+
+          // Update discount with actual validated amount and save reservation token
+          setVoucherDiscount(voucherUsage.discountAmount);
+          setVoucherUsageId(voucherUsage.voucherUsageId);
+          setVoucherReservationToken(voucherUsage.reservationToken);
+          
+          // Use fresh token for checkout
+          validatedReservationToken = voucherUsage.reservationToken;
+          
+          if (__DEV__) {
+            console.log('✅ [PaymentSummary] Voucher validated successfully');
+            console.log('🎫 [PaymentSummary] Reservation token:', validatedReservationToken);
+          }
+        } catch (voucherError: any) {
+          // Voucher validation failed
+          const errorMessage = voucherError?.data?.exceptionMessage 
+            || voucherError?.message 
+            || 'Không thể áp dụng voucher. Vui lòng chọn voucher khác.';
+          
+          showNotification(
+            'error',
+            'Voucher không hợp lệ',
+            errorMessage
+          );
+          
+          // Auto remove invalid voucher
+          handleRemoveVoucher();
+          
+          setProcessingPayment(false);
+          return; // Stop payment process - MUST NOT proceed without valid voucher
+        }
+      }
+
+      // Step 2: Call payment API to create checkout session
+      // Only proceed here if voucher validation succeeded (or no voucher selected)
+      if (__DEV__) {
+        console.log('💰 [PaymentSummary] Proceeding to checkout with:', {
+          appointmentId: params.appointmentId,
+          voucherCode: voucherApplied ? voucherCode : 'none',
+          hasReservationToken: !!validatedReservationToken,
+          invoiceRequested,
+        });
+      }
+
       const paymentData = await paymentService.createPayment({
         appointmentId: params.appointmentId,
         voucherCode: voucherApplied ? voucherCode : undefined,
+        voucherReservationToken: voucherApplied ? validatedReservationToken : undefined,
         invoiceRequested: invoiceRequested,
       });
 
@@ -198,11 +256,15 @@ function PaymentSummary() {
 
     // Navigate to success page
     setTimeout(() => {
+      // Calculate final amount after voucher discount
+      const baseAmount = parseFloat(params.finalPrice || '0');
+      const finalAmount = baseAmount - (voucherDiscount || 0);
+
       router.push({
         pathname: '/customer/payment-success',
         params: {
           appointmentId: params.appointmentId,
-          amount: params.finalPrice,
+          amount: finalAmount.toString(), // Use final amount after voucher
           orderId: params.appointmentId,
           serviceName: params.serviceName,
           technicianName: params.technicianName,
@@ -261,11 +323,16 @@ function PaymentSummary() {
       // Close notification and navigate to success page
       setTimeout(() => {
         setShowNotificationModal(false); // Close notification before navigating
+
+        // Calculate final amount after voucher discount
+        const baseAmount = parseFloat(params.finalPrice || '0');
+        const finalAmount = baseAmount - (voucherDiscount || 0);
+
         router.push({
           pathname: '/customer/payment-success',
           params: {
             appointmentId: params.appointmentId,
-            amount: params.finalPrice,
+            amount: finalAmount.toString(), // Use final amount after voucher
             orderId: params.appointmentId,
             serviceName: params.serviceName,
             technicianName: params.technicianName,
@@ -352,12 +419,15 @@ function PaymentSummary() {
         setShowPaymentModal(false);
         setProcessingPayment(false);
 
+        // Calculate final amount after voucher discount
+        const finalAmount = payload.amount - (voucherDiscount || 0);
+
         // Navigate to payment success screen with order details
         router.push({
           pathname: '/customer/payment-success',
           params: {
             appointmentId: params.appointmentId,
-            amount: payload.amount.toString(),
+            amount: finalAmount.toString(), // Use final amount after voucher
             orderId: payload.appointmentId,
             serviceName: params.serviceName,
             technicianName: params.technicianName,
@@ -443,43 +513,35 @@ function PaymentSummary() {
           </View>
 
           {!voucherApplied ? (
-            <View style={styles.voucherInputContainer}>
-              <TextInput
-                style={styles.voucherInput}
-                placeholder="Nhập mã voucher (nếu có)"
-                placeholderTextColor="#9CA3AF"
-                value={voucherCode}
-                onChangeText={setVoucherCode}
-                autoCapitalize="characters"
-                editable={!applyingVoucher}
-              />
-              <TouchableOpacity
-                style={[
-                  styles.applyButton,
-                  (!voucherCode.trim() || applyingVoucher) && styles.applyButtonDisabled
-                ]}
-                onPress={handleApplyVoucher}
-                disabled={!voucherCode.trim() || applyingVoucher}
-              >
-                {applyingVoucher ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.applyButtonText}>Áp dụng</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={styles.selectVoucherButton}
+              onPress={() => setShowVoucherModal(true)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.selectVoucherLeft}>
+                <Ionicons name="pricetag-outline" size={24} color="#609CEF" />
+                <Text style={styles.selectVoucherText}>Chọn voucher khả dụng</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+            </TouchableOpacity>
           ) : (
             <View style={styles.voucherAppliedContainer}>
               <View style={styles.voucherAppliedLeft}>
-                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                <View>
+                <View style={styles.voucherIconContainer}>
+                  <Ionicons name="pricetag" size={18} color="#FFFFFF" />
+                </View>
+                <View style={styles.voucherInfoContainer}>
                   <Text style={styles.voucherAppliedCode}>{voucherCode}</Text>
                   <Text style={styles.voucherAppliedDiscount}>
                     Giảm {formatMoney(voucherDiscount)}
                   </Text>
                 </View>
               </View>
-              <TouchableOpacity onPress={handleRemoveVoucher}>
+              <TouchableOpacity 
+                onPress={handleRemoveVoucher}
+                style={styles.removeVoucherButton}
+                activeOpacity={0.7}
+              >
                 <Ionicons name="close-circle" size={24} color="#EF4444" />
               </TouchableOpacity>
             </View>
@@ -702,6 +764,15 @@ function PaymentSummary() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Voucher Selection Modal */}
+      <VoucherSelectionModal
+        visible={showVoucherModal}
+        appointmentId={params.appointmentId}
+        onClose={() => setShowVoucherModal(false)}
+        onSelectVoucher={handleSelectVoucher}
+        orderAmount={finalPrice}
+      />
     </View>
   );
 }
@@ -817,6 +888,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+  selectVoucherButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#EFF6FF',
+    padding: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+  },
+  selectVoucherLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  selectVoucherText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#609CEF',
+  },
   voucherInput: {
     flex: 1,
     height: 44,
@@ -848,25 +939,46 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#F0FDF4',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 2,
     borderColor: '#86EFAC',
   },
   voucherAppliedLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
+  },
+  voucherIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  voucherInfoContainer: {
+    flex: 1,
   },
   voucherAppliedCode: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
     color: '#1F2937',
+    marginBottom: 2,
   },
   voucherAppliedDiscount: {
-    fontSize: 12,
+    fontSize: 13,
+    fontWeight: '600',
     color: '#10B981',
-    marginTop: 2,
+  },
+  removeVoucherButton: {
+    padding: 4,
   },
   invoiceOption: {
     flexDirection: 'row',

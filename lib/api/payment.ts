@@ -9,6 +9,7 @@ import type { ApiResponse } from '../../types/api';
 export interface CreatePaymentRequest {
   appointmentId: string;
   voucherCode?: string;
+  voucherReservationToken?: string;
   invoiceRequested?: boolean;
 }
 

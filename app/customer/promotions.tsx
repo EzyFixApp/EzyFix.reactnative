@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
 import withCustomerAuth from '../../lib/auth/withCustomerAuth';
+import { voucherService } from '../../lib/api/vouchers';
+import type { VoucherItem } from '../../types/api';
 
 interface StatCardProps {
   number: string;
@@ -28,20 +30,52 @@ interface VoucherCardProps {
   code: string;
   expiryDate: string;
   status: VoucherStatus;
+  minimumOrder?: number;
+  maxDiscount?: number;
+  remainingCount?: number;
+  maxCount?: number;
+  categories?: string[];
   onUse?: () => void;
 }
 
-function VoucherCard({ discount, title, description, code, expiryDate, status, onUse }: VoucherCardProps) {
+function VoucherCard({ 
+  discount, 
+  title, 
+  description, 
+  code, 
+  expiryDate, 
+  status, 
+  minimumOrder,
+  maxDiscount,
+  remainingCount,
+  maxCount,
+  categories,
+  onUse 
+}: VoucherCardProps) {
+  const [expanded, setExpanded] = useState(false);
+
   const getStatusColor = () => {
     switch (status) {
       case 'available':
-        return '#10B981'; // Green
+        return getDiscountBadgeColor();
       case 'used':
-        return '#6B7280'; // Gray
+        return ['#6B7280', '#6B7280']; // Gray
       case 'expired':
-        return '#EF4444'; // Red
+        return ['#EF4444', '#EF4444']; // Red
       default:
-        return '#6B7280';
+        return ['#6B7280', '#6B7280'];
+    }
+  };
+
+  const getDiscountBadgeColor = (): [string, string] => {
+    // Extract discount type from the discount string or use a prop
+    // For now, we'll use a simple heuristic
+    if (discount.includes('Free') || discount.includes('Miễn phí')) {
+      return ['#10b981', '#059669']; // Emerald gradient
+    } else if (discount.includes('%')) {
+      return ['#609CEF', '#4A8DD9']; // Primary blue gradient
+    } else {
+      return ['#F59E0B', '#DC8309']; // Amber gradient
     }
   };
 
@@ -61,82 +95,194 @@ function VoucherCard({ discount, title, description, code, expiryDate, status, o
   const isDisabled = status !== 'available';
 
   return (
-    <View style={[styles.voucherCard, isDisabled && styles.disabledCard]}>
-      {/* Discount Circle */}
-      <View style={[styles.discountCircle, { backgroundColor: getStatusColor() }]}>
-        <Text style={styles.discountText}>{discount}</Text>
-      </View>
-
-      {/* Voucher Content */}
-      <View style={styles.voucherContent}>
-        <Text style={[styles.voucherTitle, isDisabled && styles.disabledText]}>{title}</Text>
-        <Text style={[styles.voucherDescription, isDisabled && styles.disabledText]}>
-          {description}
-        </Text>
-        <Text style={[styles.voucherCode, isDisabled && styles.disabledText]}>
-          Mã: {code}
-        </Text>
-        <Text style={[styles.expiryText, isDisabled && styles.disabledText]}>
-          {expiryDate}
-        </Text>
-      </View>
-
-      {/* Use Button */}
-      <TouchableOpacity
-        style={[
-          styles.useButton,
-          { backgroundColor: getStatusColor() },
-          isDisabled && styles.disabledButton
-        ]}
-        onPress={onUse}
-        disabled={isDisabled}
-        activeOpacity={isDisabled ? 1 : 0.7}
+    <TouchableOpacity 
+      style={[styles.voucherCard, isDisabled && styles.disabledCard]}
+      onPress={() => setExpanded(!expanded)}
+      activeOpacity={0.9}
+    >
+      <LinearGradient
+        colors={
+          isDisabled 
+            ? ['#9CA3AF', '#6B7280']
+            : getStatusColor()
+        }
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.bannerGradient}
       >
-        <Text style={[styles.useButtonText, isDisabled && styles.disabledButtonText]}>
-          {getStatusText()}
-        </Text>
-      </TouchableOpacity>
-    </View>
+        {/* Left Section - Discount */}
+        <View style={styles.leftSection}>
+          <Text style={styles.discountText}>{discount}</Text>
+          <Text style={styles.discountLabel}>OFF</Text>
+        </View>
+
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* Right Section - Info */}
+        <View style={styles.rightSection}>
+          <Text style={[styles.voucherTitle, isDisabled && styles.disabledText]}>
+            {title}
+          </Text>
+          
+          {/* Code Row with Copy Button */}
+          <View style={styles.codeRow}>
+            <View style={styles.codeBox}>
+              <Ionicons name="pricetag" size={14} color="rgba(255,255,255,0.9)" />
+              <Text style={[styles.voucherCode, isDisabled && styles.disabledText]}>
+                {code}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                onUse?.();
+              }}
+              disabled={isDisabled}
+              style={[styles.copyButton, isDisabled && styles.disabledButton]}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="copy-outline" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={[styles.voucherDescription, isDisabled && styles.disabledText]}>
+            {description}
+          </Text>
+          
+          <View style={styles.bannerFooter}>
+            <View style={styles.expiryBadge}>
+              <Ionicons name="time-outline" size={10} color="rgba(255,255,255,0.9)" />
+              <Text style={[styles.expiryText, isDisabled && styles.disabledText]}>
+                {expiryDate}
+              </Text>
+            </View>
+            <Ionicons
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color="rgba(255,255,255,0.8)"
+            />
+          </View>
+        </View>
+      </LinearGradient>
+
+      {/* Expandable Details */}
+      {expanded && (
+        <View style={styles.expandedDetails}>
+          {minimumOrder != null && minimumOrder > 0 && (
+            <View style={styles.detailCard}>
+              <View style={styles.detailIconWrapper}>
+                <Ionicons name="wallet-outline" size={16} color="#609CEF" />
+              </View>
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Đơn tối thiểu</Text>
+                <Text style={styles.detailValue}>
+                  {new Intl.NumberFormat('vi-VN').format(minimumOrder)}₫
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {maxDiscount != null && maxDiscount > 0 && (
+            <View style={styles.detailCard}>
+              <View style={styles.detailIconWrapper}>
+                <Ionicons name="trending-down-outline" size={16} color="#10B981" />
+              </View>
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Giảm tối đa</Text>
+                <Text style={styles.detailValue}>
+                  {new Intl.NumberFormat('vi-VN').format(maxDiscount)}₫
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {remainingCount != null && maxCount != null && maxCount > 0 && (
+            <View style={styles.detailCard}>
+              <View style={styles.detailIconWrapper}>
+                <Ionicons name="ticket-outline" size={16} color="#F59E0B" />
+              </View>
+              <View style={styles.detailContent}>
+                <View style={styles.remainingHeader}>
+                  <Text style={styles.detailLabel}>Còn lại</Text>
+                  <Text style={styles.remainingCount}>
+                    {String(remainingCount)}/{String(maxCount)}
+                  </Text>
+                </View>
+                <View style={styles.progressBarContainer}>
+                  <View 
+                    style={[
+                      styles.progressBar,
+                      {
+                        width: `${Math.min(100, Math.max(0, (remainingCount / maxCount) * 100))}%`,
+                        backgroundColor: (remainingCount / maxCount) > 0.5 
+                          ? '#10B981' 
+                          : (remainingCount / maxCount) > 0.2 
+                            ? '#F59E0B' 
+                            : '#EF4444'
+                      }
+                    ]}
+                  />
+                </View>
+              </View>
+            </View>
+          )}
+
+          {Array.isArray(categories) && categories.length > 0 && (
+            <View style={styles.categoryContainer}>
+              <View style={styles.categoryHeader}>
+                <Ionicons name="albums-outline" size={14} color="#6B7280" />
+                <Text style={styles.categoryHeaderText}>Áp dụng cho</Text>
+              </View>
+              <View style={styles.categoryTags}>
+                {categories.map((cat, idx) => (
+                  <View key={idx} style={styles.categoryTag}>
+                    <Text style={styles.categoryTagText}>{cat || ''}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+        </View>
+      )}
+    </TouchableOpacity>
   );
 }
 
 function Promotions() {
   const [activeTab, setActiveTab] = useState<'available' | 'used' | 'expired'>('available');
+  const [vouchers, setVouchers] = useState<VoucherItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const vouchers = [
-    {
-      discount: '-50K',
-      title: 'Ưu đãi mùa hè',
-      description: 'Giảm 50.000đ cho đơn hàng từ 500.000đ',
-      code: 'SUMMER50',
-      expiryDate: 'Hết hạn 31/12/2025',
-      status: 'available' as VoucherStatus
-    },
-    {
-      discount: '-15%',
-      title: 'Giảm giá thợ điện lạnh',
-      description: 'Giảm 15% cho tất cả dịch vụ điện lạnh',
-      code: 'TECH15',
-      expiryDate: 'Hết hạn 30/11/2025',
-      status: 'available' as VoucherStatus
-    },
-    {
-      discount: '-100K',
-      title: 'Khách hàng thân thiết',
-      description: 'Giảm 100.000đ cho đơn hàng từ 500.000đ',
-      code: 'LOYAL100',
-      expiryDate: 'Chưa sử dụng khiến',
-      status: 'used' as VoucherStatus
-    },
-    {
-      discount: '-20%',
-      title: 'Khuyến mãi cuối tuần',
-      description: 'Giảm 20% cho dịch vụ sửa chữa điện nước',
-      code: 'WEEKEND20',
-      expiryDate: 'Hết hạn 15/09/2025',
-      status: 'expired' as VoucherStatus
+  useEffect(() => {
+    loadVouchers();
+  }, []);
+
+  const loadVouchers = async () => {
+    try {
+      setLoading(true);
+      const response = await voucherService.getAllVouchers(1, 50);
+      setVouchers(response.items);
+      if (__DEV__) console.log('✅ [Promotions] Loaded vouchers:', response.items.length);
+    } catch (error) {
+      console.error('❌ [Promotions] Error loading vouchers:', error);
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
+
+  const getVoucherStatus = (voucher: VoucherItem): VoucherStatus => {
+    // Check if expired
+    const now = new Date();
+    const validTo = new Date(voucher.validTo);
+    if (validTo < now) {
+      return 'expired';
+    }
+    
+    // Check if used (you might need to track this in your backend)
+    // For now, we'll show all active non-expired vouchers as 'available'
+    return 'available';
+  };
 
   const handleBackPress = () => {
     router.back();
@@ -147,12 +293,22 @@ function Promotions() {
     // TODO: Implement voucher usage logic
   };
 
-  const getFilteredVouchers = () => {
-    return vouchers.filter(voucher => voucher.status === activeTab);
+  const getFilteredVouchers = (): (VoucherItem & { status: VoucherStatus })[] => {
+    return vouchers
+      .map(voucher => ({
+        ...voucher,
+        status: getVoucherStatus(voucher)
+      }))
+      .filter(voucher => voucher.status === activeTab);
   };
 
   const getTabCount = (status: VoucherStatus) => {
-    return vouchers.filter(voucher => voucher.status === status).length;
+    return vouchers
+      .map(voucher => ({
+        ...voucher,
+        status: getVoucherStatus(voucher)
+      }))
+      .filter(voucher => voucher.status === status).length;
   };
 
   return (
@@ -215,25 +371,39 @@ function Promotions() {
 
         {/* Vouchers List */}
         <ScrollView style={styles.vouchersContainer} showsVerticalScrollIndicator={false}>
-          {getFilteredVouchers().map((voucher, index) => (
-            <VoucherCard
-              key={`${voucher.code}-${index}`}
-              discount={voucher.discount}
-              title={voucher.title}
-              description={voucher.description}
-              code={voucher.code}
-              expiryDate={voucher.expiryDate}
-              status={voucher.status}
-              onUse={() => handleUseVoucher(voucher.code)}
-            />
-          ))}
-          
-          {getFilteredVouchers().length === 0 && (
-            <View style={styles.emptyState}>
-              <Ionicons name="gift-outline" size={48} color="#9CA3AF" />
-              <Text style={styles.emptyText}>Không có ưu đãi nào</Text>
-              <Text style={styles.emptySubtext}>Hãy quay lại sau để xem thêm ưu đãi mới!</Text>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#609CEF" />
+              <Text style={styles.loadingText}>Đang tải ưu đãi...</Text>
             </View>
+          ) : (
+            <>
+              {getFilteredVouchers().map((voucher, index) => (
+                <VoucherCard
+                  key={`${voucher.voucherId}-${index}`}
+                  discount={voucherService.formatDiscountDisplay(voucher)}
+                  title={voucher.voucherName}
+                  description={voucher.voucherDescription}
+                  code={voucher.voucherCode}
+                  expiryDate={voucherService.getExpiryStatusText(voucher)}
+                  status={voucher.status}
+                  minimumOrder={voucher.minimumOrderAmount}
+                  maxDiscount={voucher.maxDiscountAmount}
+                  remainingCount={voucher.remainingGlobalCount}
+                  maxCount={voucher.maxUsageCount}
+                  categories={voucher.categoryNames}
+                  onUse={() => handleUseVoucher(voucher.voucherCode)}
+                />
+              ))}
+              
+              {getFilteredVouchers().length === 0 && (
+                <View style={styles.emptyState}>
+                  <Ionicons name="gift-outline" size={48} color="#9CA3AF" />
+                  <Text style={styles.emptyText}>Không có ưu đãi nào</Text>
+                  <Text style={styles.emptySubtext}>Hãy quay lại sau để xem thêm ưu đãi mới!</Text>
+                </View>
+              )}
+            </>
           )}
           
           <View style={styles.bottomSpacing} />
@@ -346,86 +516,220 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
   voucherCard: {
-    backgroundColor: 'white',
     marginHorizontal: 16,
     marginBottom: 12,
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderRadius: 12,
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
   },
   disabledCard: {
     opacity: 0.7,
   },
-  discountCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
+  bannerGradient: {
+    flexDirection: 'row',
+    padding: 16,
+    minHeight: 100,
+  },
+  leftSection: {
     justifyContent: 'center',
-    marginRight: 16,
+    alignItems: 'center',
+    paddingRight: 16,
+    minWidth: 80,
   },
   discountText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: 'white',
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    lineHeight: 32,
   },
-  voucherContent: {
+  discountLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.9)',
+    letterSpacing: 2,
+    marginTop: 2,
+  },
+  divider: {
+    width: 2,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    marginHorizontal: 8,
+  },
+  rightSection: {
     flex: 1,
-    marginRight: 12,
+    justifyContent: 'space-between',
+    paddingRight: 8,
   },
   voucherTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1f2937',
-    marginBottom: 4,
+    color: '#FFFFFF',
+    marginBottom: 8,
+  },
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  codeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+  },
+  voucherCode: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.95)',
+    letterSpacing: 1.5,
+  },
+  copyButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   voucherDescription: {
     fontSize: 13,
-    color: '#6B7280',
-    marginBottom: 6,
-    lineHeight: 16,
+    color: 'rgba(255,255,255,0.95)',
+    marginBottom: 8,
+    lineHeight: 18,
+    flexShrink: 1,
   },
-  voucherCode: {
-    fontSize: 12,
-    color: '#609CEF',
-    fontWeight: '600',
-    marginBottom: 4,
+  bannerFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  expiryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
   },
   expiryText: {
     fontSize: 11,
-    color: '#9CA3AF',
-  },
-  disabledText: {
-    color: '#9CA3AF',
-  },
-  useButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    minWidth: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
+    color: 'rgba(255,255,255,0.95)',
+    fontWeight: '600',
   },
   disabledButton: {
     opacity: 0.6,
   },
-  useButtonText: {
+  disabledText: {
+    opacity: 0.8,
+  },
+  
+  // Expandable Details
+  expandedDetails: {
+    backgroundColor: 'white',
+    padding: 16,
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+  },
+  detailCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    padding: 12,
+    borderRadius: 10,
+    gap: 12,
+  },
+  detailIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'white',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  detailContent: {
+    flex: 1,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  detailValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  remainingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  remainingCount: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  progressBarContainer: {
+    height: 6,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  categoryContainer: {
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  categoryHeaderText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  categoryTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryTag: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+  },
+  categoryTagText: {
     fontSize: 12,
     fontWeight: '600',
-    color: 'white',
+    color: '#609CEF',
   },
-  disabledButtonText: {
-    color: 'rgba(255, 255, 255, 0.8)',
-  },
+  
   emptyState: {
     alignItems: 'center',
     paddingVertical: 60,
@@ -443,6 +747,15 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  loadingContainer: {
+    paddingVertical: 60,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6B7280',
   },
   bottomSpacing: {
     height: 80,

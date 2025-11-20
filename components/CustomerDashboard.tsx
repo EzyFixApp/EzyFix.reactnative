@@ -4,7 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import CustomerHeader from './CustomerHeader';
 import HeroBanner from './HeroBanner';
 import ServiceCategories from './ServiceCategories';
-import { PromotionSection } from './PromotionSection';
+import PromotionVouchersSection from './PromotionVouchersSection';
 import BottomNavigation from './BottomNavigation';
 import ActiveOrdersSection from './ActiveOrdersSection';
 import { useAuth } from '../store/authStore';
@@ -110,7 +110,7 @@ export default function CustomerDashboard() {
         />
 
         {/* Promotions Section */}
-        <PromotionSection
+        <PromotionVouchersSection
           onViewAllPress={handleViewAllPromotions}
         />
 

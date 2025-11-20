@@ -68,24 +68,16 @@ export class ServiceRequestService {
       const userData = await authService.getUserData();
       const token = await authService.getAccessToken();
       
-      if (__DEV__) {
-        console.log('Getting service requests for user:', userData?.id, 'role:', userData?.userType);
-        console.log('Token available:', !!token);
-      }
-      
       if (!userData?.id) {
-        if (__DEV__) console.warn('User ID not found, returning empty array');
         return [];
       }
 
       if (!token) {
-        if (__DEV__) console.warn('Access token not found, returning empty array');
         return [];
       }
 
       // For technicians, get requests where they have submitted offers
       if (userData.userType === 'technician') {
-        if (__DEV__) console.log('🔧 Fetching requests for technician via offers...');
         return await this.getTechnicianServiceRequests(userData.id);
       }
 
@@ -99,11 +91,7 @@ export class ServiceRequestService {
           { CustomerId: userData.id },
           { requireAuth: true }
         );
-        
-        if (__DEV__) console.log('Approach 1 (CustomerId param) - Response:', response.status_code);
       } catch (paramError: any) {
-        if (__DEV__) console.log('Approach 1 failed with:', paramError.status_code);
-        
         // Approach 2: Try without parameters (might be server-side filtered by token)
         try {
           response = await apiService.get<ServiceRequestResponse[]>(
@@ -111,23 +99,19 @@ export class ServiceRequestService {
             undefined,
             { requireAuth: true }
           );
-          
-          if (__DEV__) console.log('Approach 2 (no params) - Response:', response.status_code);
         } catch (noParamError: any) {
-          if (__DEV__) console.log('Approach 2 also failed with:', noParamError.status_code);
           throw noParamError;
         }
       }
 
       if (response.is_success && response.data) {
-        if (__DEV__) console.log('Service requests loaded successfully:', response.data.length, 'items');
         return response.data;
       } else {
-        if (__DEV__) console.warn('API returned unsuccessful response:', response.message);
         return [];
       }
     } catch (error: any) {
-      if (__DEV__) {
+      // Silently handle timeout errors (408) to avoid console spam
+      if (error.status_code !== 408 && __DEV__) {
         console.error('Get service requests error details:', {
           status: error.status_code,
           message: error.message,

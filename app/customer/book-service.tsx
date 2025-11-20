@@ -117,6 +117,37 @@ function BookService() {
     }
   }, [user]);
 
+  // CRITICAL: Handle AI Assistant data - only run once on mount
+  useEffect(() => {
+    // Only process if coming from AI (check once)
+    if (params.fromAI !== 'true') return;
+    
+    // Parse uploaded media from AI session
+    const aiUploadedMedia = params.uploadedMediaJSON 
+      ? JSON.parse(params.uploadedMediaJSON as string)
+      : [];
+    
+    setFormData(prev => ({
+      ...prev,
+      customerName: params.customerName as string || prev.customerName,
+      phoneNumber: params.phoneNumber as string || prev.phoneNumber,
+      serviceId: params.serviceId as string || prev.serviceId,
+      serviceName: params.serviceName as string || prev.serviceName,
+      servicePrice: params.servicePrice as string || prev.servicePrice,
+      serviceDescription: params.serviceDescription as string || '',
+      address: params.address as string || '',
+      addressID: params.addressID as string || '',
+      images: aiUploadedMedia.map((m: UploadedMedia) => m.localUri) // For display
+    }));
+    
+    // CRITICAL: Pre-populate uploadedMedia state (not images state)
+    // This ensures backend receives correct mediaID and fileURL
+    setUploadedMedia(aiUploadedMedia);
+    
+    // Note: Auto-filled from AI with service and media
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount
+
   // Refresh addresses when screen is focused (user returns from add-address)
   useFocusEffect(
     React.useCallback(() => {

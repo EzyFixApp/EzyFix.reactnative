@@ -10,6 +10,7 @@ import { View, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { useTechnicianAuth } from '../../hooks/useTechnicianAuth';
 import AuthErrorModal from '../../components/AuthErrorModal';
+import { getIsManualLogoutInProgress } from '../../store/authStore';
 
 // Error Boundary to catch hooks errors during logout transitions
 class HooksErrorBoundary extends ReactComponent<
@@ -212,7 +213,8 @@ export function withTechnicianAuth<P extends object>(
         <Component {...props} />
         
         {/* Show error modal overlay when authentication fails */}
-        {error && showErrorModal && (
+        {/* ✅ CRITICAL: Don't show modal during manual logout */}
+        {error && showErrorModal && !getIsManualLogoutInProgress() && (
           <>
             <View style={[StyleSheet.absoluteFillObject, styles.errorOverlay]}>
               <View style={styles.blurOverlay} />

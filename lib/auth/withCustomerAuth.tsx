@@ -10,6 +10,7 @@ import { View, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useCustomerAuth } from '../../hooks/useCustomerAuth';
 import AuthErrorModal from '../../components/AuthErrorModal';
+import { getIsManualLogoutInProgress } from '../../store/authStore';
 
 // Error Boundary to catch hooks errors during logout transitions
 class HooksErrorBoundary extends ReactComponent<
@@ -156,6 +157,12 @@ export default function withCustomerAuth<P extends object>(
 
     // Handle error modal close + redirect
     const handleErrorClose = () => {
+      // ✅ CRITICAL: Don't redirect during manual logout
+      if (getIsManualLogoutInProgress()) {
+        if (__DEV__) console.log('⏭️ [withCustomerAuth] Manual logout in progress, skipping redirect');
+        return;
+      }
+      
       if (redirectOnError && !hasRedirected.current) {
         hasRedirected.current = true;
         // For role mismatch, redirect to home page
@@ -169,6 +176,12 @@ export default function withCustomerAuth<P extends object>(
 
     // Handle login button press
     const handleLoginPress = () => {
+      // ✅ CRITICAL: Don't redirect during manual logout
+      if (getIsManualLogoutInProgress()) {
+        if (__DEV__) console.log('⏭️ [withCustomerAuth] Manual logout in progress, skipping redirect');
+        return;
+      }
+      
       if (!hasRedirected.current) {
         hasRedirected.current = true;
         // For role mismatch, redirect to home page
@@ -182,6 +195,12 @@ export default function withCustomerAuth<P extends object>(
 
     // Handle hooks error during logout transition
     const handleHooksError = () => {
+      // ✅ CRITICAL: Don't redirect during manual logout
+      if (getIsManualLogoutInProgress()) {
+        if (__DEV__) console.log('⏭️ [withCustomerAuth] Manual logout in progress, skipping hooks error redirect');
+        return;
+      }
+      
       // Redirect on hooks error (likely during logout)
       if (!hasRedirected.current) {
         hasRedirected.current = true;
@@ -201,7 +220,8 @@ export default function withCustomerAuth<P extends object>(
         </HooksErrorBoundary>
         
         {/* Show error modal if there's an authentication error */}
-        {error && (
+        {/* ✅ CRITICAL: Don't show modal during manual logout */}
+        {error && !getIsManualLogoutInProgress() && (
           <AuthErrorModal
             visible={!!error}
             errorType={error}

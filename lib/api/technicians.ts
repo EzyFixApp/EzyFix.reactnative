@@ -1,27 +1,12 @@
 /**
  * Technicians API
- * Handles technician information retrieval
+ * Handles technician profile and information retrieval
  */
 
 import { apiService } from './base';
 import { API_BASE_URL } from './config';
 import { authService } from './auth';
-
-export interface TechnicianResponse {
-  technicianId: string;
-  userId: string;
-  specialization?: string;
-  experience?: number;
-  rating?: number;
-  status?: string;
-  user?: {
-    userId: string;
-    firstName: string;
-    lastName: string;
-    email?: string;
-    phoneNumber?: string;
-  };
-}
+import type { TechnicianProfile, TechnicianProfileResponse } from '~/types/api';
 
 export class TechniciansService {
   private static instance: TechniciansService;
@@ -34,19 +19,21 @@ export class TechniciansService {
   }
 
   /**
-   * Get technician details by ID
+   * Get technician profile by user ID
+   * @param userId - The user ID of the technician
+   * @returns Technician profile with reviews and stats
    */
-  public async getTechnicianById(technicianId: string): Promise<TechnicianResponse> {
+  public async getTechnicianProfile(userId: string): Promise<TechnicianProfile> {
     try {
       const token = await authService.getAccessToken();
       if (!token) {
         throw new Error('No access token available');
       }
 
-      if (__DEV__) console.log('🔍 [Technicians] Fetching technician:', technicianId);
+      if (__DEV__) console.log('🔍 [Technicians] Fetching profile for user:', userId);
 
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/technicians/${technicianId}`,
+        `${API_BASE_URL}/api/v1/technicians/${userId}`,
         {
           method: 'GET',
           headers: {
@@ -58,50 +45,27 @@ export class TechniciansService {
 
       if (!response.ok) {
         const errorData = await response.text();
-        throw new Error(`Get technician failed: ${response.status} - ${errorData}`);
+        throw new Error(`Get technician profile failed: ${response.status} - ${errorData}`);
       }
 
-      const result = await response.json();
+      const result: TechnicianProfileResponse = await response.json();
 
       if (result.is_success && result.data) {
         if (__DEV__) {
-          console.log('✅ [Technicians] Technician data:', {
-            technicianId: result.data.technicianId,
-            firstName: result.data.user?.firstName,
-            lastName: result.data.user?.lastName,
+          console.log('✅ [Technicians] Profile loaded:', {
+            name: `${result.data.firstName} ${result.data.lastName}`,
+            rating: result.data.averageRating,
+            reviews: result.data.totalReviews,
+            status: result.data.availabilityStatus,
           });
         }
         return result.data;
       } else {
-        throw new Error(result.message || 'Failed to get technician');
+        throw new Error(result.message || 'Failed to get technician profile');
       }
     } catch (error: any) {
-      if (__DEV__) console.error('❌ [Technicians] Get technician error:', error);
+      if (__DEV__) console.error('❌ [Technicians] Get profile error:', error);
       throw error;
-    }
-  }
-
-  /**
-   * Get technician full name
-   */
-  public async getTechnicianName(technicianId: string): Promise<string> {
-    try {
-      const technician = await this.getTechnicianById(technicianId);
-      
-      if (technician.user) {
-        const firstName = technician.user.firstName || '';
-        const lastName = technician.user.lastName || '';
-        const fullName = `${lastName} ${firstName}`.trim();
-        
-        if (__DEV__) console.log('✅ [Technicians] Full name:', fullName);
-        
-        return fullName || 'Thợ được phân công';
-      }
-      
-      return 'Thợ được phân công';
-    } catch (error) {
-      if (__DEV__) console.error('❌ [Technicians] Get name error:', error);
-      return 'Thợ được phân công';
     }
   }
 }

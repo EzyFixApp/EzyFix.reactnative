@@ -78,6 +78,7 @@ interface BookingItem {
   // Payment information (for REPAIRED status)
   appointmentId?: string;
   finalPrice?: number;
+  paidAmount?: number; // Actual paid amount (after voucher discount)
   // Review information
   existingReview?: ReviewResponse | null;
 }
@@ -111,13 +112,14 @@ const isActiveOrder = (booking: BookingItem): boolean => {
 interface BookingHistoryContentProps {
   onRefresh?: () => void;
   refreshing?: boolean;
+  initialTab?: TabType; // Allow parent to specify which tab to start on
 }
 
-export default function BookingHistoryContent({ onRefresh, refreshing: externalRefreshing }: BookingHistoryContentProps) {
+export default function BookingHistoryContent({ onRefresh, refreshing: externalRefreshing, initialTab = 'active' }: BookingHistoryContentProps) {
   const [bookings, setBookings] = useState<BookingItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('active');
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [lastCheckedQuotes, setLastCheckedQuotes] = useState<Set<string>>(new Set());
   
   // Auto-refresh interval (5 seconds for near real-time)
@@ -150,6 +152,7 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
   
   const { isAuthenticated, user } = useAuth();
   const { notifyNewQuote } = useNotifications();
+  const isMountedRef = React.useRef(true); // Track if component is mounted
 
   // Map API status to UI status
   const mapApiStatus = (apiStatus: string): BookingItem['status'] => {
@@ -187,6 +190,12 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
   // Load bookings from API
   const loadBookings = async (showRefresh = false, silent = false) => {
     try {
+      // Don't load if not authenticated or component unmounted
+      if (!isAuthenticated || !isMountedRef.current) {
+        if (__DEV__) console.log('⏭️ [BookingHistory] Not authenticated or unmounted, skipping load');
+        return;
+      }
+      
       // Only show loading indicators if not silent refresh
       if (!silent) {
         if (showRefresh) {
@@ -196,8 +205,50 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
         }
       }
       
+      // OPTIMIZATION: Fetch all reviews ONCE before processing bookings
+      let allReviews: ReviewResponse[] = [];
+      try {
+        allReviews = await reviewService.getMyReviews();
+        if (__DEV__) console.log(`📋 [BookingHistory] Pre-fetched ${allReviews.length} reviews for caching`);
+      } catch (error) {
+        if (__DEV__) console.warn('⚠️ [BookingHistory] Could not pre-fetch reviews:', error);
+      }
+      
+      // Create review lookup map for O(1) access
+      const reviewsByAppointmentId = new Map<string, ReviewResponse>();
+      allReviews.forEach(review => {
+        if (review.appointmentId) {
+          reviewsByAppointmentId.set(review.appointmentId, review);
+        }
+      });
+      
       // Get service requests
       const serviceRequests = await serviceRequestService.getUserServiceRequests();
+      
+      // Check again after async call
+      if (!isMountedRef.current || !isAuthenticated) {
+        if (__DEV__) console.log('⏭️ [BookingHistory] Component unmounted during load, aborting');
+        return;
+      }
+      
+      // OPTIMIZATION: Pre-fetch all unique services to avoid N calls
+      const uniqueServiceIds = [...new Set(serviceRequests.map(req => req.serviceId))];
+      const servicesMap = new Map<string, any>();
+      
+      if (__DEV__) console.log(`🔍 [BookingHistory] Pre-fetching ${uniqueServiceIds.length} unique services`);
+      
+      await Promise.allSettled(
+        uniqueServiceIds.map(async (serviceId) => {
+          try {
+            const service = await servicesService.getServiceById(serviceId);
+            servicesMap.set(serviceId, service);
+          } catch (error) {
+            // Skip failed services
+          }
+        })
+      );
+      
+      if (__DEV__) console.log(`✅ [BookingHistory] Cached ${servicesMap.size} services`);
       
       // Transform API data to BookingItem format
       const transformedBookings: BookingItem[] = await Promise.all(
@@ -206,11 +257,11 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
           let serviceName = 'Dịch vụ';
           let addressText = 'Địa chỉ chưa cập nhật';
 
-          try {
-            // Get service details for name
-            const service = await servicesService.getServiceById(request.serviceId);
-            serviceName = service.serviceName || service.description || 'Dịch vụ';
-          } catch (error) {
+          // OPTIMIZATION: Use cached service from map
+          const cachedService = servicesMap.get(request.serviceId);
+          if (cachedService) {
+            serviceName = cachedService.serviceName || cachedService.description || 'Dịch vụ';
+          } else {
             serviceName = request.serviceDescription || 'Dịch vụ';
           }
 
@@ -228,13 +279,17 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
           let finalMedia: string[] = [];
           let appointmentId: string | undefined = undefined;
           let finalPrice: number | undefined = undefined;
+          let paidAmount: number | undefined = undefined; // Actual payment amount (after voucher)
           let existingReview: ReviewResponse | null = null;
           
           try {
-            // Get all offers for this request
-            const allOffers = await serviceDeliveryOffersService.getAllOffers(request.requestID);
+            // OPTIMIZATION: Parallel fetch offers and appointments
+            const [allOffers, appointments] = await Promise.all([
+              serviceDeliveryOffersService.getAllOffers(request.requestID),
+              appointmentsService.getAppointmentsByServiceRequest(request.requestID)
+            ]);
             
-            if (__DEV__) console.log(`📋 Offers:`, allOffers);
+            if (__DEV__) console.log(`📋 [BookingHistory] Fetched ${allOffers.length} offers and ${appointments.length} appointments for ${request.requestID}`);
             
             // Find accepted offer
             const acceptedOffers = allOffers.filter(offer => 
@@ -248,16 +303,8 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
               // Capture technician notes from offer
               technicianNotes = offer.notes;
               
-              // IMPORTANT: Backend does NOT return appointmentId in offer response
-              // We need to query appointments by serviceRequestId
-              if (__DEV__) console.log(`🔍 [BookingHistory] Querying appointments for serviceRequestId: ${request.requestID}`);
-              
+              // Process appointments (already fetched in parallel above)
               try {
-                // Query appointments for this service request
-                const appointments = await appointmentsService.getAppointmentsByServiceRequest(request.requestID);
-                
-                if (__DEV__) console.log(`📋 [BookingHistory] Found ${appointments.length} appointments for ${request.requestID}`);
-                
                 // Take the most recent appointment (last in array)
                 if (appointments.length > 0) {
                   const appointment = appointments[appointments.length - 1];
@@ -266,10 +313,24 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
                   // Store price from offer for payment (finalCost or estimatedCost)
                   finalPrice = offer.finalCost || offer.estimatedCost;
                   
+                  // Get paymentAmount from appointment (for COMPLETED/REPAIRED status)
+                  // REPAIRED means technician finished work, COMPLETED means customer paid
+                  if (appointment.paymentAmount && (actualStatus?.toUpperCase() === 'COMPLETED' || actualStatus?.toUpperCase() === 'REPAIRED')) {
+                    paidAmount = appointment.paymentAmount;
+                    if (__DEV__) console.log(`💳 [BookingHistory] Payment amount from appointment ${appointmentId}:`, paidAmount, 'status:', actualStatus);
+                  }
+                  
+                  // OPTIMIZATION: Use cached review from pre-fetched map
+                  if (appointmentId && reviewsByAppointmentId.has(appointmentId)) {
+                    existingReview = reviewsByAppointmentId.get(appointmentId) || null;
+                    if (__DEV__) console.log(`⭐ [BookingHistory] Found cached review for appointment ${appointmentId}`);
+                  }
+                  
                   if (__DEV__) console.log(`✅ [BookingHistory] Appointment status for ${request.requestID}:`, {
                     appointmentId: appointment.id,
                     status: actualStatus,
-                    finalPrice: finalPrice
+                    finalPrice: finalPrice,
+                    paymentAmount: appointment.paymentAmount
                   });
                   
                   // Fetch media for this appointment
@@ -305,22 +366,7 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
                     if (__DEV__) console.warn(`⚠️ [BookingHistory] Could not fetch media for ${request.requestID}:`, mediaError);
                   }
                   
-                  // Fetch existing review for COMPLETED appointments
-                  if (actualStatus.toUpperCase() === 'COMPLETED') {
-                    try {
-                      const review = await reviewService.getReviewByAppointment(appointment.id);
-                      if (review) {
-                        existingReview = review;
-                        if (__DEV__) {
-                          console.log(`⭐ [BookingHistory] Found existing review for appointment ${appointment.id}`);
-                        }
-                      }
-                    } catch (reviewError) {
-                      if (__DEV__) {
-                        console.log(`ℹ️ [BookingHistory] No review found for appointment ${appointment.id}`);
-                      }
-                    }
-                  }
+                  // Review already fetched from cache above (reviewsByAppointmentId map)
                 } else {
                   if (__DEV__) console.log(`⚠️ [BookingHistory] No appointments found for ${request.requestID}`);
                 }
@@ -351,8 +397,10 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
                 });
               }
             } else {
-              // No accepted offers - check for pending quotes
-              const pendingOffers = await serviceDeliveryOffersService.getPendingOffers(request.requestID);
+              // No accepted offers - check for PENDING offers in allOffers (already fetched)
+              const pendingOffers = allOffers.filter(offer => 
+                offer.status.toLowerCase() === 'pending'
+              );
               
               if (__DEV__) {
                 console.log(`📋 [BookingHistory] Request ${request.requestID} - Status: ${request.status}, Pending Offers: ${pendingOffers.length}`);
@@ -362,40 +410,39 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
                 // Take the first pending offer (most recent)
                 const offer = pendingOffers[0];
                 
-                // Fetch full offer details to get technician info
-                try {
-                  const fullOfferDetails = await serviceDeliveryOffersService.getOfferById(offer.offerId);
-                  
-                  pendingQuote = {
-                    offerID: offer.offerId, // Backend uses lowercase 'offerId'
-                    estimatedCost: offer.estimatedCost,
-                    finalCost: offer.finalCost,
-                    notes: offer.notes,
-                    technician: fullOfferDetails.technician ? {
+                // OPTIMIZATION: Fetch full offer details only if needed (for technician info)
+                // Most offers already have basic data, only fetch if missing technician
+                let technicianInfo = undefined;
+                
+                if (offer.offerId) {
+                  try {
+                    const fullOfferDetails = await serviceDeliveryOffersService.getOfferById(offer.offerId);
+                    technicianInfo = fullOfferDetails.technician ? {
                       technicianId: fullOfferDetails.technician.technicianId,
                       technicianName: fullOfferDetails.technician.technicianName || 'Thợ',
                       technicianAvatar: fullOfferDetails.technician.technicianAvatar,
                       technicianRating: fullOfferDetails.technician.technicianRating,
-                    } : undefined,
-                  };
-                  
-                  if (__DEV__) {
-                    console.log(`💰 [BookingHistory] Found quote for ${request.requestID}:`, {
-                      offerID: offer.offerId,
-                      estimatedCost: offer.estimatedCost,
-                      finalCost: offer.finalCost,
-                      technician: fullOfferDetails.technician?.technicianName,
-                    });
+                    } : undefined;
+                  } catch (error) {
+                    if (__DEV__) console.warn(`⚠️ [BookingHistory] Could not fetch full offer details:`, error);
                   }
-                } catch (error) {
-                  // Fallback without technician info
-                  if (__DEV__) console.warn('⚠️ Could not fetch full offer details:', error);
-                  pendingQuote = {
+                }
+                
+                pendingQuote = {
+                  offerID: offer.offerId, // Backend uses lowercase 'offerId'
+                  estimatedCost: offer.estimatedCost,
+                  finalCost: offer.finalCost,
+                  notes: offer.notes,
+                  technician: technicianInfo,
+                };
+                
+                if (__DEV__) {
+                  console.log(`💰 [BookingHistory] Found quote for ${request.requestID}:`, {
                     offerID: offer.offerId,
                     estimatedCost: offer.estimatedCost,
                     finalCost: offer.finalCost,
-                    notes: offer.notes,
-                  };
+                    technician: technicianInfo?.technicianName,
+                  });
                 }
 
                 // Send notification if this is a NEW quote (not checked before)
@@ -406,7 +453,7 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
                     quoteId: offer.offerId,
                     serviceRequestId: request.requestID,
                     serviceName,
-                    technicianName: offer.technicianId, // TODO: Get technician name
+                    technicianName: pendingQuote?.technician?.technicianName || 'Thợ sửa chữa',
                     amount,
                     isEstimated: !!offer.estimatedCost,
                     notes: offer.notes,
@@ -433,23 +480,8 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
             }
           }
 
-          // Fetch existing review for COMPLETED orders (after finalStatus is determined)
-          // Check if order is completed regardless of which status field it came from
-          if (finalStatus.toUpperCase() === 'COMPLETED' && appointmentId && !existingReview) {
-            try {
-              const review = await reviewService.getReviewByAppointment(appointmentId);
-              if (review) {
-                existingReview = review;
-                if (__DEV__) {
-                  console.log(`⭐ [BookingHistory] Found existing review for appointment ${appointmentId} (after finalStatus check)`);
-                }
-              }
-            } catch (reviewError) {
-              if (__DEV__) {
-                console.log(`ℹ️ [BookingHistory] No review found for appointment ${appointmentId} (after finalStatus check)`);
-              }
-            }
-          }
+          // Review already fetched from cache (no need to call API again)
+          // existingReview was set from reviewsByAppointmentId map above
 
           const mappedStatus = mapApiStatus(finalStatus);
           
@@ -481,15 +513,33 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
             // Payment info for REPAIRED status
             appointmentId: appointmentId,
             finalPrice: finalPrice,
+            paidAmount: paidAmount, // Actual paid amount (after voucher)
             // Review info
             existingReview: existingReview,
           };
         })
       );
       
+      // Final check before updating state
+      if (!isMountedRef.current || !isAuthenticated) {
+        if (__DEV__) console.log('⏭️ [BookingHistory] Component unmounted before setting state, aborting');
+        return;
+      }
+      
       setBookings(transformedBookings);
       
     } catch (error: any) {
+      // Don't update state if component unmounted
+      if (!isMountedRef.current) {
+        return;
+      }
+      
+      // Silently handle auth errors during logout
+      if (error.status_code === 401) {
+        if (__DEV__) console.log('⏭️ [BookingHistory] Session expired, skipping error handling');
+        return;
+      }
+      
       if (__DEV__) console.error('Error loading bookings:', error);
       
       // Handle common errors
@@ -518,19 +568,25 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
   useFocusEffect(
     React.useCallback(() => {
       if (isAuthenticated) {
+        isMountedRef.current = true; // Mark as mounted
         loadBookings(); // Initial load with loading indicator
         
         // Set up auto-refresh interval for real-time updates (silent background refresh)
         const interval = setInterval(() => {
-          loadBookings(false, true); // Silent refresh: no loading indicators
+          if (isAuthenticated && isMountedRef.current) {
+            loadBookings(false, true); // Silent refresh: no loading indicators
+          }
         }, REFRESH_INTERVAL);
 
         // Cleanup interval when unfocused
         return () => {
+          isMountedRef.current = false; // Mark as unmounted
           if (interval) {
             clearInterval(interval);
           }
         };
+      } else {
+        isMountedRef.current = false; // Mark as unmounted if not authenticated
       }
     }, [isAuthenticated])
   );
@@ -724,9 +780,15 @@ export default function BookingHistoryContent({ onRefresh, refreshing: externalR
         {/* Card Footer */}
         <View style={styles.cardFooter}>
           <View style={styles.priceContainer}>
-            <Text style={styles.priceLabel}>Giá dịch vụ:</Text>
+            <Text style={styles.priceLabel}>
+              {/* Show "Đã thanh toán" when paidAmount is available (orders with voucher discount) */}
+              {booking.paidAmount ? 'Đã thanh toán:' : 'Giá dịch vụ:'}
+            </Text>
             <Text style={styles.priceText}>
-              {booking.quotePrice || booking.servicePrice}
+              {/* Show paidAmount if available (orders with voucher discount), otherwise show quotePrice or servicePrice */}
+              {booking.paidAmount
+                ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(booking.paidAmount)
+                : (booking.quotePrice || booking.servicePrice)}
             </Text>
           </View>
 

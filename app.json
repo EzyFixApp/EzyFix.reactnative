@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "EzyFixMobile",
-    "slug": "EzyFixMobile",
+    "name": "EzyFix",
+    "slug": "EzyFix",
     "version": "1.0.0",
-    "scheme": "EzyFixMobile",
+    "scheme": "EzyFix",
     "web": {
       "bundler": "metro",
       "output": "static",
@@ -12,9 +12,12 @@
     "plugins": [
       "expo-router",
       [
-        "expo-dev-launcher",
+        "expo-notifications",
         {
-          "launchMode": "most-recent"
+          "icon": "./assets/logononame.png",
+          "color": "#6366F1",
+          "androidMode": "default",
+          "androidCollapsedTitle": "EzyFix"
         }
       ],
       "expo-web-browser",
@@ -37,33 +40,64 @@
       "tsconfigPaths": true
     },
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logononame.png",
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "Cho phép EzyFix truy cập camera để chụp ảnh",
         "NSPhotoLibraryUsageDescription": "Cho phép EzyFix truy cập thư viện ảnh để chọn ảnh",
-        "NSPhotoLibraryAddUsageDescription": "Cho phép EzyFix lưu ảnh vào thư viện"
+        "NSPhotoLibraryAddUsageDescription": "Cho phép EzyFix lưu ảnh vào thư viện",
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
       }
     },
     "android": {
+      "package": "com.ezyfix.app",
+      "versionCode": 1,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/logononame.png",
         "backgroundColor": "#ffffff"
       },
+      "notification": {
+        "icon": "./assets/logononame.png",
+        "color": "#6366F1"
+      },
       "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "READ_MEDIA_IMAGES"
-      ]
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.WAKE_LOCK",
+        "com.google.android.c2dm.permission.RECEIVE",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.USE_EXACT_ALARM"
+      ],
+      "useNextNotificationsApi": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d86dfbc6-fade-48fc-8b85-184c84f1c0b4"
+      }
     }
   }
 }

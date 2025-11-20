@@ -609,62 +609,145 @@ function TechnicianOrders() {
       if (__DEV__) {
         console.log(`✅ Filter API returned ${availableApiOrders.length} available orders`);
         console.log(`✅ User requests API returned ${acceptedApiOrders.length} accepted orders`);
-        if (availableApiOrders.length > 0) {
-          console.log('Sample available order:', {
-            id: availableApiOrders[0].requestID,
-            serviceId: availableApiOrders[0].serviceId,
-            status: availableApiOrders[0].status
-          });
-        }
-        if (acceptedApiOrders.length > 0) {
-          console.log('Sample accepted order:', {
-            id: acceptedApiOrders[0].requestID,
-            serviceId: acceptedApiOrders[0].serviceId,
-            status: acceptedApiOrders[0].status
-          });
-        }
       }
       
-      // Transform API responses to OrderItem format (now async with service name fetch and distance calculation)
-      const [transformedAvailableOrders, transformedAcceptedOrders] = await Promise.all([
-        Promise.all(availableApiOrders.map(order => transformApiResponseToOrderItem(order, lat, lng))),
-        Promise.all(acceptedApiOrders.map(order => transformApiResponseToOrderItem(order, lat, lng)))
+      // OPTIMIZATION: Batch fetch all data before transforming
+      const allOrders = [...availableApiOrders, ...acceptedApiOrders];
+      const uniqueServiceIds = [...new Set(allOrders.map(o => o.serviceId).filter(Boolean))];
+      const allRequestIds = allOrders.map(o => o.requestID);
+      
+      // Fetch all services, media, and offers in parallel
+      const [servicesResults, mediaResults, offersResults] = await Promise.all([
+        Promise.allSettled(uniqueServiceIds.map(id => 
+          disableServiceFetch ? Promise.resolve(null) : servicesService.getServiceById(id)
+        )),
+        Promise.allSettled(allRequestIds.map(id => mediaService.getMediaByRequest(id))),
+        Promise.allSettled(allRequestIds.map(id => serviceDeliveryOffersService.getAllOffers(id)))
       ]);
       
-      // Filter available orders: Only show Pending status (from filter API, these are new orders)
-      // Note: Status đã được normalize trong transformApiResponseToOrderItem
-      // Backend "Pending" | "Quoted" → Frontend "pending" (available to accept)
-      const available = transformedAvailableOrders.filter(order => 
-        order.status === 'pending' // Includes both Pending and Quoted from backend
-      );
+      // Create lookup maps
+      const servicesMap = new Map<string, any>();
+      uniqueServiceIds.forEach((id, index) => {
+        const result = servicesResults[index];
+        if (result.status === 'fulfilled' && result.value) {
+          servicesMap.set(id, result.value);
+          serviceNameCache[id] = result.value.serviceName || 'Dịch vụ sửa chữa';
+        }
+      });
       
-      // Filter accepted orders: Show orders where technician has involvement
-      // Backend "QuoteAccepted" | "InProgress" | "Completed" → Frontend "accepted" | "in-progress" | "completed"
+      const mediaMap = new Map<string, string[]>();
+      allRequestIds.forEach((id, index) => {
+        const result = mediaResults[index];
+        if (result.status === 'fulfilled' && result.value?.length > 0) {
+          mediaMap.set(id, result.value.map((m: any) => m.fileURL));
+        }
+      });
       
-      // DEBUG: Log all statuses from acceptedApiOrders
-      if (__DEV__ && transformedAcceptedOrders.length > 0) {
-        console.log('🔍 DEBUG: All accepted order statuses:', 
-          transformedAcceptedOrders.map(o => ({ id: o.id, status: o.status }))
-        );
-      }
+      const offersMap = new Map<string, any[]>();
+      allRequestIds.forEach((id, index) => {
+        const result = offersResults[index];
+        if (result.status === 'fulfilled' && result.value) {
+          offersMap.set(id, result.value);
+        }
+      });
       
-      // Filter accepted orders: Only show active orders (accepted or in-progress)
-      // Exclude completed orders - they should be in history, not in active "Đã nhận" tab
-      const accepted = transformedAcceptedOrders.filter(order => {
-        const isAccepted = order.status === 'accepted' ||    // QuoteAccepted from backend
-                          order.status === 'in-progress';    // InProgress from backend
-        // NOTE: 'completed' orders are excluded from "Đã nhận" tab
+      // Transform API responses using cached data
+      const transformOrderSync = (apiResponse: any): OrderItem => {
+        const description = apiResponse.serviceDescription || 'Không có mô tả';
         
-        if (__DEV__ && !isAccepted) {
-          console.log(`⚠️ Order ${order.id} with status "${order.status}" was FILTERED OUT`);
+        // Get service name from cache or detect from description
+        let serviceName = 'Dịch vụ sửa chữa';
+        if (apiResponse.serviceId && servicesMap.has(apiResponse.serviceId)) {
+          serviceName = servicesMap.get(apiResponse.serviceId).serviceName || serviceName;
+        } else {
+          serviceName = detectServiceType(description);
         }
         
+        // Get media from cache
+        const mediaUrls = mediaMap.get(apiResponse.requestID) || [];
+        
+        // Calculate distance if coordinates available
+        let distance = 'Đang tính...';
+        if (apiResponse.latitude && apiResponse.longitude && lat && lng) {
+          const distanceInKm = calculateDistance(lat, lng, apiResponse.latitude, apiResponse.longitude);
+          distance = formatDistance(distanceInKm);
+        }
+        
+        // Get offer info from cache
+        let priceRange = '200,000 - 500,000đ';
+        let priceLabel: string | undefined = undefined;
+        let offerId: string | undefined = undefined;
+        
+        const offers = offersMap.get(apiResponse.requestID);
+        if (offers && offers.length > 0) {
+          const offer = offers[0];
+          offerId = offer.offerId;
+          
+          if (offer.finalCost && offer.finalCost > 0) {
+            priceRange = formatPrice(offer.finalCost);
+            priceLabel = 'Giá đã chốt';
+          } else if (offer.estimatedCost && offer.estimatedCost > 0) {
+            priceRange = formatPrice(offer.estimatedCost);
+            priceLabel = 'Giá dự kiến';
+          }
+        }
+        
+        const formattedTime = formatTime(apiResponse.expectedStartTime);
+        
+        const normalizeStatus = (status: string): OrderItem['status'] => {
+          if (!status) return 'pending';
+          const normalized = status.toLowerCase().replace(/[_\\s-]/g, '');
+          
+          if (normalized === 'quoteaccepted' || normalized === 'accepted') return 'accepted';
+          if (normalized === 'quoted') return 'pending';
+          if (normalized === 'pending') return 'pending';
+          if (normalized === 'inprogress') return 'in-progress';
+          if (normalized === 'completed') return 'completed';
+          if (normalized === 'cancelled') return 'cancelled';
+          
+          return 'pending';
+        };
+        
+        return {
+          id: apiResponse.requestID,
+          serviceName,
+          customerName: apiResponse.fullName,
+          customerPhone: apiResponse.phoneNumber,
+          address: apiResponse.requestAddress,
+          description,
+          images: mediaUrls,
+          status: normalizeStatus(apiResponse.status),
+          createdAt: apiResponse.requestedDate,
+          priceRange,
+          priceLabel,
+          priority: 'normal' as const,
+          distance,
+          estimatedTime: formattedTime,
+          appointmentDate: apiResponse.requestedDate ? new Date(apiResponse.requestedDate).toLocaleDateString('vi-VN') : 'Chưa xác định',
+          appointmentTime: formattedTime,
+          addressNote: apiResponse.addressNote,
+          serviceRequestId: apiResponse.requestID,
+          offerId
+        };
+      };
+      
+      const transformedAvailableOrders = availableApiOrders.map(transformOrderSync);
+      const transformedAcceptedOrders = acceptedApiOrders.map(transformOrderSync);
+      
+      // Filter available orders: Only show Pending status (from filter API, these are new orders)
+      const available = transformedAvailableOrders.filter(order => 
+        order.status === 'pending'
+      );
+      
+      // Filter accepted orders: Only show active orders (accepted or in-progress)
+      const accepted = transformedAcceptedOrders.filter(order => {
+        const isAccepted = order.status === 'accepted' || order.status === 'in-progress';
         return isAccepted;
       });
       
       setAvailableOrders(available);
       setAcceptedOrders(accepted);
-      setLastLoadTime(Date.now()); // Track successful load time
+      setLastLoadTime(Date.now());
       
       // Auto-switch to "Đã nhận" tab if there are accepted orders and this is first check
       if (!hasCheckedAcceptedOrders && accepted.length > 0) {
@@ -678,17 +761,14 @@ function TechnicianOrders() {
           available: available.length,
           accepted: accepted.length,
           total: available.length + accepted.length,
-          rawAcceptedCount: transformedAcceptedOrders.length,
-          filteredOut: transformedAcceptedOrders.length - accepted.length,
           timestamp: new Date().toLocaleTimeString()
         });
       }
 
       // Start geocoding addresses in background (sequentially to respect rate limits)
-      const allOrders = [...transformedAvailableOrders, ...transformedAcceptedOrders];
-      if (allOrders.length > 0) {
-        geocodeOrdersSequentially(allOrders, lat, lng, (orderId, distance) => {
-          // Update both available and accepted orders
+      const allTransformedOrders = [...transformedAvailableOrders, ...transformedAcceptedOrders];
+      if (allTransformedOrders.length > 0) {
+        geocodeOrdersSequentially(allTransformedOrders, lat, lng, (orderId, distance) => {
           setAvailableOrders(prev => 
             prev.map(order => order.id === orderId ? { ...order, distance } : order)
           );

@@ -208,14 +208,23 @@ function BookingDetail() {
   };
 
   useEffect(() => {
+    // Only load if authenticated
+    if (!isAuthenticated) {
+      if (__DEV__) console.log('⏭️ [BookingDetail] User not authenticated, skipping load');
+      return;
+    }
+    
     loadBookingDetail();
     
     // Set up auto-refresh interval for real-time updates
     const interval = setInterval(() => {
-      if (__DEV__) {
-        console.log('BookingDetail: Auto-refreshing booking detail...');
+      // Check auth before refreshing
+      if (isAuthenticated) {
+        if (__DEV__) {
+          console.log('BookingDetail: Auto-refreshing booking detail...');
+        }
+        loadBookingDetail(true); // Silent refresh
       }
-      loadBookingDetail(true); // Silent refresh
     }, REFRESH_INTERVAL);
 
     // Cleanup interval on unmount
@@ -227,7 +236,7 @@ function BookingDetail() {
         }
       }
     };
-  }, [orderId]);
+  }, [orderId, isAuthenticated]);
 
   // Manual refresh function
   const refreshBookingDetail = async () => {

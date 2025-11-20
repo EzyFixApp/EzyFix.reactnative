@@ -27,13 +27,13 @@ export default function TechnicianHeader({
       style={styles.container}
     >
       <View style={styles.content}>
-        {/* Search Button */}
+        {/* Profile Button */}
         <TouchableOpacity 
           onPress={onSearchPress}
           style={styles.searchButton}
         >
           <View style={styles.searchContainer}>
-            <Ionicons name="search-outline" size={24} color="white" />
+            <Ionicons name="person-outline" size={24} color="white" />
           </View>
         </TouchableOpacity>
 

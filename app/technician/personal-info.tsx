@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
 import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
+import { useAuthStore } from '~/store/authStore';
+import { techniciansService } from '../../lib/api/technicians';
+import type { TechnicianProfile } from '../../types/api';
 
 interface SectionProps {
   title: string;
@@ -149,21 +152,82 @@ function SocialLink({ platform, email, isConnected, onPress }: SocialLinkProps) 
 }
 
 function TechnicianPersonalInfo() {
+  const { user } = useAuthStore();
+  
+  // Profile data state
+  const [technicianProfile, setTechnicianProfile] = useState<TechnicianProfile | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  
   const [formData, setFormData] = useState({
-    cccd: '0123456789',
-    fullName: 'Zun Zun',
-    birthDate: '01/01/1990',
-    phoneNumber: '0901234567',
-    email: 'tho.ezyfix@gmail.com',
-    address: '123 Lê Lợi, Q1, TP.HCM',
-    biometry: 'Đã xác thực sinh trắc học vân tay, khuôn mặt'
+    fullName: '',
+    phoneNumber: '',
+    email: '',
+    certification: '',
+    yearsOfExperience: 0,
+    hourlyRate: 0,
   });
 
   const [socialConnections, setSocialConnections] = useState({
-    google: true,
-    facebook: true,
+    google: false,
+    facebook: false,
     apple: false
   });
+
+  // Load technician profile on mount
+  useEffect(() => {
+    loadTechnicianProfile();
+  }, [user?.id]);
+
+  const loadTechnicianProfile = async () => {
+    try {
+      if (!user?.id) {
+        if (__DEV__) console.warn('⚠️ No user ID available for profile fetch');
+        return;
+      }
+
+      setLoadingProfile(true);
+      const profile = await techniciansService.getTechnicianProfile(user.id);
+      setTechnicianProfile(profile);
+      
+      // Populate form data
+      setFormData({
+        fullName: `${profile.firstName} ${profile.lastName}`,
+        phoneNumber: profile.phone || '',
+        email: profile.email || '',
+        certification: profile.certification || '',
+        yearsOfExperience: profile.yearsOfExperience || 0,
+        hourlyRate: profile.hourlyRate || 0,
+      });
+      
+      if (__DEV__) {
+        console.log('✅ Profile loaded in personal-info:', {
+          name: `${profile.firstName} ${profile.lastName}`,
+          phone: profile.phone,
+          email: profile.email,
+        });
+      }
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ Failed to load profile:', error);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+  
+  // Helper function to get avatar initial
+  const getAvatarInitial = () => {
+    if (technicianProfile) {
+      return technicianProfile.firstName?.charAt(0)?.toUpperCase() || 'T';
+    }
+    return user?.fullName?.charAt(0)?.toUpperCase() || 'T';
+  };
+  
+  // Format money helper
+  const formatMoney = (amount: number) => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND'
+    }).format(amount);
+  };
 
   const handleBackPress = () => {
     router.back();
@@ -171,13 +235,13 @@ function TechnicianPersonalInfo() {
 
   const handleSave = () => {
     console.log('Saving technician profile data:', formData);
-    // Implement save functionality
+    // TODO: Implement API update functionality
     router.back();
   };
 
   const handleDatePicker = () => {
     console.log('Open date picker');
-    // Implement date picker
+    // TODO: Implement date picker
   };
 
   const handleSocialToggle = (platform: 'google' | 'facebook' | 'apple') => {
@@ -211,111 +275,164 @@ function TechnicianPersonalInfo() {
           
           {/* Profile Avatar Section */}
           <View style={styles.avatarSection}>
-            <View style={styles.avatarContainer}>
-              <Text style={styles.avatarText}>M</Text>
-            </View>
-            <TouchableOpacity onPress={handleChangeAvatar} style={styles.changeAvatarButton}>
-              <Text style={styles.changeAvatarText}>Thay đổi ảnh đại diện</Text>
-            </TouchableOpacity>
-            <Text style={styles.profileName}>Zun Zun</Text>
+            {loadingProfile ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="white" />
+              </View>
+            ) : (
+              <>
+                <View style={styles.avatarContainer}>
+                  <Text style={styles.avatarText}>{getAvatarInitial()}</Text>
+                </View>
+                <TouchableOpacity onPress={handleChangeAvatar} style={styles.changeAvatarButton}>
+                  <Text style={styles.changeAvatarText}>Thay đổi ảnh đại diện</Text>
+                </TouchableOpacity>
+                <Text style={styles.profileName}>{formData.fullName}</Text>
+              </>
+            )}
           </View>
         </LinearGradient>
 
         {/* Form Content */}
         <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
-          {/* Hồ sơ cá nhân */}
-          <Section title="Hồ sơ cá nhân">
-            <View style={styles.inputContainer}>
-              <InputField
-                label="CCCD/CMND"
-                value={formData.cccd}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, cccd: text }))}
-                placeholder="Nhập số CCCD/CMND"
-                verified={true}
-                rightIcon="chevron-forward"
-              />
+          {loadingProfile ? (
+            <View style={styles.formLoadingContainer}>
+              <ActivityIndicator size="large" color="#609CEF" />
+              <Text style={styles.loadingText}>Đang tải thông tin...</Text>
             </View>
-            
-            <View style={styles.inputContainer}>
-              <InputField
-                label="NGÀY SINH"
-                value={formData.birthDate}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, birthDate: text }))}
-                placeholder="DD/MM/YYYY"
-                rightIcon="chevron-forward"
-                onRightIconPress={handleDatePicker}
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <InputField
-                label="SỐ ĐIỆN THOẠI"
-                value={formData.phoneNumber}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, phoneNumber: text }))}
-                placeholder="Nhập số điện thoại"
-                keyboardType="phone-pad"
-                verified={true}
-                rightIcon="chevron-forward"
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <InputField
-                label="EMAIL"
-                value={formData.email}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, email: text }))}
-                placeholder="Nhập email"
-                keyboardType="email-address"
-                verified={true}
-                rightIcon="chevron-forward"
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <InputField
-                label="SINH TRẮC HỌC"
-                value={formData.biometry}
-                placeholder="Sinh trắc học"
-                editable={false}
-                verified={true}
-                rightIcon="chevron-forward"
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <InputField
-                label="ĐỊA CHỈ"
-                value={formData.address}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, address: text }))}
-                placeholder="Nhập địa chỉ"
-                rightIcon="chevron-forward"
-              />
-            </View>
-          </Section>
+          ) : (
+            <>
+              {/* Thông tin cơ bản */}
+              <Section title="Thông tin cơ bản">
+                <View style={styles.inputContainer}>
+                  <InputField
+                    label="HỌ VÀ TÊN"
+                    value={formData.fullName}
+                    onChangeText={(text) => setFormData(prev => ({ ...prev, fullName: text }))}
+                    placeholder="Nhập họ và tên"
+                  />
+                </View>
+                
+                <View style={styles.inputContainer}>
+                  <InputField
+                    label="SỐ ĐIỆN THOẠI"
+                    value={formData.phoneNumber}
+                    onChangeText={(text) => setFormData(prev => ({ ...prev, phoneNumber: text }))}
+                    placeholder="Nhập số điện thoại"
+                    keyboardType="phone-pad"
+                    verified={!!formData.phoneNumber}
+                    editable={false}
+                  />
+                </View>
+                
+                <View style={styles.inputContainer}>
+                  <InputField
+                    label="EMAIL"
+                    value={formData.email}
+                    onChangeText={(text) => setFormData(prev => ({ ...prev, email: text }))}
+                    placeholder="Nhập email"
+                    keyboardType="email-address"
+                    verified={!!formData.email}
+                    editable={false}
+                  />
+                </View>
+              </Section>
 
-          {/* Liên kết tài khoản */}
-          <Section title="🔗 Liên kết tài khoản">
-            <SocialLink
-              platform="Google"
-              email="Đã kết nối"
-              isConnected={socialConnections.google}
-              onPress={() => handleSocialToggle('google')}
-            />
-            
-            <SocialLink
-              platform="Facebook"
-              email="Chưa kết nối"
-              isConnected={socialConnections.facebook}
-              onPress={() => handleSocialToggle('facebook')}
-            />
-            
-            <SocialLink
-              platform="Apple"
-              email="Chưa kết nối"
-              isConnected={socialConnections.apple}
-              onPress={() => handleSocialToggle('apple')}
-            />
-          </Section>
+              {/* Thông tin nghề nghiệp */}
+              <Section title="Thông tin nghề nghiệp">
+                <View style={styles.inputContainer}>
+                  <InputField
+                    label="CHỨNG CHỈ"
+                    value={formData.certification}
+                    onChangeText={(text) => setFormData(prev => ({ ...prev, certification: text }))}
+                    placeholder="Chứng chỉ chuyên môn"
+                  />
+                </View>
+                
+                <View style={styles.inputContainer}>
+                  <InputField
+                    label="KINH NGHIỆM"
+                    value={`${formData.yearsOfExperience}`}
+                    onChangeText={(text) => {
+                      const num = parseInt(text) || 0;
+                      setFormData(prev => ({ ...prev, yearsOfExperience: num }));
+                    }}
+                    placeholder="Số năm kinh nghiệm"
+                    keyboardType="numeric"
+                    rightIcon="calendar-outline"
+                  />
+                </View>
+                
+                <View style={styles.inputContainer}>
+                  <InputField
+                    label="GIÁ MỖI GIỜ"
+                    value={formData.hourlyRate.toString()}
+                    onChangeText={(text) => {
+                      const num = parseInt(text.replace(/[^0-9]/g, '')) || 0;
+                      setFormData(prev => ({ ...prev, hourlyRate: num }));
+                    }}
+                    placeholder="Giá dịch vụ"
+                    keyboardType="numeric"
+                    rightIcon="cash-outline"
+                  />
+                </View>
+                
+                {technicianProfile && technicianProfile.skills && technicianProfile.skills.length > 0 && (
+                  <View style={styles.skillsDisplayContainer}>
+                    <Text style={styles.skillsDisplayLabel}>KỸ NĂNG</Text>
+                    <View style={styles.skillsChipsContainer}>
+                      {technicianProfile.skills.map((skill, index) => (
+                        <View key={index} style={styles.skillChip}>
+                          <Text style={styles.skillChipText}>{skill}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+              </Section>
+
+              {/* Thống kê */}
+              {technicianProfile && (
+                <Section title="Thống kê hoạt động">
+                  <View style={styles.statsContainer}>
+                    <View style={styles.statItemBox}>
+                      <View style={styles.statIconCircle}>
+                        <Ionicons name="star" size={28} color="#FFB800" />
+                      </View>
+                      <Text style={styles.statValue}>{technicianProfile.averageRating.toFixed(1)}</Text>
+                      <Text style={styles.statLabel}>Đánh giá</Text>
+                    </View>
+                    
+                    <View style={styles.statItemBox}>
+                      <View style={styles.statIconCircle}>
+                        <Ionicons name="chatbubble-ellipses" size={28} color="#609CEF" />
+                      </View>
+                      <Text style={styles.statValue}>{technicianProfile.totalReviews}</Text>
+                      <Text style={styles.statLabel}>Nhận xét</Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.statusContainer}>
+                    <View style={styles.statusBox}>
+                      <Ionicons 
+                        name={technicianProfile.availabilityStatus === 'AVAILABLE' ? 'checkmark-circle' : 'time'} 
+                        size={24} 
+                        color={technicianProfile.availabilityStatus === 'AVAILABLE' ? '#10B981' : '#F59E0B'} 
+                      />
+                      <Text style={styles.statusLabel}>Trạng thái hiện tại</Text>
+                      <Text style={[
+                        styles.statusValue,
+                        { color: technicianProfile.availabilityStatus === 'AVAILABLE' ? '#10B981' : '#F59E0B' }
+                      ]}>
+                        {technicianProfile.availabilityStatus === 'AVAILABLE' ? 'Sẵn sàng nhận việc' : 
+                         technicianProfile.availabilityStatus === 'BUSY' ? 'Đang bận' : 'Không hoạt động'}
+                      </Text>
+                    </View>
+                  </View>
+                </Section>
+              )}
+            </>
+          )}
 
           {/* Bottom Spacing */}
           <View style={styles.bottomSpacing} />
@@ -406,6 +523,22 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: 'white',
+  },
+  loadingContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  formLoadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 100,
+  },
+  loadingText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#9CA3AF',
+    marginTop: 12,
   },
   formContainer: {
     flex: 1,
@@ -607,6 +740,106 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 20,
+  },
+  skillsDisplayContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  skillsDisplayLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
+  skillsChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  skillChip: {
+    backgroundColor: '#f0f8ff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#609CEF',
+  },
+  skillChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#609CEF',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 12,
+    gap: 12,
+  },
+  statItemBox: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: 'white',
+    paddingVertical: 20,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  statIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1f2937',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  statusContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  statusBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    gap: 12,
+  },
+  statusLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+    flex: 1,
+  },
+  statusValue: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   
   // Inline badge styles

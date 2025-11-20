@@ -22,6 +22,8 @@ import { serviceRequestService } from '../../lib/api/serviceRequests';
 import { servicesService } from '../../lib/api/services';
 import { serviceDeliveryOffersService } from '../../lib/api/serviceDeliveryOffers';
 import { appointmentsService } from '../../lib/api/appointments';
+import { techniciansService } from '../../lib/api/technicians';
+import type { TechnicianProfile, TechnicianReview } from '../../types/api';
 
 interface StatCardProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -62,7 +64,7 @@ interface ActiveOrderProps {
   orderId: string;
   customerName: string;
   service: string;
-  status: 'on_the_way' | 'arrived' | 'repairing' | 'price_review' | 'completed';
+  status: 'on_the_way' | 'arrived' | 'repairing' | 'price_review' | 'repaired';
   address: string;
   estimatedTime: string;
   priority: 'high' | 'medium' | 'low';
@@ -95,8 +97,8 @@ function ActiveOrderCard({ orderId, customerName, service, status, address, esti
         return { text: 'Đang sửa chữa', color: '#609CEF', icon: 'build-outline', bgColor: 'rgba(96, 156, 239, 0.1)' };
       case 'price_review':
         return { text: 'Chờ xác nhận giá', color: '#609CEF', icon: 'cash-outline', bgColor: 'rgba(96, 156, 239, 0.1)' };
-      case 'completed':
-        return { text: 'Hoàn thành', color: '#609CEF', icon: 'checkmark-circle-outline', bgColor: 'rgba(96, 156, 239, 0.1)' };
+      case 'repaired':
+        return { text: 'Chờ thanh toán', color: '#609CEF', icon: 'wallet-outline', bgColor: 'rgba(96, 156, 239, 0.1)' };
       default:
         return { text: 'Chưa xác định', color: '#609CEF', icon: 'help-circle-outline', bgColor: 'rgba(96, 156, 239, 0.1)' };
     }
@@ -286,12 +288,14 @@ function Dashboard() {
   
   // ALL OTHER STATE - Must be declared before any conditional returns
   const [isOnline, setIsOnline] = useState(true);
+  const [technicianProfile, setTechnicianProfile] = useState<TechnicianProfile | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
   const [todayStats, setTodayStats] = useState({
-    jobsCompleted: 8,
-    averageRating: 4.8,
-    todayEarnings: 850000,
-    pendingJobs: 3,
-    totalJobs: 11
+    jobsCompleted: 0,
+    averageRating: 0,
+    todayEarnings: 0,
+    pendingJobs: 0,
+    totalJobs: 0
   });
 
   const [activeOrders, setActiveOrders] = useState<ActiveOrderProps[]>([]);
@@ -315,7 +319,47 @@ function Dashboard() {
     }
   }, [isAuthenticated, user?.isVerify, user?.email]);
   
-  // Load active orders from API
+  // Load technician profile
+  const loadTechnicianProfile = async () => {
+    try {
+      if (!user?.id) {
+        if (__DEV__) console.warn('⚠️ No user ID available for profile fetch');
+        return;
+      }
+
+      setLoadingProfile(true);
+      const profile = await techniciansService.getTechnicianProfile(user.id);
+      setTechnicianProfile(profile);
+      
+      // Update stats from profile
+      setTodayStats(prev => ({
+        ...prev,
+        averageRating: profile.averageRating,
+        // Keep other stats from service requests calculation
+      }));
+      
+      if (__DEV__) {
+        console.log('✅ Technician profile loaded:', {
+          name: `${profile.firstName} ${profile.lastName}`,
+          rating: profile.averageRating,
+          totalReviews: profile.totalReviews,
+        });
+      }
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ Failed to load technician profile:', error);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  // Load profile on mount
+  useEffect(() => {
+    if (user?.id && isAuthenticated) {
+      loadTechnicianProfile();
+    }
+  }, [user?.id, isAuthenticated]);
+  
+  // Load active orders from API (OPTIMIZED)
   const loadActiveOrders = async (silent = false) => {
     try {
       if (!silent) {
@@ -325,124 +369,131 @@ function Dashboard() {
       // Get service requests for technician (automatically filtered by their offers)
       const serviceRequests = await serviceRequestService.getUserServiceRequests();
       
-      // Convert service requests to active orders format with data from all 3 APIs
-      const orders: ActiveOrderProps[] = await Promise.all(
-        serviceRequests.map(async (request) => {
-          let serviceName = 'Dịch vụ'; // Default fallback
-          let customerName = request.fullName || 'Khách hàng';
-          let customerPhone = request.phoneNumber || undefined;
-          let actualStatus = request.status;
-          let address = request.requestAddress || 'Chưa có địa chỉ';
-          let estimatedTime = 'Chưa xác định';
-          let offerId: string | undefined = undefined;
+      // Pre-fetch all data in parallel (OPTIMIZATION: Batch API calls)
+      const serviceIds = [...new Set(serviceRequests.map(req => req.serviceId))];
+      const requestIds = serviceRequests.map(req => req.requestID);
+      
+      // Fetch all services, offers, and appointments in parallel
+      const [servicesResults, offersResults, appointmentsResults] = await Promise.all([
+        // Batch fetch all unique services
+        Promise.allSettled(serviceIds.map(id => servicesService.getServiceById(id))),
+        // Batch fetch all offers
+        Promise.allSettled(requestIds.map(id => serviceDeliveryOffersService.getAllOffers(id))),
+        // Batch fetch all appointments
+        Promise.allSettled(requestIds.map(id => appointmentsService.getAppointmentsByServiceRequest(id)))
+      ]);
+      
+      // Create lookup maps for O(1) access
+      const servicesMap = new Map<string, any>();
+      serviceIds.forEach((id, index) => {
+        const result = servicesResults[index];
+        if (result.status === 'fulfilled') {
+          servicesMap.set(id, result.value);
+        }
+      });
+      
+      const offersMap = new Map<string, any[]>();
+      requestIds.forEach((id, index) => {
+        const result = offersResults[index];
+        if (result.status === 'fulfilled') {
+          offersMap.set(id, result.value || []);
+        }
+      });
+      
+      const appointmentsMap = new Map<string, any[]>();
+      requestIds.forEach((id, index) => {
+        const result = appointmentsResults[index];
+        if (result.status === 'fulfilled') {
+          appointmentsMap.set(id, result.value || []);
+        }
+      });
+      
+      // Convert service requests to active orders format using cached data
+      const orders: ActiveOrderProps[] = serviceRequests.map((request) => {
+        let serviceName = 'Dịch vụ'; // Default fallback
+        let customerName = request.fullName || 'Khách hàng';
+        let customerPhone = request.phoneNumber || undefined;
+        let actualStatus = request.status;
+        let address = request.requestAddress || 'Chưa có địa chỉ';
+        let estimatedTime = 'Chưa xác định';
+        let offerId: string | undefined = undefined;
+        
+        // 1. Get service details from cache
+        const service = servicesMap.get(request.serviceId);
+        if (service) {
+          serviceName = service.serviceName || service.description || 'Dịch vụ';
+        } else if (request.serviceDescription) {
+          serviceName = request.serviceDescription;
+        }
+        
+        // 2. Get offer details from cache
+        const offers = offersMap.get(request.requestID) || [];
+        if (offers.length > 0) {
+          const acceptedOffer = offers.find(offer => offer.status === 'ACCEPTED');
+          offerId = acceptedOffer?.offerId || offers[offers.length - 1]?.offerId;
+        }
+        
+        // 3. Get appointment details from cache
+        const appointments = appointmentsMap.get(request.requestID) || [];
+        if (appointments.length > 0) {
+          const appointment = appointments[appointments.length - 1];
+          actualStatus = appointment.status;
           
-          // 1. Get service details
-          try {
-            const service = await servicesService.getServiceById(request.serviceId);
-            serviceName = service.serviceName || service.description || 'Dịch vụ';
-          } catch (error) {
-            if (request.serviceDescription) {
-              serviceName = request.serviceDescription;
-            }
+          // Format time from appointment
+          if (appointment.scheduledDate) {
+            const startTime = new Date(appointment.scheduledDate);
+            const endTime = new Date(startTime.getTime() + 60 * 60 * 1000); // Add 1 hour
+            estimatedTime = `${startTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${endTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
           }
-          
-          // 2. Get offer details (required for navigation to tracking page)
-          try {
-            const offers = await serviceDeliveryOffersService.getAllOffers(request.requestID);
-            if (__DEV__) console.log(`📦 [Dashboard] Offers for ${request.requestID}:`, offers?.length || 0);
-            
-            if (offers && offers.length > 0) {
-              // Find the accepted offer or the latest offer from this technician
-              const acceptedOffer = offers.find(offer => offer.status === 'ACCEPTED');
-              offerId = acceptedOffer?.offerId || offers[offers.length - 1]?.offerId;
-              
-              if (__DEV__) {
-                console.log(`✅ [Dashboard] Found offerId: ${offerId} (accepted: ${!!acceptedOffer})`);
-              }
-            } else {
-              if (__DEV__) console.warn(`⚠️ [Dashboard] No offers found for request: ${request.requestID}`);
-            }
-          } catch (error) {
-            if (__DEV__) console.error('❌ [Dashboard] Error fetching offer for request:', request.requestID, error);
+        }
+        
+        // 4. HIGHEST PRIORITY: Check if serviceRequest is COMPLETED (payment done)
+        if (request.status === 'COMPLETED') {
+          actualStatus = 'COMPLETED';
+        }
+        
+        // Map API status to UI status
+        const mapStatus = (status: string): ActiveOrderProps['status'] => {
+          const normalized = status?.toUpperCase() || '';
+          switch (normalized) {
+            case 'SCHEDULED':
+            case 'EN_ROUTE':
+              return 'on_the_way';
+            case 'ARRIVED':
+              return 'arrived';
+            case 'CHECKING':
+            case 'REPAIRING':
+              return 'repairing';
+            case 'PRICE_REVIEW':
+              return 'price_review';
+            case 'REPAIRED':
+              return 'repaired';
+            default:
+              return 'on_the_way';
           }
-          
-          // 3. Get appointment details for real-time status
-          try {
-            const appointments = await appointmentsService.getAppointmentsByServiceRequest(request.requestID);
-            
-            if (appointments.length > 0) {
-              const appointment = appointments[appointments.length - 1];
-              actualStatus = appointment.status;
-              
-              // Format time from appointment
-              if (appointment.scheduledDate) {
-                const startTime = new Date(appointment.scheduledDate);
-                const endTime = new Date(startTime.getTime() + 60 * 60 * 1000); // Add 1 hour
-                estimatedTime = `${startTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${endTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
-              }
-            }
-          } catch (error) {
-            if (__DEV__) console.warn('⚠️ [Dashboard] Could not fetch appointments');
-          }
-          
-          // 4. HIGHEST PRIORITY: Check if serviceRequest is COMPLETED (payment done)
-          // Override appointment status if serviceRequest shows COMPLETED
-          if (request.status === 'COMPLETED') {
-            actualStatus = 'COMPLETED';
-            if (__DEV__) console.log('✅ [Dashboard] Request COMPLETED (payment done):', request.requestID);
-          }
-          
-          // Map API status to UI status
-          const mapStatus = (status: string): ActiveOrderProps['status'] => {
-            const normalized = status?.toUpperCase() || '';
-            switch (normalized) {
-              case 'SCHEDULED':
-              case 'EN_ROUTE':
-                return 'on_the_way';
-              case 'ARRIVED':
-                return 'arrived';
-              case 'CHECKING':
-              case 'REPAIRING':
-                return 'repairing';
-              case 'PRICE_REVIEW':
-                return 'price_review';
-              case 'REPAIRED': // Đã sửa xong, chờ thanh toán - VẪN HIỆN
-                return 'completed';
-              case 'COMPLETED': // Đã thanh toán - KHÔNG HIỆN
-              case 'CANCELLED': // Đã hủy - KHÔNG HIỆN
-              case 'DISPUTE': // Tranh chấp - KHÔNG HIỆN
-                return 'completed';
-              default:
-                return 'on_the_way';
-            }
-          };
-          
-          return {
-            orderId: request.requestID,
-            customerName,
-            service: serviceName,
-            status: mapStatus(actualStatus),
-            address,
-            estimatedTime,
-            priority: 'medium' as const, // Default priority
-            customerPhone,
-            offerId, // Required for navigation to tracking page
-            actualApiStatus: actualStatus, // Store original status for filtering
-          };
-        })
-      );
+        };
+        
+        return {
+          orderId: request.requestID,
+          customerName,
+          service: serviceName,
+          status: mapStatus(actualStatus),
+          address,
+          estimatedTime,
+          priority: 'medium' as const,
+          customerPhone,
+          offerId,
+          actualApiStatus: actualStatus,
+        };
+      });
       
       // Filter to show only ACTIVE orders
-      // Show: SCHEDULED, EN_ROUTE, ARRIVED, CHECKING, REPAIRING, PRICE_REVIEW, REPAIRED
       // Hide: COMPLETED (paid), CANCELLED, DISPUTE
+      // Show: SCHEDULED, EN_ROUTE, ARRIVED, CHECKING, REPAIRING, PRICE_REVIEW, REPAIRED (chờ thanh toán)
       const activeOnly = orders.filter(order => {
         const status = (order as any).actualApiStatus?.toUpperCase() || '';
-        const isCompleted = status === 'COMPLETED'; // Đã thanh toán
-        const isCancelled = status === 'CANCELLED'; // Đã hủy
-        const isDispute = status === 'DISPUTE'; // Tranh chấp
-        
-        // Only show if NOT completed/cancelled/dispute
-        return !isCompleted && !isCancelled && !isDispute;
+        const shouldHide = ['COMPLETED', 'CANCELLED', 'DISPUTE'].includes(status);
+        return !shouldHide;
       });
       
       setActiveOrders(activeOnly);
@@ -515,9 +566,9 @@ function Dashboard() {
     // Logo pressed - could add navigation to main menu
   };
   
-  // Handle search press
+  // Handle profile press
   const handleSearchPress = () => {
-    router.push('./orders');
+    router.push('./profile');
   };
   
   // Handle notification press
@@ -574,6 +625,32 @@ const toggleOnlineStatus = () => {
   setIsOnline(!isOnline);
 };
 
+// Format review date to friendly format
+const formatReviewDate = (dateString: string): string => {
+  try {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      return 'Hôm nay';
+    } else if (diffDays === 1) {
+      return 'Hôm qua';
+    } else if (diffDays < 7) {
+      return `${diffDays} ngày trước`;
+    } else {
+      // Format as DD/MM/YYYY
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+  } catch (error) {
+    return dateString;
+  }
+};
+
   // Memoize header title to prevent unnecessary re-renders
   const headerTitle = useMemo(() => 
     activeTab === 'dashboard' ? 'Trang chủ' : 'Hoạt động',
@@ -605,10 +682,12 @@ const toggleOnlineStatus = () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#609CEF" />
+      {/* ✅ CRITICAL: Disable swipe back gesture to prevent returning to login */}
       <Stack.Screen 
         options={{ 
           headerShown: false,
-          gestureEnabled: false, // Disable swipe back to prevent returning to login
+          gestureEnabled: false, // Prevent swipe back to login screen
+          animation: 'none', // No animation to prevent visual glitches
         }} 
       />
 
@@ -775,71 +854,104 @@ const toggleOnlineStatus = () => {
         </View>
       </View>
 
-      {/* Enhanced Performance Metrics */}
+      {/* Professional Information Section - Data from Profile API */}
       <View style={styles.performanceSection}>
         <View style={styles.sectionHeader}>
-          <Ionicons name="analytics-outline" size={22} color="#609CEF" />
-          <Text style={styles.sectionTitle}>Hiệu suất hôm nay</Text>
-          <View style={styles.completionBadge}>
-            <Text style={styles.completionText}>{getCompletionRate()}%</Text>
-          </View>
-        </View>
-        
-        {/* Progress Bar */}
-        <View style={styles.progressContainer}>
-          <View style={styles.progressBar}>
-            <View 
-              style={[
-                styles.progressFill, 
-                { width: `${getCompletionRate()}%` }
-              ]} 
-            />
-          </View>
-          <Text style={styles.progressLabel}>
-            Hoàn thành {todayStats.jobsCompleted}/{todayStats.totalJobs} công việc
-          </Text>
+          <Ionicons name="briefcase-outline" size={22} color="#609CEF" />
+          <Text style={styles.sectionTitle}>Thông tin nghề nghiệp</Text>
+          {technicianProfile && (
+            <View style={styles.statusBadge}>
+              <View style={[
+                styles.statusDot, 
+                { backgroundColor: technicianProfile.availabilityStatus === 'AVAILABLE' ? '#10B981' : '#F59E0B' }
+              ]} />
+              <Text style={styles.statusText}>
+                {technicianProfile.availabilityStatus === 'AVAILABLE' ? 'Sẵn sàng' : 
+                 technicianProfile.availabilityStatus === 'BUSY' ? 'Bận' : 'Offline'}
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* Enhanced Stats Grid */}
-        <View style={styles.enhancedStatsGrid}>
-          <View style={styles.statCardLarge}>
-            <LinearGradient
-              colors={['#10B981', '#059669']}
-              style={styles.statGradient}
-            >
-              <View style={styles.statHeader}>
-                <Ionicons name="cash" size={28} color="#FFFFFF" />
-                <View style={styles.statTrend}>
-                  <Ionicons name="trending-up" size={16} color="#FFFFFF" />
+        {loadingProfile ? (
+          <View style={styles.loadingProfileContainer}>
+            <Ionicons name="hourglass-outline" size={32} color="#CBD5E1" />
+            <Text style={styles.loadingProfileText}>Đang tải thông tin...</Text>
+          </View>
+        ) : technicianProfile ? (
+          <>
+            {/* Professional Stats Grid */}
+            <View style={styles.enhancedStatsGrid}>
+              <View style={styles.statCardLarge}>
+                <LinearGradient
+                  colors={['#10B981', '#059669']}
+                  style={styles.statGradient}
+                >
+                  <View style={styles.statHeader}>
+                    <Ionicons name="cash" size={28} color="#FFFFFF" />
+                    <View style={styles.statTrend}>
+                      <Ionicons name="trending-up" size={16} color="#FFFFFF" />
+                    </View>
+                  </View>
+                  <Text style={styles.statMainValue}>{formatMoney(technicianProfile.hourlyRate)}</Text>
+                  <Text style={styles.statLabel}>Giá mỗi giờ</Text>
+                </LinearGradient>
+              </View>
+
+              <View style={styles.statsColumn}>
+                <View style={styles.statCardSmall}>
+                  <View style={[styles.statIconSmall, { backgroundColor: '#609CEF' }]}>
+                    <Ionicons name="calendar-outline" size={20} color="#FFFFFF" />
+                  </View>
+                  <View style={styles.statContentSmall}>
+                    <Text style={styles.statValueSmall}>{technicianProfile.yearsOfExperience}</Text>
+                    <Text style={styles.statLabelSmall}>Năm KN</Text>
+                  </View>
+                </View>
+
+                <View style={styles.statCardSmall}>
+                  <View style={[styles.statIconSmall, { backgroundColor: '#FFB800' }]}>
+                    <Ionicons name="star" size={20} color="#FFFFFF" />
+                  </View>
+                  <View style={styles.statContentSmall}>
+                    <Text style={styles.statValueSmall}>{technicianProfile.averageRating.toFixed(1)}</Text>
+                    <Text style={styles.statLabelSmall}>Đánh giá TB</Text>
+                  </View>
                 </View>
               </View>
-              <Text style={styles.statMainValue}>{formatMoney(todayStats.todayEarnings)}</Text>
-              <Text style={styles.statLabel}>Thu nhập hôm nay</Text>
-            </LinearGradient>
-          </View>
-
-          <View style={styles.statsColumn}>
-            <View style={styles.statCardSmall}>
-              <View style={[styles.statIconSmall, { backgroundColor: '#FF6B6B' }]}>
-                <Ionicons name="time-outline" size={20} color="#FFFFFF" />
-              </View>
-              <View style={styles.statContentSmall}>
-                <Text style={styles.statValueSmall}>{todayStats.pendingJobs}</Text>
-                <Text style={styles.statLabelSmall}>Chờ xử lý</Text>
-              </View>
             </View>
 
-            <View style={styles.statCardSmall}>
-              <View style={[styles.statIconSmall, { backgroundColor: '#8B5CF6' }]}>
-                <Ionicons name="star" size={20} color="#FFFFFF" />
+            {/* Certification Badge */}
+            {technicianProfile.certification && (
+              <View style={styles.certificationContainer}>
+                <View style={styles.certificationBadge}>
+                  <Ionicons name="ribbon" size={20} color="#8B5CF6" />
+                  <Text style={styles.certificationText}>{technicianProfile.certification}</Text>
+                </View>
               </View>
-              <View style={styles.statContentSmall}>
-                <Text style={styles.statValueSmall}>{todayStats.averageRating}</Text>
-                <Text style={styles.statLabelSmall}>Đánh giá TB</Text>
+            )}
+
+            {/* Skills Display */}
+            {technicianProfile.skills && technicianProfile.skills.length > 0 && (
+              <View style={styles.skillsContainer}>
+                <Text style={styles.skillsTitle}>Kỹ năng chuyên môn</Text>
+                <View style={styles.skillsGrid}>
+                  {technicianProfile.skills.map((skill, index) => (
+                    <View key={index} style={styles.skillChip}>
+                      <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                      <Text style={styles.skillText}>{skill}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
-            </View>
+            )}
+          </>
+        ) : (
+          <View style={styles.emptyProfileContainer}>
+            <Ionicons name="information-circle-outline" size={48} color="#CBD5E1" />
+            <Text style={styles.emptyProfileText}>Không thể tải thông tin</Text>
           </View>
-        </View>
+        )}
       </View>
 
       {/* Enhanced Reviews Section */}
@@ -848,32 +960,48 @@ const toggleOnlineStatus = () => {
           <View style={styles.sectionHeader}>
             <Ionicons name="star" size={22} color="#FFB800" />
             <Text style={styles.sectionTitle}>Đánh giá gần đây</Text>
+            {technicianProfile && technicianProfile.totalReviews > 0 && (
+              <View style={styles.reviewCountBadge}>
+                <Text style={styles.reviewCountText}>
+                  {technicianProfile.totalReviews} đánh giá
+                </Text>
+              </View>
+            )}
           </View>
-          <TouchableOpacity style={styles.viewAllButton}>
-            <Text style={styles.viewAllText}>Xem tất cả</Text>
-            <Ionicons name="chevron-forward" size={16} color="#609CEF" />
-          </TouchableOpacity>
+          {technicianProfile && technicianProfile.totalReviews > 3 && (
+            <TouchableOpacity style={styles.viewAllButton}>
+              <Text style={styles.viewAllText}>Xem tất cả</Text>
+              <Ionicons name="chevron-forward" size={16} color="#609CEF" />
+            </TouchableOpacity>
+          )}
         </View>
         
         <View style={styles.reviewsList}>
-          <ReviewCard
-            customerName="Nguyễn Văn Long"
-            rating={5.0}
-            comment="Thợ điện rất giỏi, sửa chập điện nhanh chóng và an toàn. Giá cả hợp lý, làm việc chuyên nghiệp."
-            date="02 Dec"
-          />
-          <ReviewCard
-            customerName="Trần Thị Minh"
-            rating={4.5}
-            comment="Sửa nước rò rỉ rất tốt, thợ đến đúng giờ và dọn dẹp sạch sẽ sau khi làm việc."
-            date="25 Jan"
-          />
-          <ReviewCard
-            customerName="Lê Văn Hùng"
-            rating={4.8}
-            comment="Lắp đặt hệ thống điện mới chất lượng cao. Thợ tư vấn kỹ càng, giải thích rõ ràng từng bước."
-            date="30 Jan"
-          />
+          {loadingProfile ? (
+            <View style={styles.loadingReviewsContainer}>
+              <Ionicons name="hourglass-outline" size={32} color="#CBD5E1" />
+              <Text style={styles.loadingReviewsText}>Đang tải đánh giá...</Text>
+            </View>
+          ) : technicianProfile && technicianProfile.latestReviews.length > 0 ? (
+            // Hiển thị tối đa 3 đánh giá đầu tiên
+            technicianProfile.latestReviews.slice(0, 3).map((review) => (
+              <ReviewCard
+                key={review.id}
+                customerName={review.customerName}
+                rating={review.rating}
+                comment={review.comment}
+                date={formatReviewDate(review.createdAt)}
+              />
+            ))
+          ) : (
+            <View style={styles.emptyReviewsContainer}>
+              <Ionicons name="star-outline" size={48} color="#CBD5E1" />
+              <Text style={styles.emptyReviewsText}>Chưa có đánh giá nào</Text>
+              <Text style={styles.emptyReviewsSubtext}>
+                Đánh giá từ khách hàng sẽ hiển thị ở đây
+              </Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -1252,6 +1380,91 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     flex: 1,
   },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    borderRadius: 12,
+    gap: 6,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#10B981',
+  },
+  loadingProfileContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  loadingProfileText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#9CA3AF',
+  },
+  emptyProfileContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyProfileText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginTop: 16,
+  },
+  certificationContainer: {
+    marginTop: 16,
+  },
+  certificationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 10,
+  },
+  certificationText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8B5CF6',
+    flex: 1,
+  },
+  skillsContainer: {
+    marginTop: 16,
+  },
+  skillsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 12,
+  },
+  skillsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  skillChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  skillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#10B981',
+  },
   statCard: {
     backgroundColor: 'white',
     flex: 1,
@@ -1566,6 +1779,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
   },
+  reviewCountBadge: {
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(255, 184, 0, 0.1)',
+    borderRadius: 8,
+  },
+  reviewCountText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFB800',
+  },
   viewAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1647,6 +1872,35 @@ const styles = StyleSheet.create({
   reviewComment: {
     fontSize: 14,
     color: '#4B5563',
+    lineHeight: 20,
+  },
+  loadingReviewsContainer: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    gap: 12,
+  },
+  loadingReviewsText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#9CA3AF',
+  },
+  emptyReviewsContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  emptyReviewsText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyReviewsSubtext: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#9CA3AF',
+    textAlign: 'center',
     lineHeight: 20,
   },
   bottomSpacing: {

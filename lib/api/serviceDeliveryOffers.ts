@@ -287,14 +287,7 @@ export class ServiceDeliveryOffersService {
       const result = await response.json();
 
       if (result.is_success && result.data) {
-        if (__DEV__) {
-          console.log(`✅ Found offer ${offerId}:`, {
-            status: result.data.status,
-            estimatedCost: result.data.estimatedCost,
-            finalCost: result.data.finalCost,
-            appointmentId: result.data.appointmentId
-          });
-        }
+        // Removed excessive logging to reduce console spam
         return result.data;
       } else {
         throw new Error(result.message || 'Offer not found');
@@ -335,23 +328,13 @@ export class ServiceDeliveryOffersService {
       const result = await response.json();
 
       if (result.is_success && result.data) {
-        if (__DEV__) {
-          console.log(`✅ Found ${result.data.length} total offers for request ${serviceRequestId}`);
-          if (result.data.length > 0) {
-            console.log('📋 Offers:', result.data.map((o: any) => ({ 
-              offerId: o.offerId, 
-              status: o.status, 
-              estimatedCost: o.estimatedCost, 
-              finalCost: o.finalCost 
-            })));
-          }
-        }
+        // Removed excessive logging to reduce console spam
         return result.data;
       } else {
         return [];
       }
     } catch (error: any) {
-      if (__DEV__) console.error('❌ Get all offers error:', error);
+      // Silently handle errors to avoid console spam
       return [];
     }
   }

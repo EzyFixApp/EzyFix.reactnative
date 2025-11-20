@@ -21,6 +21,7 @@ import { serviceRequestService } from '../lib/api/serviceRequests';
 import { servicesService } from '../lib/api/services';
 import { serviceDeliveryOffersService } from '../lib/api/serviceDeliveryOffers';
 import { appointmentsService } from '../lib/api/appointments';
+import { useAuth } from '../store/authStore';
 
 interface ServiceRequest {
   requestID: string;
@@ -38,12 +39,29 @@ export default function TechnicianActivityContent() {
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const { isAuthenticated } = useAuth();
+  const isMountedRef = React.useRef(true); // Track if component is mounted
 
   const loadRequests = useCallback(async () => {
     try {
+      // Don't load if not authenticated or component unmounted
+      if (!isAuthenticated || !isMountedRef.current) {
+        if (__DEV__) console.log('⏭️ [TechnicianActivity] User not authenticated or unmounted, skipping load');
+        setRequests([]);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      
       if (__DEV__) console.log('📥 [TechnicianActivity] Loading service requests...');
       
       const response = await serviceRequestService.getUserServiceRequests();
+      
+      // Check again after async call
+      if (!isMountedRef.current || !isAuthenticated) {
+        if (__DEV__) console.log('⏭️ [TechnicianActivity] Component unmounted during load, aborting');
+        return;
+      }
       
       if (__DEV__) {
         console.log(`✅ [TechnicianActivity] Loaded ${response.length} requests`);
@@ -114,21 +132,51 @@ export default function TechnicianActivityContent() {
         })
       );
       
+      // Final check before updating state
+      if (!isMountedRef.current || !isAuthenticated) {
+        if (__DEV__) console.log('⏭️ [TechnicianActivity] Component unmounted before setting state, aborting');
+        return;
+      }
+      
       if (__DEV__) console.log(`📊 [TechnicianActivity] Setting ${mapped.length} requests to state`);
       
       setRequests(mapped);
     } catch (error: any) {
+      // Don't update state if component unmounted
+      if (!isMountedRef.current) {
+        return;
+      }
+      
+      // Silently handle auth errors during logout
+      if (error?.status_code === 401) {
+        if (__DEV__) console.log('⏭️ [TechnicianActivity] Session expired, skipping error handling');
+        return;
+      }
+      
       if (__DEV__) console.error('❌ Load requests error:', error);
       // Don't show error to user, just keep empty state
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    loadRequests();
-  }, [loadRequests]);
+    if (isAuthenticated) {
+      isMountedRef.current = true; // Mark as mounted
+      loadRequests();
+    } else {
+      // Clear data when not authenticated
+      isMountedRef.current = false; // Mark as unmounted
+      setRequests([]);
+      setLoading(false);
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [loadRequests, isAuthenticated]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);

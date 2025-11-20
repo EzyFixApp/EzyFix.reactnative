@@ -10,7 +10,7 @@
 
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../store/authStore';
 import withCustomerAuth from '../../lib/auth/withCustomerAuth';
 import CustomerHeader from '../../components/CustomerHeader';
@@ -22,28 +22,27 @@ type TabType = 'dashboard' | 'activity';
 
 function CustomerDashboardPage() {
   const { user, isAuthenticated } = useAuth();
+  const params = useLocalSearchParams();
   
-  // Tab state
-  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  // Tab state - Check if we should start on activity tab
+  const [activeTab, setActiveTab] = useState<TabType>(
+    params.tab === 'activity' ? 'activity' : 'dashboard'
+  );
+  
+  // Refresh state
+  const [refreshing, setRefreshing] = useState(false);
   
   // Separate opacity animations for each tab (parallel rendering)
-  const dashboardOpacity = useRef(new Animated.Value(1)).current;
-  const activityOpacity = useRef(new Animated.Value(0)).current;
+  const dashboardOpacity = useRef(new Animated.Value(
+    params.tab === 'activity' ? 0 : 1
+  )).current;
+  const activityOpacity = useRef(new Animated.Value(
+    params.tab === 'activity' ? 1 : 0
+  )).current;
 
-  useEffect(() => {
-    // Check authentication first
-    if (!isAuthenticated) {
-      router.replace('/customer/login');
-      return;
-    }
-
-    // Check if user has verified their email
-    // isVerify: false means user never verified their email after registration
-    if (user?.isVerify === false && user?.email) {
-      router.replace(`/customer/verify?email=${encodeURIComponent(user.email)}`);
-      return;
-    }
-  }, [isAuthenticated, user?.isVerify, user?.email]);
+  // ✅ REMOVED: Dashboard should NOT redirect on auth changes
+  // The _layout.tsx auth guard handles all redirects
+  // Having redirects here causes navigation conflicts with logout flow
 
   // Handle bottom navigation tab press with FAST parallel animation
   const handleBottomNavPress = useCallback((tabId: string) => {
@@ -97,6 +96,19 @@ function CustomerDashboardPage() {
     router.push('/customer/notifications');
   }, []);
 
+  // Handle logo press - Navigate to AI Assistant
+  const handleLogoPress = useCallback(() => {
+    router.push('/customer/ai-assistant');
+  }, []);
+
+  // Handle pull to refresh
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    // Simulate refresh delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setRefreshing(false);
+  }, []);
+
   // Memoize header title to prevent unnecessary re-renders
   const headerTitle = useMemo(() => 
     activeTab === 'dashboard' ? 'Trang chủ' : 'Hoạt động',
@@ -108,12 +120,6 @@ function CustomerDashboardPage() {
     activeTab === 'dashboard' ? 'home' : 'activity',
     [activeTab]
   );
-
-  // Show loading while checking authentication and verification
-  // ✅ FIXED: Render conditionally instead of early return to avoid hooks mismatch
-  if (!isAuthenticated || user?.isVerify === false) {
-    return null;
-  }
 
   return (
     <View style={styles.container}>
@@ -146,7 +152,10 @@ function CustomerDashboardPage() {
           ]}
           pointerEvents={activeTab === 'dashboard' ? 'auto' : 'none'}
         >
-          <DashboardContent />
+          <DashboardContent 
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+          />
         </Animated.View>
 
         {/* Activity Content - Always rendered, controlled by opacity */}
@@ -160,7 +169,7 @@ function CustomerDashboardPage() {
           ]}
           pointerEvents={activeTab === 'activity' ? 'auto' : 'none'}
         >
-          <BookingHistoryContent />
+          <BookingHistoryContent initialTab={params.historyTab === 'history' ? 'history' : 'active'} />
         </Animated.View>
       </View>
 
@@ -168,6 +177,7 @@ function CustomerDashboardPage() {
       <BottomNavigation 
         activeTab={bottomNavActiveTab}
         onTabPress={handleBottomNavPress}
+        onLogoPress={handleLogoPress}
       />
     </View>
   );

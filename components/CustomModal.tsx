@@ -120,11 +120,13 @@ const CustomModal: React.FC<CustomModalProps> = ({
               </TouchableOpacity>
             </View>
           ) : (
-            <TouchableOpacity style={[styles.confirmButton, { width: '100%' }]} onPress={handleConfirm}>
-              <LinearGradient colors={buttonColors} style={styles.confirmGradient}>
-                <Text style={styles.confirmText}>{confirmText}</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+            <View style={{ width: '100%' }}>
+              <TouchableOpacity style={styles.singleButton} onPress={handleConfirm}>
+                <LinearGradient colors={buttonColors} style={styles.confirmGradient}>
+                  <Text style={styles.confirmText}>{confirmText}</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
       </View>
@@ -135,14 +137,14 @@ const CustomModal: React.FC<CustomModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
   container: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 16,
     padding: 24,
     width: '90%',
     maxWidth: 340,
@@ -150,29 +152,36 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 10,
+      height: 8,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 15,
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 10,
   },
   iconContainer: {
     marginBottom: 16,
+    backgroundColor: '#EFF6FF',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: '#1F2937',
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   message: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '400',
     color: '#6B7280',
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 20,
     marginBottom: 24,
+    paddingHorizontal: 8,
   },
   confirmActions: {
     flexDirection: 'row',
@@ -182,36 +191,50 @@ const styles = StyleSheet.create({
   cancelButton: {
     flex: 1,
     backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 10,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cancelText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#6B7280',
   },
   confirmButton: {
     flex: 1,
-    borderRadius: 12,
+    borderRadius: 10,
     overflow: 'hidden',
     shadowColor: '#609CEF',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 2,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  singleButton: {
+    width: '100%',
+    borderRadius: 10,
+    overflow: 'hidden',
+    shadowColor: '#609CEF',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   confirmGradient: {
-    paddingVertical: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
   confirmText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
   },

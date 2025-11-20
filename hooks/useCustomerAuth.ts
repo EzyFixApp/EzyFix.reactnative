@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useAuth, useAuthActions } from '../store/authStore';
+import { useAuth, useAuthActions, getIsManualLogoutInProgress } from '../store/authStore';
 import { isTokenExpired, getRoleFromToken, validateTokenRole } from '../lib/auth/tokenUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../lib/api/config';
@@ -47,6 +47,16 @@ export function useCustomerAuth(): UseCustomerAuthReturn {
 
   const checkAuth = useCallback(async () => {
     try {
+      // ✅ CRITICAL: Skip auth check during manual logout
+      // This prevents UNAUTHORIZED error modal from showing
+      if (getIsManualLogoutInProgress()) {
+        if (__DEV__) console.log('⏭️ [useCustomerAuth] Manual logout in progress, skipping auth check');
+        setIsAuthorized(false);
+        setError(null); // Clear any errors
+        setIsLoading(false);
+        return;
+      }
+      
       // OPTIMIZATION: Use cached result if still valid
       const now = Date.now();
       if (cachedAuthResult && (now - cachedAuthResult.timestamp) < CACHE_DURATION) {
@@ -163,15 +173,15 @@ export function useCustomerAuth(): UseCustomerAuthReturn {
 
       // Check if role from JWT matches customer role
       if (roleFromToken !== 'customer') {
-        setError('ROLE_MISMATCH');
+        // ✅ Don't set error - just return unauthorized
+        // This prevents modal from showing when user switches to technician role
         setIsAuthorized(false);
+        setError(null); // ← Clear error, don't show modal
         
-        // Cache error result WITHOUT auto-logout
-        // Let the component handle the error (e.g., show "not authorized" message)
-        // DON'T auto-logout because user might be on homepage with technician role
+        // Cache result WITHOUT error
         cachedAuthResult = {
           isAuthorized: false,
-          error: 'ROLE_MISMATCH',
+          error: null, // ← No error, just not authorized
           timestamp: Date.now(),
         };
         
@@ -184,13 +194,14 @@ export function useCustomerAuth(): UseCustomerAuthReturn {
 
       // Additional check: User data should also match (defense in depth)
       if (user.userType !== 'customer') {
-        setError('ROLE_MISMATCH');
+        // ✅ Same fix - don't set error
         setIsAuthorized(false);
+        setError(null);
         
         // Cache error result WITHOUT auto-logout
         cachedAuthResult = {
           isAuthorized: false,
-          error: 'ROLE_MISMATCH',
+          error: null, // ← No error
           timestamp: Date.now(),
         };
         
