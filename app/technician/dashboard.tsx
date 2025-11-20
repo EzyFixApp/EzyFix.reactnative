@@ -7,7 +7,8 @@ import {
   TouchableOpacity, 
   Dimensions, 
   StatusBar,
-  Alert
+  Alert,
+  RefreshControl
 } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../store/authStore';
@@ -300,6 +301,7 @@ function Dashboard() {
 
   const [activeOrders, setActiveOrders] = useState<ActiveOrderProps[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   
   // Auto-refresh interval for orders
   const REFRESH_INTERVAL = 5000; // 5 seconds
@@ -550,6 +552,22 @@ function Dashboard() {
     });
   };
   
+  // Pull to refresh handler
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      // Reload all data in parallel
+      await Promise.all([
+        loadTechnicianProfile(),
+        loadActiveOrders(true)
+      ]);
+    } catch (error) {
+      if (__DEV__) console.error('❌ Refresh failed:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [user?.id]);
+  
   // Handle tab press - instant switch, no animation
   const handleTabPress = useCallback((tabId: string) => {
     const newTab: TabType = tabId === 'home' ? 'dashboard' : 'activity';
@@ -705,6 +723,14 @@ const formatReviewDate = (dateString: string): string => {
           style={styles.scrollContainer}
           showsVerticalScrollIndicator={false}
           bounces={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#609CEF"
+              colors={['#609CEF']}
+            />
+          }
         >
         {/* Enhanced Greeting Section with Real-time Clock */}
       <View style={styles.greetingSection}>
@@ -1037,29 +1063,7 @@ const formatReviewDate = (dateString: string): string => {
             </LinearGradient>
           </TouchableOpacity>
           
-          <TouchableOpacity 
-            style={styles.secondaryActionButton} 
-            onPress={handleTrackOrderPress}
-            activeOpacity={0.8}
-          >
-            <LinearGradient
-              colors={['#609CEF', '#3B82F6']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.actionButtonGradient}
-            >
-              <View style={styles.actionButtonContent}>
-                <View style={styles.actionButtonIcon}>
-                  <Ionicons name="location" size={24} color="#FFFFFF" />
-                </View>
-                <View style={styles.actionButtonText}>
-                  <Text style={styles.actionButtonTitle}>Theo dõi đơn</Text>
-                  <Text style={styles.actionButtonSubtitle}>Cập nhật tiến độ</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="rgba(255, 255, 255, 0.8)" />
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
+      
         </View>
       </View>
 
