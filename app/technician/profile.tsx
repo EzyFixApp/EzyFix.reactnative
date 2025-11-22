@@ -1615,16 +1615,16 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
   },
-  statusDot: {
+  statusDotContract: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: '#94a3b8',
   },
-  statusDotActive: {
+  statusDotContractActive: {
     backgroundColor: '#16a34a',
   },
-  statusText: {
+  statusTextContract: {
     fontSize: 13,
     fontWeight: '600',
     color: '#16a34a',

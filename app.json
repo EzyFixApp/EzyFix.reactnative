@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "EzyFix",
-    "slug": "EzyFix",
+    "slug": "EzyFixMobile",
     "version": "1.0.0",
     "scheme": "EzyFix",
     "web": {
@@ -63,7 +63,7 @@
       }
     },
     "android": {
-      "package": "com.ezyfix.app",
+      "package": "site.ezyfix.app",
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/logononame.png",
@@ -91,7 +91,8 @@
         "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.USE_EXACT_ALARM"
       ],
-      "useNextNotificationsApi": true
+      "useNextNotificationsApi": true,
+      "playStoreUrl": "https://play.google.com/store/apps/details?id=site.ezyfix.app"
     },
     "extra": {
       "router": {},

@@ -103,8 +103,8 @@ function VoucherCard({
       <LinearGradient
         colors={
           isDisabled 
-            ? ['#9CA3AF', '#6B7280']
-            : getStatusColor()
+            ? (['#9CA3AF', '#6B7280'] as const)
+            : (getStatusColor() as any)
         }
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
@@ -382,7 +382,7 @@ function Promotions() {
                 <VoucherCard
                   key={`${voucher.voucherId}-${index}`}
                   discount={voucherService.formatDiscountDisplay(voucher)}
-                  title={voucher.voucherName}
+                  title={voucher.voucherCode}
                   description={voucher.voucherDescription}
                   code={voucher.voucherCode}
                   expiryDate={voucherService.getExpiryStatusText(voucher)}

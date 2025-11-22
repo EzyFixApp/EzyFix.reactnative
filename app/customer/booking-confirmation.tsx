@@ -78,7 +78,8 @@ function BookingConfirmation() {
   }, []);
 
   const handleViewHistory = () => {
-    router.push('/(tabs)/bookings' as any);
+    // Navigate to dashboard with activity tab (BookingHistoryContent)
+    router.push('/customer/dashboard?tab=activity' as any);
   };
 
   const handleBackToHome = () => {

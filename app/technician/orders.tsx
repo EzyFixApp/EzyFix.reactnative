@@ -722,9 +722,9 @@ function TechnicianOrders() {
           priceLabel,
           priority: 'normal' as const,
           distance,
-          estimatedTime: formattedTime,
+          estimatedTime: formattedTime || 'Chưa xác định',
           appointmentDate: apiResponse.requestedDate ? new Date(apiResponse.requestedDate).toLocaleDateString('vi-VN') : 'Chưa xác định',
-          appointmentTime: formattedTime,
+          appointmentTime: formattedTime || 'Chưa xác định',
           addressNote: apiResponse.addressNote,
           serviceRequestId: apiResponse.requestID,
           offerId

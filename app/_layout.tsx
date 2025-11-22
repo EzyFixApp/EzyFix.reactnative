@@ -22,7 +22,7 @@ import { useColorScheme, useInitialAndroidBarSync } from '~/lib/useColorScheme';
 import { NAV_THEME } from '~/theme';
 import { useNotifications } from '~/hooks/useNotifications';
 import { useAuthStore, getIsManualLogoutInProgress } from '~/store/authStore';
-import { useRouter, useSegments } from 'expo-router';
+import { useRouter, useSegments, usePathname } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 
@@ -36,6 +36,7 @@ export default function RootLayout() {
   const { colorScheme, isDarkColorScheme } = useColorScheme();
   const router = useRouter();
   const segments = useSegments();
+  const pathname = usePathname();
   const { isAuthenticated, user, error, clearError } = useAuthStore();
   
   // Track if we've already shown the session expired alert
@@ -80,7 +81,8 @@ export default function RootLayout() {
       }
       
       // Special case: (tabs) route is for customers only
-      if (segments[0] === '(tabs)' && userRole === 'technician') {
+      // Check pathname for (tabs) instead of segments
+      if (pathname.includes('(tabs)') && userRole !== 'customer') {
         if (__DEV__) console.log('🚫 Technician trying to access customer tabs, redirecting...');
         router.replace('/technician/dashboard' as any);
         return;

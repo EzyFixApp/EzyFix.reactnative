@@ -26,6 +26,15 @@ Tài liệu tổng hợp cho dự án EzyFix React Native App.
 - Development setup và workflow guides
 - Archive files từ legacy documentation
 
+### 📱 [Google Play Store Deployment](./google-play-store-deployment/) 🆕
+- **[README](./google-play-store-deployment/README.md)** - Tổng quan deployment
+- **[Submission Checklist](./google-play-store-deployment/PLAY_STORE_SUBMISSION_CHECKLIST.md)** - 16 bước submit app
+- **[Privacy Policy](./google-play-store-deployment/PRIVACY_POLICY.md)** - Chính sách bảo mật
+- **[Store Listing](./google-play-store-deployment/GOOGLE_PLAY_STORE_LISTING.md)** - Nội dung store listing
+- **[Assets Guide](./google-play-store-deployment/ASSETS_REQUIREMENTS.md)** - Hướng dẫn tạo assets
+- **[Demo Accounts](./google-play-store-deployment/DEMO_ACCOUNTS.md)** - Tài khoản demo cho reviewer
+- **[Release Notes](./google-play-store-deployment/RELEASE_NOTES.md)** - Template release notes
+
 ---
 
 ## 🎯 Quick Navigation
@@ -37,6 +46,7 @@ Tài liệu tổng hợp cho dự án EzyFix React Native App.
 | 📏 **Guidelines** | Development standards | Code standards |
 | 🔄 **Updates** | Changes và migrations | Recent updates, Migration notes |
 | 🔧 **Development** | Setup và workflow | Environment setup |
+| 📱 **Play Store** 🆕 | Google Play deployment | Checklist, Privacy Policy, Assets |
 
 ---
 
@@ -46,6 +56,7 @@ Tài liệu tổng hợp cho dự án EzyFix React Native App.
 2. **API Integration**: Xem [API Integration Guide](./api/API_INTEGRATION.md)
 3. **Feature Development**: Tham khảo [Screen Documentation](./features/SCREEN_DOCUMENTATION.md)
 4. **Updates**: Theo dõi [Recent Updates](./updates/RECENT_UPDATES.md)
+5. **Deploy to Play Store**: 📱 Xem [Google Play Deployment Guide](./google-play-store-deployment/README.md)
 
 ---
 
