@@ -14,7 +14,6 @@ interface ActiveOrder {
   id: string;
   serviceName: string;
   status: 'searching' | 'quoted' | 'accepted' | 'scheduled' | 'en-route' | 'arrived' | 'in-progress' | 'price-review' | 'payment';
-  technicianName?: string;
   customerName?: string; // For technician view - show customer name
   customerPhone?: string; // For technician view - show customer contact
   estimatedTime?: string;
@@ -148,7 +147,6 @@ export default function ActiveOrdersSection() {
       setLoading(false);
       isMountedRef.current = false; // Mark as unmounted
       return; // Early return prevents setting up interval
-      return; // Early return prevents setting up interval
     }
     
     isMountedRef.current = true; // Mark as mounted
@@ -165,10 +163,8 @@ export default function ActiveOrdersSection() {
     // Cleanup interval on unmount OR when user becomes null
     return () => {
       isMountedRef.current = false; // Mark as unmounted
-      if (interval) {
-        clearInterval(interval);
-        stopSpinning(); // Stop animation on unmount
-      }
+      clearInterval(interval);
+      stopSpinning(); // Stop animation on unmount
     };
   }, [user, isAuthenticated]); // Re-run when user or auth status changes
 
@@ -248,7 +244,6 @@ export default function ActiveOrdersSection() {
           }
           
           let serviceName = 'Dịch vụ'; // Default fallback
-          let technicianName: string | undefined;
           let customerName: string | undefined;
           let customerPhone: string | undefined;
           let actualStatus = request.status; // Will be overridden by appointment status if available
@@ -302,11 +297,6 @@ export default function ActiveOrdersSection() {
                 relevantOffer = allOffers[allOffers.length - 1];
               }
               
-              // OPTIMIZATION: Use technician name from offer if available (no extra API call needed)
-              if (relevantOffer.technician?.technicianName) {
-                technicianName = relevantOffer.technician.technicianName;
-              }
-              
               // Get final price if available
               if (relevantOffer.finalCost && relevantOffer.finalCost > 0) {
                 finalPrice = new Intl.NumberFormat('vi-VN', {
@@ -353,7 +343,6 @@ export default function ActiveOrdersSection() {
             requestedDate: request.requestedDate,
             expectedStartTime: request.expectedStartTime,
             requestAddress: request.requestAddress || undefined,
-            technicianName,
             customerName,
             customerPhone,
             appointmentStatus: finalStatus, // Store final status (ServiceRequest takes priority)
