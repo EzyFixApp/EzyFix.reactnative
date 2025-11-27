@@ -734,6 +734,14 @@ function TechnicianProfile() {
                   </TouchableOpacity>
                   
                   <TouchableOpacity
+                    style={styles.walletActionButton}
+                    onPress={() => router.push('/technician/payout-history')}
+                  >
+                    <Ionicons name="receipt-outline" size={20} color="#609CEF" />
+                    <Text style={styles.walletActionText}>Lịch sử rút</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
                     style={styles.withdrawButton}
                     onPress={() => router.push('/technician/withdraw')}
                   >
@@ -1405,10 +1413,12 @@ const styles = StyleSheet.create({
   },
   walletActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 12,
   },
   walletActionButton: {
     flex: 1,
+    minWidth: '45%',
     backgroundColor: '#F0F9FF',
     borderRadius: 12,
     paddingVertical: 14,
@@ -1437,7 +1447,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   withdrawButton: {
-    flex: 1,
+    width: '100%',
     backgroundColor: '#FFA500',
     borderRadius: 12,
     paddingVertical: 14,
