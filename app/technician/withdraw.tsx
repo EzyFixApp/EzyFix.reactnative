@@ -265,6 +265,12 @@ function Withdraw() {
                 autoCapitalize="words"
               />
             </View>
+            <View style={styles.accountNameWarning}>
+              <Ionicons name="alert-circle-outline" size={14} color="#DC2626" />
+              <Text style={styles.accountNameWarningText}>
+                Tên chủ tài khoản phải trùng với tên đăng ký tài khoản EzyFix
+              </Text>
+            </View>
           </View>
 
           {/* Account Number */}
@@ -331,7 +337,7 @@ function Withdraw() {
             disabled={submitting}
           >
             <LinearGradient
-              colors={submitting ? ['#94A3B8', '#94A3B8'] : ['#FFA500', '#FF8C00']}
+              colors={submitting ? ['#94A3B8', '#94A3B8'] : ['#609CEF', '#3B82F6']}
               style={styles.submitGradient}
             >
               {submitting ? (
@@ -568,7 +574,26 @@ const styles = StyleSheet.create({
   hint: {
     fontSize: 12,
     color: '#9CA3AF',
-    marginTop: 4,
+    marginTop: 6,
+  },
+  accountNameWarning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#DC2626',
+  },
+  accountNameWarningText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#991B1B',
+    lineHeight: 16,
+    fontWeight: '500',
   },
   pickerButton: {
     flexDirection: 'row',

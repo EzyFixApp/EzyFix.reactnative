@@ -1448,7 +1448,7 @@ const styles = StyleSheet.create({
   },
   withdrawButton: {
     width: '100%',
-    backgroundColor: '#FFA500',
+    backgroundColor: '#609CEF',
     borderRadius: 12,
     paddingVertical: 14,
     flexDirection: 'row',
