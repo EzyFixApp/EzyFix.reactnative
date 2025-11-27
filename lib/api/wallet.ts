@@ -163,22 +163,24 @@ export class WalletService {
         });
       }
 
+      // Check if response is successful - backend returns data directly even if isSuccess is undefined
       if (!response.ok) {
         throw new Error(result.message || `Get wallet summary failed: ${response.status}`);
       }
 
-      if (result.isSuccess && result.data) {
-        if (__DEV__) {
-          console.log('✅ [Wallet] Summary loaded:', {
-            balance: result.data.balance,
-            available: result.data.availableBalance,
-            hold: result.data.holdAmount,
-          });
-        }
-        return result.data;
-      } else {
-        throw new Error(result.message || 'Failed to get wallet summary');
+      // Check if data exists in response
+      if (!result.data) {
+        throw new Error(result.message || 'Wallet data not found in response');
       }
+
+      if (__DEV__) {
+        console.log('✅ [Wallet] Summary loaded:', {
+          balance: result.data.balance,
+          available: result.data.availableBalance,
+          hold: result.data.holdAmount,
+        });
+      }
+      return result.data;
     } catch (error: any) {
       if (__DEV__) {
         console.error('❌ [Wallet] Get summary error:', {
