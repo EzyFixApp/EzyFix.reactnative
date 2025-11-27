@@ -69,6 +69,11 @@ function PayoutHistory() {
       }
     } catch (error: any) {
       if (__DEV__) console.error('❌ Failed to load payouts:', error);
+      // If error is due to authentication, don't keep retrying
+      if (error.message?.includes('No access token') || error.message?.includes('Session expired')) {
+        // User is being logged out, clear data
+        setPayouts([]);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
