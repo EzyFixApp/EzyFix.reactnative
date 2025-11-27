@@ -65,6 +65,19 @@ function PayoutHistory() {
         console.log('✅ Loaded payouts:', {
           page: response.meta.current_page,
           total: response.meta.total_items,
+          items: response.items.length,
+        });
+        // Debug: Log each payout status
+        response.items.forEach((payout, index) => {
+          console.log(`Payout ${index + 1}:`, {
+            id: payout.payoutRequestId.substring(0, 8),
+            amount: payout.amount,
+            status: payout.status,
+            requestedAt: payout.requestedAt,
+            approvedAt: payout.approvedAt,
+            paidAt: payout.paidAt,
+            rejectedAt: payout.rejectedAt,
+          });
         });
       }
     } catch (error: any) {
