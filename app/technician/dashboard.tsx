@@ -619,7 +619,7 @@ console.log(`${action} pressed`);
       // TODO: Navigate to settings page
       break;
     case 'Thống kê':
-      router.push('/technician/statistics');
+      // TODO: Navigate to statistics page
       break;
     default:
       // Default action handler
