@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator, Modal, Platform, Share } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 import { useAuthStore } from '~/store/authStore';
 import CustomModal from '../../components/CustomModal';
@@ -104,6 +104,13 @@ function TechnicianProfile() {
     loadTechnicianProfile();
     loadWalletSummary();
   }, [user?.id]);
+
+  // Reload wallet when screen is focused (after returning from withdraw/history)
+  useFocusEffect(
+    React.useCallback(() => {
+      loadWalletSummary();
+    }, [])
+  );
   
   const loadTechnicianProfile = async () => {
     try {

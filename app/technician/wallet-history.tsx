@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 import { walletService } from '../../lib/api/wallet';
 import type { WalletTransaction, PaginatedResponse } from '../../lib/api/wallet';
@@ -28,6 +28,13 @@ function WalletHistory() {
   useEffect(() => {
     loadTransactions();
   }, []);
+
+  // Reload transactions when screen is focused (after creating payout)
+  useFocusEffect(
+    React.useCallback(() => {
+      loadTransactions(1, false);
+    }, [])
+  );
 
   const loadTransactions = async (page: number = 1, append: boolean = false) => {
     try {

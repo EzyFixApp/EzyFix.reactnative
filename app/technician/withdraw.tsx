@@ -166,6 +166,9 @@ function Withdraw() {
         console.log('✅ Payout created:', result);
       }
 
+      // Reload wallet summary to reflect new balance
+      await loadWalletSummary();
+
       setShowSuccessModal(true);
     } catch (error: any) {
       if (__DEV__) console.error('❌ Failed to create payout:', error);
