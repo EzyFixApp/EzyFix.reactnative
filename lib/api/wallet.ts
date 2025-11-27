@@ -153,12 +153,19 @@ export class WalletService {
         },
       });
 
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Get wallet summary failed: ${response.status} - ${errorData}`);
+      const result = await response.json();
+
+      if (__DEV__) {
+        console.log('📦 [Wallet] Raw response:', {
+          status: response.status,
+          isSuccess: result.isSuccess,
+          hasData: !!result.data,
+        });
       }
 
-      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || `Get wallet summary failed: ${response.status}`);
+      }
 
       if (result.isSuccess && result.data) {
         if (__DEV__) {
@@ -173,8 +180,13 @@ export class WalletService {
         throw new Error(result.message || 'Failed to get wallet summary');
       }
     } catch (error: any) {
-      if (__DEV__) console.error('❌ [Wallet] Get summary error:', error);
-      throw error;
+      if (__DEV__) {
+        console.error('❌ [Wallet] Get summary error:', {
+          message: error.message,
+          stack: error.stack,
+        });
+      }
+      throw new Error(error.message || 'Unknown error occurred');
     }
   }
 

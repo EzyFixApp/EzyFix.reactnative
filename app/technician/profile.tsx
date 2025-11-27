@@ -142,15 +142,22 @@ function TechnicianProfile() {
       setWalletSummary(summary);
       
       if (__DEV__) {
-        console.log('✅ Wallet summary loaded:', {
+        console.log('✅ Wallet summary loaded in profile:', {
           balance: summary.balance,
           available: summary.availableBalance,
           hold: summary.holdAmount,
         });
       }
     } catch (error: any) {
-      if (__DEV__) console.error('❌ Failed to load wallet:', error);
-      // Don't show error modal, just log it
+      if (__DEV__) {
+        console.error('❌ Failed to load wallet in profile:', {
+          message: error.message,
+          error: error,
+        });
+      }
+      // Don't show error modal, just set wallet to null
+      // This allows technician to see profile even if wallet fails
+      setWalletSummary(null);
     } finally {
       setLoadingWallet(false);
     }
@@ -729,7 +736,18 @@ function TechnicianProfile() {
                 </View>
               </>
             ) : (
-              <Text style={styles.walletAmount}>--</Text>
+              <View style={styles.walletErrorContainer}>
+                <Ionicons name="alert-circle-outline" size={24} color="#F59E0B" />
+                <Text style={styles.walletErrorText}>
+                  Không thể tải thông tin ví
+                </Text>
+                <TouchableOpacity
+                  style={styles.retryButton}
+                  onPress={loadWalletSummary}
+                >
+                  <Text style={styles.retryButtonText}>Thử lại</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
 
@@ -1341,6 +1359,28 @@ const styles = StyleSheet.create({
   walletLoadingContainer: {
     paddingVertical: 20,
     alignItems: 'center',
+  },
+  walletErrorContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    gap: 8,
+  },
+  walletErrorText: {
+    fontSize: 14,
+    color: '#F59E0B',
+    fontWeight: '500',
+  },
+  retryButton: {
+    marginTop: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    fontSize: 13,
+    color: '#92400E',
+    fontWeight: '600',
   },
   statusBadgeInWallet: {
     flexDirection: 'row',
