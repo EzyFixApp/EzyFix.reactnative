@@ -7,7 +7,9 @@ import { withTechnicianAuth } from '../../lib/auth/withTechnicianAuth';
 import { useAuthStore } from '~/store/authStore';
 import CustomModal from '../../components/CustomModal';
 import { techniciansService } from '../../lib/api/technicians';
+import { walletService } from '../../lib/api/wallet';
 import type { TechnicianProfile } from '../../types/api';
+import type { WalletSummary } from '../../lib/api/wallet';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
@@ -78,6 +80,11 @@ function TechnicianProfile() {
   const [technicianProfile, setTechnicianProfile] = useState<TechnicianProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   
+  // Wallet state
+  const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null);
+  const [loadingWallet, setLoadingWallet] = useState(true);
+  const [balanceVisible, setBalanceVisible] = useState(false);
+  
   // Modal state
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState<'success' | 'error' | 'warning' | 'info' | 'confirm'>('info');
@@ -95,6 +102,7 @@ function TechnicianProfile() {
   // Load technician profile on mount
   useEffect(() => {
     loadTechnicianProfile();
+    loadWalletSummary();
   }, [user?.id]);
   
   const loadTechnicianProfile = async () => {
@@ -124,6 +132,27 @@ function TechnicianProfile() {
       );
     } finally {
       setLoadingProfile(false);
+    }
+  };
+  
+  const loadWalletSummary = async () => {
+    try {
+      setLoadingWallet(true);
+      const summary = await walletService.getWalletSummary();
+      setWalletSummary(summary);
+      
+      if (__DEV__) {
+        console.log('✅ Wallet summary loaded:', {
+          balance: summary.balance,
+          available: summary.availableBalance,
+          hold: summary.holdAmount,
+        });
+      }
+    } catch (error: any) {
+      if (__DEV__) console.error('❌ Failed to load wallet:', error);
+      // Don't show error modal, just log it
+    } finally {
+      setLoadingWallet(false);
     }
   };
   
@@ -637,35 +666,66 @@ function TechnicianProfile() {
 
         {/* Menu Items */}
         <ScrollView style={styles.menuContainer} showsVerticalScrollIndicator={false}>
-          {/* Wallet Section */}
+          {/* Wallet Section - EzyPay */}
           <View style={styles.walletSection}>
             <View style={styles.walletHeader}>
               <Ionicons name="wallet-outline" size={20} color="#609CEF" />
-              <Text style={styles.walletTitle}>Thu nhập mỗi giờ</Text>
+              <Text style={styles.walletTitle}>Ví EzyPay</Text>
             </View>
             
-            {loadingProfile ? (
+            {loadingWallet ? (
               <View style={styles.walletLoadingContainer}>
                 <ActivityIndicator size="small" color="#609CEF" />
               </View>
-            ) : technicianProfile ? (
+            ) : walletSummary ? (
               <>
-                <Text style={styles.walletAmount}>
-                  {formatMoney(technicianProfile.hourlyRate)}
-                </Text>
+                <View style={styles.balanceRow}>
+                  <View style={styles.balanceLeft}>
+                    <Text style={styles.balanceLabel}>Số dư khả dụng</Text>
+                    <Text style={styles.walletAmount}>
+                      {balanceVisible 
+                        ? formatMoney(walletSummary.availableBalance)
+                        : '••••••••'
+                      }
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setBalanceVisible(!balanceVisible)}
+                    style={styles.eyeButton}
+                  >
+                    <Ionicons 
+                      name={balanceVisible ? "eye-outline" : "eye-off-outline"} 
+                      size={24} 
+                      color="#609CEF" 
+                    />
+                  </TouchableOpacity>
+                </View>
                 
-                <View style={styles.statusBadgeInWallet}>
-                  <View style={[
-                    styles.statusDot, 
-                    { backgroundColor: technicianProfile.availabilityStatus === 'AVAILABLE' ? '#10B981' : '#F59E0B' }
-                  ]} />
-                  <Text style={[
-                    styles.statusText,
-                    { color: technicianProfile.availabilityStatus === 'AVAILABLE' ? '#10B981' : '#F59E0B' }
-                  ]}>
-                    {technicianProfile.availabilityStatus === 'AVAILABLE' ? 'Sẵn sàng nhận việc' : 
-                     technicianProfile.availabilityStatus === 'BUSY' ? 'Đang bận' : 'Không hoạt động'}
-                  </Text>
+                {walletSummary.holdAmount > 0 && (
+                  <View style={styles.holdAmountInfo}>
+                    <Ionicons name="lock-closed-outline" size={16} color="#F59E0B" />
+                    <Text style={styles.holdAmountText}>
+                      Đang giữ: {formatMoney(walletSummary.holdAmount)}
+                    </Text>
+                  </View>
+                )}
+                
+                <View style={styles.walletActions}>
+                  <TouchableOpacity
+                    style={styles.walletActionButton}
+                    onPress={() => router.push('/technician/wallet-history')}
+                  >
+                    <Ionicons name="time-outline" size={20} color="#609CEF" />
+                    <Text style={styles.walletActionText}>Lịch sử ví</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={styles.withdrawButton}
+                    onPress={() => router.push('/technician/withdraw')}
+                  >
+                    <Ionicons name="cash-outline" size={20} color="white" />
+                    <Text style={styles.withdrawText}>Rút tiền</Text>
+                  </TouchableOpacity>
                 </View>
               </>
             ) : (
@@ -1231,7 +1291,7 @@ const styles = StyleSheet.create({
   walletHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   walletTitle: {
     fontSize: 16,
@@ -1240,10 +1300,43 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   walletAmount: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '800',
     color: '#1f2937',
+  },
+  balanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  balanceLeft: {
+    flex: 1,
+  },
+  balanceLabel: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  eyeButton: {
+    padding: 8,
+    marginTop: -4,
+  },
+  holdAmountInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFFBEB',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
     marginBottom: 16,
+  },
+  holdAmountText: {
+    fontSize: 13,
+    color: '#92400E',
+    fontWeight: '600',
   },
   walletLoadingContainer: {
     paddingVertical: 20,
@@ -1267,6 +1360,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
+  walletActionButton: {
+    flex: 1,
+    backgroundColor: '#F0F9FF',
+    borderRadius: 12,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  walletActionText: {
+    color: '#609CEF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
   topUpButton: {
     flex: 1,
     backgroundColor: '#609CEF',
@@ -1283,8 +1393,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFA500',
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
   withdrawText: {
     color: 'white',

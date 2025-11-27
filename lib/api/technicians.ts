@@ -68,6 +68,13 @@ export class TechniciansService {
       throw error;
     }
   }
+
+  /**
+   * Alias for getTechnicianProfile (for backward compatibility)
+   */
+  public async getTechnicianById(userId: string): Promise<TechnicianProfile> {
+    return this.getTechnicianProfile(userId);
+  }
 }
 
 // Export singleton instance

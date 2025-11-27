@@ -472,8 +472,8 @@ const styles = StyleSheet.create({
   },
   customHeaderGradient: {
     paddingTop: Platform.OS === 'ios' ? 50 : 10,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
+    paddingBottom: 28,
+    paddingHorizontal: 28,
   },
   customHeaderContent: {
     flexDirection: 'row',
