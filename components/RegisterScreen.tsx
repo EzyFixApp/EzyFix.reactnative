@@ -157,6 +157,9 @@ export default function RegisterScreen({
       const phoneWithSpaces = `${selectedCountry.dialCode} ${rawPhone}`; // With space
       const vietnamPhone = rawPhone.startsWith('0') ? rawPhone : `0${rawPhone}`; // Vietnam format
       
+      // Convert userType to role in uppercase format for API
+      const role = userType.toUpperCase() as 'CUSTOMER' | 'TECHNICIAN';
+      
       const registerData: RegisterRequest = {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
@@ -171,6 +174,7 @@ export default function RegisterScreen({
       // Create a payload with multiple possible field names and formats for backend compatibility
       const registerPayload = {
         ...registerData,
+        role, // Add role field with uppercase value (CUSTOMER or TECHNICIAN)
         phone: formattedPhone, // +84xxxxxxxxx
         phoneNumber: formattedPhone, // Our current field name
         mobile: phoneWithoutPlus, // 84xxxxxxxxx (without +)
@@ -196,6 +200,7 @@ export default function RegisterScreen({
           dialCode: selectedCountry.dialCode,
           country: selectedCountry.name,
           userType: registerData.userType,
+          role: role, // Log the uppercase role
           acceptTerms: registerData.acceptTerms,
           phoneLength: rawPhone.length,
           isPhoneValid: validatePhone(rawPhone),
