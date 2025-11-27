@@ -8,15 +8,15 @@ import { EZYFIX_SERVICE_CATALOG, getServiceById, type EzyFixService } from '../c
 
 // API Configuration - Multiple keys for rotation
 const GEMINI_API_KEYS = [
-  'AIzaSyDBG2XrJgHDZyh07j1AGNiHt5T7xf_YPWA',
-  'AIzaSyBI28qhk_KFJ3msaL7BYquq2i1Art7fHYo',
-  'AIzaSyA9rMasDZ_jOzQSdoYfA17PfUkjE55_QRg',
-  'AIzaSyDi4dZYZvym8meA3a1qmm-7tpaMMtY6Cys',
-  'AIzaSyCPvSYHTrl6JrOrFswa5UhwOCzleQum0uo',
-  'AIzaSyAP1ITdVzY92HIcFmgnsFWVmZbzJ-666kA',
-  'AIzaSyDmEj_EJzLYFhax9H1NsxQwRbbCOIN97x8',
-  'AIzaSyBMx6Sk1PgpBUYH78wwakJF8CPZT7fl9-c',
-  'AIzaSyA5GAPR65ov77RB2VDyhtQVwoaTR8e1gTk',
+  'AIzaSyDTypQnPce6G-FJFsPaFiGbSF8UQhrg1Es',
+  'AIzaSyBPQJVuazrytrMJ_eXPapVr8x7iuOdabRc',
+  'AIzaSyDTAfUJ7mRihOJIcRxomxWGwXCHit4sMSU',
+  'AIzaSyCKllq0G-F-xfHNtkifvLPGZF2JhK1nd0Y',
+  'AIzaSyD050XN61oZh-8g4Rz2c2z7oSNYyTMm6Fk',
+  'AIzaSyC39ndNC0EqN6t7mOwqQABg2gxvi18xWBc',
+  'AIzaSyCZVh8jzhyAMe4sz2Ujry1bxoqSRYS0MGw',
+  'AAIzaSyBAAbKSjoDAIEH1BbteVjjQ4wRQ9uG-PcI',
+  'AIzaSyBrRRO0q7gq9ICYmhKM2UsHtf19rdh2qtE',
 ];
 const MODEL_NAME = 'gemini-2.5-flash';
 

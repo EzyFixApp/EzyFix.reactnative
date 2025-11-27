@@ -229,24 +229,23 @@ export class WalletService {
         },
       });
 
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Get transactions failed: ${response.status} - ${errorData}`);
-      }
-
       const result = await response.json();
 
-      if (result.isSuccess && result.data) {
-        if (__DEV__) {
-          console.log('✅ [Wallet] Transactions loaded:', {
-            items: result.data.items.length,
-            total: result.data.meta.total_items,
-          });
-        }
-        return result.data;
-      } else {
-        throw new Error(result.message || 'Failed to get transactions');
+      if (!response.ok) {
+        throw new Error(result.message || `Get transactions failed: ${response.status}`);
       }
+
+      if (!result.data) {
+        throw new Error(result.message || 'Transaction data not found in response');
+      }
+
+      if (__DEV__) {
+        console.log('✅ [Wallet] Transactions loaded:', {
+          items: result.data.items.length,
+          total: result.data.meta.total_items,
+        });
+      }
+      return result.data;
     } catch (error: any) {
       if (__DEV__) console.error('❌ [Wallet] Get transactions error:', error);
       throw error;
@@ -284,24 +283,23 @@ export class WalletService {
         },
       });
 
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Get payouts failed: ${response.status} - ${errorData}`);
-      }
-
       const result = await response.json();
 
-      if (result.isSuccess && result.data) {
-        if (__DEV__) {
-          console.log('✅ [Wallet] Payouts loaded:', {
-            items: result.data.items.length,
-            total: result.data.meta.total_items,
-          });
-        }
-        return result.data;
-      } else {
-        throw new Error(result.message || 'Failed to get payouts');
+      if (!response.ok) {
+        throw new Error(result.message || `Get payouts failed: ${response.status}`);
       }
+
+      if (!result.data) {
+        throw new Error(result.message || 'Payout data not found in response');
+      }
+
+      if (__DEV__) {
+        console.log('✅ [Wallet] Payouts loaded:', {
+          items: result.data.items.length,
+          total: result.data.meta.total_items,
+        });
+      }
+      return result.data;
     } catch (error: any) {
       if (__DEV__) console.error('❌ [Wallet] Get payouts error:', error);
       throw error;
@@ -329,19 +327,18 @@ export class WalletService {
         body: JSON.stringify(request),
       });
 
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Create payout failed: ${response.status} - ${errorData}`);
-      }
-
       const result = await response.json();
 
-      if (result.isSuccess && result.data) {
-        if (__DEV__) console.log('✅ [Wallet] Payout created:', result.data.payoutRequestId);
-        return result.data;
-      } else {
-        throw new Error(result.message || 'Failed to create payout');
+      if (!response.ok) {
+        throw new Error(result.message || `Create payout failed: ${response.status}`);
       }
+
+      if (!result.data) {
+        throw new Error(result.message || 'Payout data not found in response');
+      }
+
+      if (__DEV__) console.log('✅ [Wallet] Payout created:', result.data.payoutRequestId);
+      return result.data;
     } catch (error: any) {
       if (__DEV__) console.error('❌ [Wallet] Create payout error:', error);
       throw error;

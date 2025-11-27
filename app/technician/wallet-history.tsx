@@ -189,8 +189,6 @@ function WalletHistory() {
             <View style={styles.headerTitleContainer}>
               <Text style={styles.headerTitle}>Lịch sử ví</Text>
             </View>
-
-            <View style={{ width: 40 }} />
           </View>
         </LinearGradient>
       </View>
@@ -256,16 +254,20 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   headerGradient: {
-    paddingTop: Platform.OS === 'ios' ? 50 : 10,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 50 : 16,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
   },
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    position: 'relative',
+    minHeight: 40,
   },
   backButton: {
+    position: 'absolute',
+    left: 0,
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -274,14 +276,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitleContainer: {
-    flex: 1,
     alignItems: 'center',
-    marginLeft: -40,
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: 'white',
+    letterSpacing: 0.5,
   },
   loadingContainer: {
     flex: 1,

@@ -7,45 +7,8 @@
     <list default="true" id="868f0766-2637-44bf-ae60-358902ea7db5" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.json" beforeDir="false" afterPath="$PROJECT_DIR$/app.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/_layout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/_layout.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/book-service.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/book-service.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/booking-detail.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/booking-detail.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/dashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/dashboard.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/order-tracking.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/order-tracking.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/payment-summary.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/payment-summary.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/profile.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/profile.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/customer/promotions.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/customer/promotions.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/technician/dashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/dashboard.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/technician/orders.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/orders.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/technician/personal-info.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/personal-info.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/technician/profile.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/profile.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/technician/technician-order-tracking.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/technician/technician-order-tracking.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/ActiveOrdersSection.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/ActiveOrdersSection.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/BookingHistoryContent.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/BookingHistoryContent.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/CustomModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/CustomModal.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/CustomerDashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/CustomerDashboard.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/DashboardContent.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/DashboardContent.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/QuoteNotificationModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/QuoteNotificationModal.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/ServiceCategories.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/ServiceCategories.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/TechnicianActivityContent.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/TechnicianActivityContent.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/TechnicianHeader.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/TechnicianHeader.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/hooks/useCustomerAuth.ts" beforeDir="false" afterPath="$PROJECT_DIR$/hooks/useCustomerAuth.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/hooks/useTechnicianAuth.ts" beforeDir="false" afterPath="$PROJECT_DIR$/hooks/useTechnicianAuth.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api/appointments.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/appointments.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api/base.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/base.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api/payment.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/payment.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api/serviceDeliveryOffers.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/serviceDeliveryOffers.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api/serviceRequests.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/serviceRequests.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api/technicians.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/technicians.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api/tokenManager.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/tokenManager.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/auth/withCustomerAuth.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/lib/auth/withCustomerAuth.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/auth/withTechnicianAuth.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/lib/auth/withTechnicianAuth.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/services/notificationService.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/services/notificationService.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/store/authStore.ts" beforeDir="false" afterPath="$PROJECT_DIR$/store/authStore.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/types/api.ts" beforeDir="false" afterPath="$PROJECT_DIR$/types/api.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/api/wallet.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api/wallet.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/services/aiService.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/services/aiService.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
