@@ -259,6 +259,16 @@ function PayoutHistory() {
           </View>
         )}
 
+        {/* Approved Notice */}
+        {payout.status === 'APPROVED' && (
+          <View style={styles.approvedNotice}>
+            <Ionicons name="time-outline" size={16} color="#3B82F6" />
+            <Text style={styles.approvedNoticeText}>
+              Tiền sẽ được chuyển vào tài khoản của bạn trong vòng 24h
+            </Text>
+          </View>
+        )}
+
         {/* Timestamps */}
         <View style={styles.timestampContainer}>
           <View style={styles.timestampRow}>
@@ -631,6 +641,25 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     color: '#991B1B',
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  approvedNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#EFF6FF',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+    marginBottom: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#3B82F6',
+  },
+  approvedNoticeText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#1E40AF',
     lineHeight: 18,
     fontWeight: '500',
   },
