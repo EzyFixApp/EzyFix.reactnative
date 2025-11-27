@@ -114,19 +114,18 @@ export class WalletService {
         },
       });
 
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Get banks failed: ${response.status} - ${errorData}`);
-      }
-
       const result = await response.json();
 
-      if (result.isSuccess && result.data) {
-        if (__DEV__) console.log(`✅ [Wallet] Loaded ${result.data.length} banks`);
-        return result.data;
-      } else {
-        throw new Error(result.message || 'Failed to get banks');
+      if (!response.ok) {
+        throw new Error(result.message || `Get banks failed: ${response.status}`);
       }
+
+      if (!result.data) {
+        throw new Error(result.message || 'Bank data not found in response');
+      }
+
+      if (__DEV__) console.log(`✅ [Wallet] Loaded ${result.data.length} banks`);
+      return result.data;
     } catch (error: any) {
       if (__DEV__) console.error('❌ [Wallet] Get banks error:', error);
       throw error;
