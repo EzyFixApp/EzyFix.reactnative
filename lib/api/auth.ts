@@ -86,9 +86,14 @@ export class AuthService {
    */
   public async register(registerData: RegisterRequest): Promise<RegisterResponse> {
     try {
+      // Extract role and remove from body
+      const { role, ...body } = registerData;
+      const params = role ? { role } : undefined;
       const response = await apiService.post<RegisterResponse>(
         API_ENDPOINTS.AUTH.REGISTER,
-        registerData
+        body,
+        undefined,
+        params
       );
 
       if (response.is_success && response.data) {

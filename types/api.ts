@@ -71,7 +71,7 @@ export interface RegisterRequest {
   confirmPassword: string;
   phoneNumber: string;
   phone?: string; // Optional field for backend compatibility
-  userType: UserType;
+  userType?: UserType;
   role?: 'CUSTOMER' | 'TECHNICIAN'; // Backend expects uppercase role
   acceptTerms: boolean;
 }

@@ -160,23 +160,18 @@ export default function RegisterScreen({
       // Convert userType to role in uppercase format for API
       const role = userType.toUpperCase() as 'CUSTOMER' | 'TECHNICIAN';
       
-      const registerData: RegisterRequest = {
+      // Only send 'role' (not userType) to backend
+      const registerPayload = {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim().toLowerCase(),
         password,
         confirmPassword,
         phoneNumber: formattedPhone,
-        userType,
         acceptTerms: agreedToTerms,
-      };
-
-      // Create a payload with multiple possible field names and formats for backend compatibility
-      const registerPayload = {
-        ...registerData,
-        role, // Add role field with uppercase value (CUSTOMER or TECHNICIAN)
+        role, // Only send role (CUSTOMER or TECHNICIAN)
+        // Optional: keep phone for compatibility
         phone: formattedPhone, // +84xxxxxxxxx
-        phoneNumber: formattedPhone, // Our current field name
         mobile: phoneWithoutPlus, // 84xxxxxxxxx (without +)
         cellPhone: phoneWithSpaces, // +84 xxxxxxxxx (with space)
         user_phone: formattedPhone, // Snake case version
@@ -188,10 +183,10 @@ export default function RegisterScreen({
       // Debug logging
       if (__DEV__) {
         console.log('📋 Register Data Debug:', {
-          firstName: registerData.firstName,
-          lastName: registerData.lastName,
-          fullNameCombined: `${registerData.firstName} ${registerData.lastName}`.trim(),
-          email: registerData.email,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          fullNameCombined: `${firstName.trim()} ${lastName.trim()}`.trim(),
+          email: email.trim().toLowerCase(),
           rawPhoneInput: rawPhone,
           formattedPhone: formattedPhone,
           phoneWithoutPlus: phoneWithoutPlus,
@@ -199,9 +194,8 @@ export default function RegisterScreen({
           vietnamPhone: vietnamPhone,
           dialCode: selectedCountry.dialCode,
           country: selectedCountry.name,
-          userType: registerData.userType,
           role: role, // Log the uppercase role
-          acceptTerms: registerData.acceptTerms,
+          acceptTerms: agreedToTerms,
           phoneLength: rawPhone.length,
           isPhoneValid: validatePhone(rawPhone),
           fullPayload: JSON.stringify(registerPayload, null, 2)
@@ -214,9 +208,9 @@ export default function RegisterScreen({
       }
 
       // Step 1: Register user (isVerified: false) - send payload with both field names
-      const registerResponse = await authService.register(registerPayload as RegisterRequest);
+      const registerResponse = await authService.register(registerPayload);
       if (__DEV__) {
-        console.log('✅ Registration successful', { email: registerData.email, isVerified: registerResponse.isVerified });
+        console.log('✅ Registration successful', { email: email.trim().toLowerCase(), isVerified: registerResponse.isVerified });
       }
       
       // Step 2: Send OTP for verification
@@ -226,7 +220,7 @@ export default function RegisterScreen({
       });
       
       if (__DEV__) {
-        console.log('📧 OTP sent for registration verification', { email: registerData.email });
+        console.log('📧 OTP sent for registration verification', { email: email.trim().toLowerCase() });
       }
       
       // Navigate to OTP verification screen

@@ -306,14 +306,16 @@ export class BaseApiService {
    * POST request
    */
   public async post<T>(
-    endpoint: string, 
-    data?: any, 
-    options?: RequestOptions
+    endpoint: string,
+    data?: any,
+    options?: RequestOptions,
+    params?: Record<string, any>
   ): Promise<ApiResponse<T>> {
     return this.request<T>({
       url: endpoint,
       method: 'POST',
-      data
+      data,
+      params
     }, options);
   }
 

@@ -46,7 +46,6 @@ export default function LoginScreen({
   const formAnim = React.useRef(new Animated.Value(30)).current;
 
   const buttonAnim = React.useRef(new Animated.Value(0.9)).current;
-  const googleAnim = React.useRef(new Animated.Value(0.9)).current;
 
   // Form states
   const [email, setEmail] = React.useState('');
@@ -128,13 +127,6 @@ export default function LoginScreen({
           useNativeDriver: true,
         }),
       ]),
-      // Social buttons animation
-      Animated.spring(googleAnim, {
-        toValue: 1,
-        tension: 50,
-        friction: 8,
-        useNativeDriver: true,
-      }),
     ]).start();
   };
 
@@ -674,56 +666,21 @@ export default function LoginScreen({
             )}
           </Animated.View>
 
-          {/* Divider & Social Login - Only show in email step */}
-          {currentStep === 'email' && (
-            <>
-              <View style={styles.divider}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>hoặc</Text>
-                <View style={styles.dividerLine} />
-              </View>
-
-              <Animated.View 
-                style={[
-                  styles.googleSection,
-                  {
-                    transform: [{ scale: googleAnim }]
-                  }
-                ]}
-              >
-                <TouchableOpacity
-                  style={styles.googleButton}
-                  onPress={() => handleSocialLogin('google')}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.googleIconContainer}>
-                    <Image 
-                      source={require('../assets/logogoogle.png')}
-                      style={styles.googleIconImage}
-                      resizeMode="contain"
-                    />
-                  </View>
-                  <Text style={styles.googleButtonText}>Đăng nhập với Google</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={styles.registerLink} 
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    const route = userType === 'customer' 
-                      ? '/customer/register' 
-                      : '/technician/register';
-                    router.push(route);
-                  }}
-                >
-                  <Text style={styles.registerText}>
-                    Bạn chưa có tài khoản? <Text style={styles.registerLinkText}>Đăng ký ngay</Text>
-                  </Text>
-                </TouchableOpacity>
-
-              </Animated.View>
-            </>
-          )}
+          {/* Register Link */}
+          <TouchableOpacity 
+            style={styles.registerLink} 
+            activeOpacity={0.7}
+            onPress={() => {
+              const route = userType === 'customer' 
+                ? '/customer/register' 
+                : '/technician/register';
+              router.push(route);
+            }}
+          >
+            <Text style={styles.registerText}>
+              Bạn chưa có tài khoản? <Text style={styles.registerLinkText}>Đăng ký ngay</Text>
+            </Text>
+          </TouchableOpacity>
 
         </View>
       </SafeAreaView>
@@ -890,75 +847,6 @@ const styles = StyleSheet.create({
     lineHeight: 29,
   },
 
-  // Divider
-  divider: {
-    marginTop: 20,
-    marginBottom: 24,
-    alignItems: 'center',
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#e2e8f0',
-  },
-  dividerText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#94a3b8',
-    marginHorizontal: 16,
-  },
-
-  // Google Section
-  googleSection: {
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  googleButton: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#dadce0',
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  googleIconContainer: {
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  googleIconImage: {
-    width: 20,
-    height: 20,
-  },
-  googleIcon: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#4285f4',
-  },
-  googleButtonText: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#3c4043',
-    textAlign: 'center',
-    marginRight: 24, // Để text căn giữa với icon
-  },
   registerLink: {
     paddingVertical: 16,
     marginTop: 8,

@@ -54,70 +54,6 @@ function InputField({ label, value, onChangeText, placeholder, editable = true, 
   );
 }
 
-interface SocialLinkProps {
-  platform: 'Google' | 'Facebook' | 'Apple';
-  email?: string;
-  isConnected: boolean;
-  onPress: () => void;
-}
-
-function SocialLink({ platform, email, isConnected, onPress }: SocialLinkProps) {
-  const getIcon = () => {
-    switch (platform) {
-      case 'Google':
-        return 'logo-google';
-      case 'Facebook':  
-        return 'logo-facebook';
-      case 'Apple':
-        return 'logo-apple';
-      default:
-        return 'link-outline';
-    }
-  };
-
-  const getColor = () => {
-    switch (platform) {
-      case 'Google':
-        return '#DB4437';
-      case 'Facebook':
-        return '#4267B2';
-      case 'Apple':
-        return '#000000';
-      default:
-        return '#609CEF';
-    }
-  };
-
-  return (
-    <View style={styles.socialLinkItem}>
-      <View style={styles.socialLinkLeft}>
-        <View style={[styles.socialIcon, { backgroundColor: `${getColor()}15` }]}>
-          <Ionicons name={getIcon()} size={24} color={getColor()} />
-        </View>
-        <View style={styles.socialTextContainer}>
-          <Text style={styles.socialPlatform}>{platform}</Text>
-          {email && <Text style={styles.socialEmail}>{email}</Text>}
-        </View>
-      </View>
-      
-      <TouchableOpacity
-        onPress={onPress}
-        style={[
-          styles.socialButton,
-          isConnected ? styles.connectedButton : styles.connectButton
-        ]}
-      >
-        <Text style={[
-          styles.socialButtonText,
-          isConnected ? styles.connectedButtonText : styles.connectButtonText
-        ]}>
-          {isConnected ? 'Hủy liên kết' : 'Liên kết'}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
 function PersonalProfile() {
   const [formData, setFormData] = useState({
     fullName: 'Zun Zun',
@@ -125,12 +61,6 @@ function PersonalProfile() {
     gender: 'Nam',
     phoneNumber: '0901234567',
     email: 'ZunZun@gmail.com'
-  });
-
-  const [socialConnections, setSocialConnections] = useState({
-    google: true,
-    facebook: true,
-    apple: false
   });
 
   const handleBackPress = () => {
@@ -146,13 +76,6 @@ function PersonalProfile() {
   const handleDatePicker = () => {
     console.log('Open date picker');
     // Implement date picker
-  };
-
-  const handleSocialToggle = (platform: 'google' | 'facebook' | 'apple') => {
-    setSocialConnections(prev => ({
-      ...prev,
-      [platform]: !prev[platform]
-    }));
   };
 
   const handleChangeAvatar = () => {
@@ -245,36 +168,11 @@ function PersonalProfile() {
                 keyboardType="email-address"
               />
               <View style={styles.unverifiedContainer}>
-                <View style={styles.unverifiedBadge}>
-                  <Text style={styles.unverifiedText}>CHƯA XÁC THỰC</Text>
+                <View style={styles.verifiedBadge}>
+                  <Text style={styles.verifiedText}>ĐÃ XÁC THỰC</Text>
                 </View>
-                <TouchableOpacity style={styles.verifyLink}>
-                  <Text style={styles.verifyLinkText}>Xác thực ngay</Text>
-                </TouchableOpacity>
               </View>
             </View>
-          </Section>
-
-          {/* Liên kết tài khoản */}
-          <Section title="🔗 Liên kết tài khoản">
-            <SocialLink
-              platform="Google"
-              isConnected={socialConnections.google}
-              onPress={() => handleSocialToggle('google')}
-            />
-            
-            <SocialLink
-              platform="Facebook"
-              isConnected={socialConnections.facebook}
-              onPress={() => handleSocialToggle('facebook')}
-            />
-            
-            <SocialLink
-              platform="Apple"
-              email="Chưa liên kết"
-              isConnected={socialConnections.apple}
-              onPress={() => handleSocialToggle('apple')}
-            />
           </Section>
 
           {/* Bottom Spacing */}
@@ -465,64 +363,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#609CEF',
     textDecorationLine: 'underline',
-  },
-  socialLinkItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  socialLinkLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  socialIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  socialTextContainer: {
-    flex: 1,
-  },
-  socialPlatform: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
-  },
-  socialEmail: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2,
-  },
-  socialButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  connectButton: {
-    backgroundColor: '#609CEF',
-  },
-  connectedButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#609CEF',
-  },
-  socialButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  connectButtonText: {
-    color: 'white',
-  },
-  connectedButtonText: {
-    color: '#609CEF',
   },
   bottomButtons: {
     flexDirection: 'row',
