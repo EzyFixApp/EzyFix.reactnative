@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   Platform,
-  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -285,19 +284,6 @@ function PayoutHistory() {
             </View>
           )}
         </View>
-
-        {/* QR Code (if available) */}
-        {payout.vietQrImageBase64 && payout.status === 'APPROVED' && (
-          <View style={styles.qrContainer}>
-            <Text style={styles.qrLabel}>Mã QR thanh toán:</Text>
-            <Image
-              source={{ uri: `data:image/png;base64,${payout.vietQrImageBase64}` }}
-              style={styles.qrImage}
-              resizeMode="contain"
-            />
-            <Text style={styles.qrHint}>Quét mã để thanh toán</Text>
-          </View>
-        )}
       </View>
     );
   };
@@ -668,31 +654,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#374151',
     fontWeight: '600',
-  },
-  qrContainer: {
-    marginTop: 16,
-    padding: 16,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  qrLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 12,
-  },
-  qrImage: {
-    width: 200,
-    height: 200,
-    borderRadius: 8,
-    backgroundColor: 'white',
-  },
-  qrHint: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 8,
-    fontStyle: 'italic',
   },
   emptyContainer: {
     flex: 1,
