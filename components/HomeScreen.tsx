@@ -1,7 +1,8 @@
 import * as React from 'react';
-import { View, Text, TouchableOpacity, StatusBar, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StatusBar, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 
 export default function HomeScreen() {
   const handleThoPress = () => {
@@ -15,6 +16,31 @@ export default function HomeScreen() {
     console.log('Tôi là khách hàng pressed');
     router.push('./customer/login');
   };
+
+  // Request notification permissions when component mounts
+  React.useEffect(() => {
+    const requestNotificationPermissions = async () => {
+      try {
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          
+          if (status !== 'granted') {
+            Alert.alert(
+              'Thông báo',
+              'Để nhận được thông báo về đơn hàng và cập nhật từ EzyFix, vui lòng cho phép ứng dụng truy cập thông báo trong cài đặt.',
+              [{ text: 'Đã hiểu', style: 'default' }]
+            );
+          }
+        }
+      } catch (error) {
+        console.warn('Error requesting notification permissions:', error);
+      }
+    };
+
+    requestNotificationPermissions();
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
